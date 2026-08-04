@@ -1,0 +1,19 @@
+# Compiled binary
+/toha3ee
+
+# REPL history
+/.toha3ee_history
+
+# Local automation helper (contains session identifiers)
+/continue_AI.sh
+
+# Generated artifacts
+/toha3ee-report.md
+/toha3ee-report.json
+/*.pcap
+/toha3ee-export.pcap
+
+# Certificate material
+*.crt
+*.key
+/certs/
