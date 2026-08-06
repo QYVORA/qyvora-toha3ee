@@ -5,11 +5,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"syscall"
@@ -32,6 +35,8 @@ import (
 	_ "github.com/qyvora/toha3ee/internal/attacks/wlan"
 	_ "github.com/qyvora/toha3ee/internal/vectors/rules"
 )
+
+var noSudo bool
 
 func main() {
 	// Panic recovery: even if a module or handler panics, run the global
@@ -58,6 +63,9 @@ func main() {
 		SilenceErrors: true,
 		// Bare "toha3ee" drops straight into the interactive console;
 		// "--eval \"net.scan; net.show\"" runs without a subcommand too.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return maybeElevate()
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if eval != "" {
 				return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
@@ -75,6 +83,7 @@ func main() {
 	root.PersistentFlags().StringVar(&eval, "eval", "", "run a one-shot command sequence and exit, e.g. \"net.scan; net.show\"")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose logging")
 	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
+	root.PersistentFlags().BoolVar(&noSudo, "no-sudo", false, "do not auto-escalate to root via sudo")
 
 	replCmd := &cobra.Command{
 		Use:     "interactive",
@@ -224,4 +233,44 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 
 func runWizard(s *session.Session) error {
 	return s.WizardWithStdin()
+}
+
+// shouldElevate reports whether the process must re-exec itself as root. The
+// framework needs raw sockets and packet capture, so unless it is already
+// running as root (or the user explicitly opted out) every invocation escalates
+// via sudo and prompts for the admin password.
+func shouldElevate(euid int, noSudo, windows bool) bool {
+	return euid != 0 && !noSudo && !windows
+}
+
+// maybeElevate re-runs the current executable under sudo when it is not root.
+// Use --no-sudo or TOHA3EE_NO_SUDO=1 to skip the prompt (e.g. for a plain
+// `version` or `modules` listing).
+func maybeElevate() error {
+	if os.Getenv("TOHA3EE_NO_SUDO") == "1" {
+		return nil
+	}
+	if !shouldElevate(os.Geteuid(), noSudo, runtime.GOOS == "windows") {
+		return nil
+	}
+	if _, err := exec.LookPath("sudo"); err != nil {
+		return errors.New("toha3ee needs root privileges, but sudo was not found; re-run as root")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve own executable path: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "[*] toha3ee needs admin privileges; escalating via sudo (enter the admin password)...")
+	cmd := exec.Command("sudo", append([]string{self}, os.Args[1:]...)...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			os.Exit(ee.ExitCode())
+		}
+		return err
+	}
+	os.Exit(0)
+	return nil
 }
