@@ -26,7 +26,10 @@ go build ./cmd/toha3ee
 ## Quick start
 
 ```sh
-# Interactive REPL
+# Interactive console (bare command drops straight in)
+sudo ./toha3ee --iface eth0
+
+# Interactive console (explicit subcommand)
 sudo ./toha3ee interactive --iface eth0
 
 # Guided wizard
@@ -41,6 +44,7 @@ sudo ./toha3ee run --iface eth0 caplets/basic.cap
 
 Most attack modules require root (raw sockets, packet capture and IP
 forwarding). Run as root or with `CAP_NET_ADMIN`/`CAP_NET_RAW` where possible.
+Add `--no-color` to disable colored output, `-v` for verbose logging.
 
 ## Architecture
 
@@ -64,14 +68,15 @@ the event log that feeds the report generator.
 
 | Path | Purpose |
 |------|---------|
-| `cmd/toha3ee` | CLI: REPL, wizard, `--eval`, caplet runner |
+| `cmd/toha3ee` | CLI: console, wizard, `--eval`, caplet runner |
+| `internal/ui` | console rendering: banner, palette, sections, tables, status glyphs |
 | `internal/attacks/` | all attack modules by category |
 | `internal/netx/` | protocol primitives (ARP, DHCP, DNS, NDP, 802.11, SMB/NTLM, proxy, …) |
 | `internal/hijack` | HTTP/HTTPS MITM proxy and credential/session interception |
 | `internal/phish` | captive-portal phishing and login-page clones |
 | `internal/store` | shared data store and event bus |
 | `internal/safety` | cleanup/heartbeat lifecycle |
-| `internal/config` | YAML/JSON config loading |
+| `internal/config` | JSON config loading |
 | `internal/oui` | MAC vendor database |
 | `pkg/certutil` | framework CA and per-host TLS certificates |
 
@@ -89,19 +94,59 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 | **wireless** | `wlan.scan`, `wlan.deauth`, `wlan.handshake`, `wlan.eviltwin`, `wlan.pmkid`, `wlan.beaconflood`, `wlan.karma` |
 | **post** | `report.generate`, `session.replay`, `pcap.export` |
 
-## REPL
+## Console
+
+Bare `toha3ee` (or `toha3ee interactive`) opens a bettercap/metasploit-style
+console: a figlet banner, a `toha3ee> ` prompt with tab-completion, and
+grouped, aligned output in the framework's red/black/white palette. Every
+command's output is sectioned (`─── modules ───`), tables are column-aligned
+(colors are ignored when computing alignment), and module messages are
+colorized centrally, so every module gets consistent status glyphs with no
+per-module work. Output falls back to plain text automatically when piped.
 
 ```
-> modules                  # list everything
-> net.scan                 # run a module
-> net.show
-> run caplets/basic.cap    # run a caplet script
-> help
-> exit
+$ sudo ./toha3ee --iface eth0
+ _       _         ____
+| |_ ___| |_  __ _|__ / ___ ___
+|  _/ _ \ ' \/ _` ||_ \/ -_) -_)
+ \__\___/_||_\__,_|___/\___\___|
+
+network exploitation & MITM framework
+
+  iface wlan0 (10.135.199.31, 8c:c8:4b:30:bf:91)
+  v 0.1.0
+type 'help' for commands, 'modules' for the catalogue, 'quit' to exit
+
+[*] session ready. type 'help' for commands.
+toha3ee> help
 ```
 
-Sessions keep captured data across module runs; `report.generate` renders a
-Markdown assessment from the in-memory store.
+Status glyphs follow bettercap's convention:
+
+| Glyph | Meaning |
+|-------|---------|
+| `[*]` | info / running |
+| `[+]` | success |
+| `[!]` | warning / error (red) |
+| `[>]` | system |
+| `[-]` | neutral (dim) |
+
+Example session:
+
+```
+toha3ee> modules recon        # module catalogue filtered by category
+toha3ee> on net.scan          # run a module (preflight checks shown first)
+toha3ee> net.show             # discovered hosts
+toha3ee> net.profile          # profile + ranked attack vectors
+toha3ee> help                 # grouped command reference
+toha3ee> quit
+```
+
+`set <module.key> <value>` stores per-module settings (module IDs are dotted,
+so the split happens on the last dot: `set arp.spoof.targets 10.0.0.5`);
+`config` dumps everything set so far. Sessions keep captured data across
+module runs; `report.generate` renders a Markdown assessment from the
+in-memory store.
 
 ## Configuration
 

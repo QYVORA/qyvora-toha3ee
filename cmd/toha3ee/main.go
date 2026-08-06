@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sort"
+	"strconv"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -19,6 +21,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/config"
 	"github.com/qyvora/toha3ee/internal/netx"
 	"github.com/qyvora/toha3ee/internal/session"
+	"github.com/qyvora/toha3ee/internal/ui"
 
 	// Register all attack modules and vector rules.
 	_ "github.com/qyvora/toha3ee/internal/attacks/auth"
@@ -30,8 +33,6 @@ import (
 	_ "github.com/qyvora/toha3ee/internal/attacks/wlan"
 	_ "github.com/qyvora/toha3ee/internal/vectors/rules"
 )
-
-var version = "0.1.0"
 
 func main() {
 	// Panic recovery: even if a module or handler panics, run the global
@@ -49,20 +50,24 @@ func main() {
 	var configPath string
 	var eval string
 	var verbose bool
+	var noColor bool
 
 	root := &cobra.Command{
 		Use:           "toha3ee",
 		Short:         "network exploitation & MITM framework",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// `toha3ee --eval "net.scan; net.show"` runs without a subcommand.
+		// Bare "toha3ee" drops straight into the interactive console;
+		// "--eval \"net.scan; net.show\"" runs without a subcommand too.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if eval != "" {
-				return run(ifaceName, configPath, verbose, func(s *session.Session) error {
+				return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 					return s.Eval(eval)
 				})
 			}
-			return cmd.Help()
+			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+				return s.REPL()
+			})
 		},
 	}
 
@@ -70,13 +75,14 @@ func main() {
 	root.PersistentFlags().StringVar(&configPath, "config", "", "config file path (default toha3ee.json)")
 	root.PersistentFlags().StringVar(&eval, "eval", "", "run a one-shot command sequence and exit, e.g. \"net.scan; net.show\"")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose logging")
+	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 
 	replCmd := &cobra.Command{
 		Use:     "interactive",
 		Aliases: []string{"repl", "shell"},
 		Short:   "start the interactive console",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(ifaceName, configPath, verbose, func(s *session.Session) error {
+			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.REPL()
 			})
 		},
@@ -86,7 +92,7 @@ func main() {
 		Use:   "wizard",
 		Short: "guided attack setup",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(ifaceName, configPath, verbose, func(s *session.Session) error {
+			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return runWizard(s)
 			})
 		},
@@ -103,7 +109,7 @@ func main() {
 			if seq == "" {
 				return fmt.Errorf("eval: nothing to run (pass --eval or a quoted string)")
 			}
-			return run(ifaceName, configPath, verbose, func(s *session.Session) error {
+			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.Eval(seq)
 			})
 		},
@@ -114,7 +120,7 @@ func main() {
 		Short: "execute a caplet script non-interactively",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(ifaceName, configPath, verbose, func(s *session.Session) error {
+			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.RunCaplet(args[0])
 			})
 		},
@@ -124,11 +130,11 @@ func main() {
 		Use:   "modules",
 		Short: "list all registered modules",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Printf("%-24s %-10s %-8s %s\n", "ID", "category", "risk", "description")
-			for _, m := range attacks.List() {
-				meta := m.Meta()
-				fmt.Printf("%-24s %-10s %-8s %s\n", meta.ID, meta.Category, meta.Risk, meta.Description)
-			}
+			u := ui.New(os.Stdout)
+			u.SetColor(!noColor && u.Enabled())
+			u.Banner("network exploitation & MITM framework")
+			u.BannerFoot("", session.Version)
+			printModules(u, attacks.List())
 			return nil
 		},
 	}
@@ -137,7 +143,10 @@ func main() {
 		Use:   "version",
 		Short: "print the version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("toha3ee " + version)
+			u := ui.New(os.Stdout)
+			u.SetColor(!noColor && u.Enabled())
+			u.Banner("network exploitation & MITM framework")
+			u.BannerFoot("", session.Version)
 		},
 	}
 
@@ -149,7 +158,31 @@ func main() {
 	}
 }
 
-func run(ifaceName, configPath string, verbose bool, body func(*session.Session) error) error {
+// printModules renders the module catalogue grouped by category through u.
+func printModules(u *ui.UI, mods []attacks.Module) {
+	byCat := make(map[string][]attacks.Module)
+	var cats []string
+	for _, m := range mods {
+		c := m.Meta().Category
+		if _, ok := byCat[c]; !ok {
+			cats = append(cats, c)
+		}
+		byCat[c] = append(byCat[c], m)
+	}
+	sort.Strings(cats)
+	for _, c := range cats {
+		u.Section(c)
+		rows := make([][]string, 0, len(byCat[c]))
+		for _, m := range byCat[c] {
+			meta := m.Meta()
+			rows = append(rows, []string{meta.ID, meta.Risk.String(), meta.Description})
+		}
+		u.Table([]string{"id", "risk", "description"}, rows)
+	}
+	fmt.Fprintf(u.Writer(), "\n%s %s\n", u.BoldWhite("total:"), u.White(strconv.Itoa(len(mods))))
+}
+
+func run(ifaceName, configPath string, verbose, noColor bool, body func(*session.Session) error) error {
 	log := slog.Default()
 	if !verbose {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -167,6 +200,9 @@ func run(ifaceName, configPath string, verbose bool, body func(*session.Session)
 	}
 
 	s := session.New(iface, os.Stdout, log)
+	if noColor {
+		s.SetColor(false)
+	}
 	defer s.Shutdown()
 
 	// Handle SIGINT/SIGTERM for graceful cleanup.
@@ -188,6 +224,5 @@ func run(ifaceName, configPath string, verbose bool, body func(*session.Session)
 }
 
 func runWizard(s *session.Session) error {
-	fmt.Fprintf(s.Out, "toha3ee wizard (%s)\n", s.Iface.String())
 	return s.WizardWithStdin()
 }
