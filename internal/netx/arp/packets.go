@@ -5,6 +5,8 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+
+	"github.com/qyvora/toha3ee/internal/stealth"
 )
 
 // BuildRequest crafts a who-has ARP request as raw bytes, padded to the
@@ -43,8 +45,9 @@ func buildARP(op uint16, srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.Hardw
 	return buf.Bytes(), nil
 }
 
-// padARP returns 18 zero bytes so the frame meets the 60-byte Ethernet
-// minimum.
+// padARP returns 18 randomized bytes so the frame meets the 60-byte Ethernet
+// minimum. Randomized padding avoids the uniform zero-padding emitted by many
+// scanner stacks, which is a reliable on-wire fingerprint.
 func padARP() []byte {
-	return make([]byte, 18)
+	return stealth.Default.Pad(18)
 }

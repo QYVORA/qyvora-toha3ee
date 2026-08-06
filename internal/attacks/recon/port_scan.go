@@ -14,6 +14,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/events"
 	"github.com/qyvora/toha3ee/internal/netx/ports"
 	"github.com/qyvora/toha3ee/internal/safety"
+	"github.com/qyvora/toha3ee/internal/stealth"
 )
 
 // ServiceScan is a raw SYN scanner against discovered hosts.
@@ -61,6 +62,7 @@ func (*ServiceScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		return fmt.Errorf("service.synscan: %w", err)
 	}
 	defer scanner.Close()
+	scanner.SetStealth(stealth.FromConfig(ctx.Conf, "service.synscan"))
 
 	prune := ctx.Conf.Get("service.synscan", "ports")
 	portsToScan := ports.CommonPorts
@@ -169,6 +171,8 @@ func (*ServiceFingerprint) Run(ctx *attacks.AttackCtx, opts map[string]string) e
 		return fmt.Errorf("service.fingerprint: %w", err)
 	}
 	defer scanner.Close()
+	scanner.SetStealth(stealth.FromConfig(ctx.Conf, "service.fingerprint"))
+	st := stealth.FromConfig(ctx.Conf, "service.fingerprint")
 
 	timeout := ctx.Conf.GetDuration("service.fingerprint", "timeout", 1500*time.Millisecond)
 	client := &http.Client{Timeout: timeout}
@@ -180,7 +184,7 @@ func (*ServiceFingerprint) Run(ctx *attacks.AttackCtx, opts map[string]string) e
 		for _, p := range h.OpenPorts() {
 			svc := ports.GuessService(p)
 			if svc == "http" || svc == "http-proxy" || svc == "https" || svc == "https-alt" {
-				if title := httpTitle(client, h.IP, p); title != "" {
+				if title := httpTitle(client, h.IP, p, st); title != "" {
 					h.SetPort(p, svc+"/"+title)
 					ctx.Emit(events.TopicLog, fmt.Sprintf("[*] %s:%d -> %s", h.IP, p, title), nil)
 					identified++
@@ -200,7 +204,7 @@ func (*ServiceFingerprint) Run(ctx *attacks.AttackCtx, opts map[string]string) e
 	return nil
 }
 
-func httpTitle(client *http.Client, ip net.IP, port uint16) string {
+func httpTitle(client *http.Client, ip net.IP, port uint16, st *stealth.Config) string {
 	scheme := "http"
 	if port == 443 || port == 8443 {
 		scheme = "https"
@@ -209,7 +213,7 @@ func httpTitle(client *http.Client, ip net.IP, port uint16) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 toha3ee/1.0")
+	req.Header.Set("User-Agent", st.UserAgent())
 	resp, err := client.Do(req)
 	if err != nil {
 		return ""

@@ -16,17 +16,19 @@ import (
 	"github.com/qyvora/toha3ee/internal/events"
 	"github.com/qyvora/toha3ee/internal/netx"
 	"github.com/qyvora/toha3ee/internal/oui"
+	"github.com/qyvora/toha3ee/internal/stealth"
 	"github.com/qyvora/toha3ee/internal/store"
 )
 
 // Scanner performs active ARP sweeps and passively tracks ARP traffic. It is
 // the primary source of the host inventory (target DB).
 type Scanner struct {
-	iface  *netx.Iface
-	handle *pcap.Handle
-	bus    *events.Bus
-	db     *store.Store
-	vend   *oui.DB
+	iface   *netx.Iface
+	handle  *pcap.Handle
+	bus     *events.Bus
+	db      *store.Store
+	vend    *oui.DB
+	stealth *stealth.Config
 
 	stop chan struct{}
 	wg   sync.WaitGroup
@@ -47,13 +49,21 @@ func NewScanner(iface *netx.Iface, bus *events.Bus, db *store.Store, vend *oui.D
 		return nil, fmt.Errorf("set bpf arp: %w", err)
 	}
 	return &Scanner{
-		iface:  iface,
-		handle: handle,
-		bus:    bus,
-		db:     db,
-		vend:   vend,
-		stop:   make(chan struct{}),
+		iface:   iface,
+		handle:  handle,
+		bus:     bus,
+		db:      db,
+		vend:    vend,
+		stealth: stealth.New(),
+		stop:    make(chan struct{}),
 	}, nil
+}
+
+// SetStealth applies a stealth profile to active sweeps.
+func (s *Scanner) SetStealth(cfg *stealth.Config) {
+	if cfg != nil {
+		s.stealth = cfg
+	}
 }
 
 // Start begins the passive listener goroutine that ingests ARP replies.
@@ -173,33 +183,111 @@ func (s *Scanner) Resolve(ip net.IP, timeout time.Duration) (net.HardwareAddr, e
 // Scan sweeps ips with who-has probes and returns the hosts that answered.
 // The hosts are also written to the shared store.
 func (s *Scanner) Scan(ips []net.IP, timeout time.Duration) ([]*store.Host, error) {
-	var found []*store.Host
-	results := make(chan *store.Host, len(ips))
+	return s.Sweep(ips, timeout)
+}
 
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 64) // bound in-flight probes
+// Sweep sends who-has probes to every ip in randomized, paced order and reads
+// the replies through a single capture loop. Compared to per-host probing it
+// is faster (burst-serialized sends with one reader) and quieter (order is
+// shuffled and pacing jitters each probe).
+func (s *Scanner) Sweep(ips []net.IP, timeout time.Duration) ([]*store.Host, error) {
+	if timeout <= 0 {
+		timeout = 750 * time.Millisecond
+	}
+	s.stealth.Shuffle(len(ips), func(i, j int) { ips[i], ips[j] = ips[j], ips[i] })
+
+	wanted := make(map[string]net.IP, len(ips))
 	for _, ip := range ips {
-		ip := ip
-		wg.Add(1)
-		sem <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-			mac, err := s.Resolve(ip, timeout)
-			if err != nil {
+		wanted[ip.String()] = ip
+	}
+	found := make(map[string]net.HardwareAddr, len(ips))
+	var foundMu sync.Mutex
+
+	done := make(chan struct{})
+	var rw sync.WaitGroup
+	rw.Add(1)
+	go func() {
+		defer rw.Done()
+		ps := gopacket.NewPacketSource(s.handle, layers.LayerTypeEthernet)
+		ps.NoCopy = true
+		for {
+			select {
+			case <-done:
 				return
+			default:
 			}
-			h := &store.Host{IP: ip, MAC: mac, Vendor: s.vend.Lookup(mac)}
-			s.db.UpsertHost(h)
-			results <- h
-		}()
+			pkt, err := ps.NextPacket()
+			if err != nil {
+				select {
+				case <-done:
+					return
+				default:
+					time.Sleep(10 * time.Millisecond)
+					continue
+				}
+			}
+			arpL := pkt.Layer(layers.LayerTypeARP)
+			eth := pkt.Layer(layers.LayerTypeEthernet)
+			if arpL == nil || eth == nil {
+				continue
+			}
+			a := arpL.(*layers.ARP)
+			if a.Operation != layers.ARPReply || len(a.SourceProtAddress) < 4 {
+				continue
+			}
+			ip := net.IP(a.SourceProtAddress[:4]).String()
+			if _, ok := wanted[ip]; !ok {
+				continue
+			}
+			foundMu.Lock()
+			if _, ok := found[ip]; !ok {
+				found[ip] = eth.(*layers.Ethernet).SrcMAC
+			}
+			foundMu.Unlock()
+		}
+	}()
+
+	pace := stealth.NewPacer(s.stealth)
+	for _, ip := range ips {
+		if err := s.sendRequest(ip, broadcastMAC); err != nil {
+			close(done)
+			rw.Wait()
+			return nil, err
+		}
+		s.sent.Add(1)
+		pace.Wait()
 	}
-	wg.Wait()
-	close(results)
-	for h := range results {
-		found = append(found, h)
+
+	// Read until every target replied or the deadline expires.
+	deadline := time.After(timeout)
+	poll := time.NewTicker(5 * time.Millisecond)
+	defer poll.Stop()
+loop:
+	for {
+		foundMu.Lock()
+		complete := len(found) == len(ips)
+		foundMu.Unlock()
+		if complete {
+			break
+		}
+		select {
+		case <-deadline:
+			break loop
+		case <-poll.C:
+		}
 	}
-	return found, nil
+	close(done)
+	rw.Wait()
+
+	foundMu.Lock()
+	out := make([]*store.Host, 0, len(found))
+	for ipStr, mac := range found {
+		h := &store.Host{IP: wanted[ipStr], MAC: mac, Vendor: s.vend.Lookup(mac)}
+		s.db.UpsertHost(h)
+		out = append(out, h)
+	}
+	foundMu.Unlock()
+	return out, nil
 }
 
 // ScanCIDR sweeps every address in the given CIDR.

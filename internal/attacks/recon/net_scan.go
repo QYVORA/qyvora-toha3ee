@@ -11,6 +11,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/netx/arp"
 	"github.com/qyvora/toha3ee/internal/oui"
 	"github.com/qyvora/toha3ee/internal/safety"
+	"github.com/qyvora/toha3ee/internal/stealth"
 )
 
 func init() {
@@ -63,6 +64,7 @@ func (*NetScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("net.scan: %w", err)
 	}
+	sc.SetStealth(stealth.FromConfig(ctx.Conf, "net.scan"))
 	sc.Start()
 
 	ctx.SetState("net.scan", &netScanState{sc: sc, start: time.Now()})
@@ -71,6 +73,36 @@ func (*NetScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	hb := safety.NewHeartbeat()
 	ctx.Heartbeat = hb.Beat
 	ctx.Safety.RegisterHeartbeat("net.scan", hb)
+
+	timeout := ctx.Conf.GetDuration("net.scan", "timeout", 750*time.Millisecond)
+	repeat := ctx.Conf.GetDuration("net.scan", "repeat", 30*time.Second)
+
+	// Active sweep loop: the full subnet is swept in randomized, paced order
+	// so discovery stays fast without a uniform, detectable probe cadence.
+	go func() {
+		for {
+			select {
+			case <-ctx.Done:
+				return
+			default:
+			}
+			if ctx.Iface.Net != nil {
+				found, err := sc.Scan(arp.CIDRHosts(ctx.Iface.Net), timeout)
+				if err == nil {
+					if st, ok := ctx.GetState("net.scan"); ok {
+						st.(*netScanState).count = len(found)
+					}
+					ctx.Store.LogEvent(events.TopicLog,
+						fmt.Sprintf("net.scan: sweep answered %d host(s)", len(found)))
+				}
+			}
+			select {
+			case <-ctx.Done:
+				return
+			case <-time.After(repeat):
+			}
+		}
+	}()
 
 	for {
 		select {

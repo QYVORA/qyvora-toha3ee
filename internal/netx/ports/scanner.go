@@ -16,6 +16,7 @@ import (
 
 	"github.com/qyvora/toha3ee/internal/netx"
 	"github.com/qyvora/toha3ee/internal/netx/arp"
+	"github.com/qyvora/toha3ee/internal/stealth"
 )
 
 // State is the verdict for a scanned TCP port.
@@ -36,8 +37,9 @@ type Result struct {
 
 // Scanner performs raw SYN scans from a pcap handle.
 type Scanner struct {
-	iface  *netx.Iface
-	handle *pcap.Handle
+	iface   *netx.Iface
+	handle  *pcap.Handle
+	stealth *stealth.Config
 }
 
 // NewScanner opens a pcap handle on iface for scanning.
@@ -46,7 +48,14 @@ func NewScanner(iface *netx.Iface) (*Scanner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", iface.Name, err)
 	}
-	return &Scanner{iface: iface, handle: handle}, nil
+	return &Scanner{iface: iface, handle: handle, stealth: stealth.New()}, nil
+}
+
+// SetStealth applies a stealth profile to probes and banner grabs.
+func (s *Scanner) SetStealth(cfg *stealth.Config) {
+	if cfg != nil {
+		s.stealth = cfg
+	}
 }
 
 // Close releases the pcap handle.
@@ -118,13 +127,15 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 		}
 	}()
 
-	// Fire all SYN probes.
+	// Fire all SYN probes with burst pacing.
+	pace := stealth.NewPacer(s.stealth)
 	for _, port := range ports {
-		if err := s.sendSYN(ip, dstMAC, port, uint32(time.Now().UnixNano()&0xffffffff)); err != nil {
+		if err := s.sendSYN(ip, dstMAC, port); err != nil {
 			close(done)
 			return nil, err
 		}
 		sent.Add(1)
+		pace.Wait()
 	}
 
 	time.Sleep(timeout)
@@ -171,8 +182,28 @@ func (s *Scanner) resolveMAC(ip net.IP, timeout time.Duration) (net.HardwareAddr
 	return nil, fmt.Errorf("no ARP reply")
 }
 
-func (s *Scanner) sendSYN(dstIP net.IP, dstMAC net.HardwareAddr, port uint16, seq uint32) error {
-	raw, err := BuildSYN(s.iface.IP, dstIP, s.iface.MAC, dstMAC, port, port, seq)
+func (s *Scanner) sendSYN(dstIP net.IP, dstMAC net.HardwareAddr, port uint16) error {
+	st := s.stealth
+
+	sport := port
+	seq := uint32(time.Now().UnixNano() & 0xffffffff)
+	ttl, window, id := uint8(64), uint16(64240), uint16(0)
+	df := true
+	if st.Feature(st.RandomizePort) {
+		sport = st.RandomSrcPort()
+	}
+	if st.Feature(st.RandomizeTTL) {
+		ttl = st.TTL(64, 8)
+		if st.DF(0.15) {
+			df = false
+		}
+	}
+	if st.Feature(st.RandomizeID) {
+		id = st.RandomIPID()
+		window = st.Window()
+		seq = st.RandomSeq()
+	}
+	raw, err := BuildSYNEx(s.iface.IP, dstIP, s.iface.MAC, dstMAC, sport, port, seq, ttl, df, window, id)
 	if err != nil {
 		return err
 	}
@@ -191,6 +222,7 @@ type Banner struct {
 func (s *Scanner) GrabBanners(ip net.IP, ports []uint16, timeout time.Duration) []Banner {
 	var out []Banner
 	for _, p := range ports {
+		s.stealth.JitterSleep()
 		svc := GuessService(p)
 		addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", p))
 		conn, err := net.DialTimeout("tcp", addr, timeout)

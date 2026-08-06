@@ -240,6 +240,35 @@ Configuration defaults to `toha3ee.json` (`--config` to override). Per-module
 settings are read by each module from its own namespace, e.g.
 `report.generate.out`, `switch.portsteal.victim_mac`, `http.harvest.pcap`.
 
+## Stealth
+
+Stealth is always on, in every phase, down to the individual packet. Every
+packet-sending module ships a randomized, jittered profile by default; there
+is nothing to enable, and disabling it (`set <module>.stealth false`) is
+explicitly unsupported by the design intent.
+
+- **Ordering** — probe targets are shuffled (`stealth_shuffle`) so sweeps do
+  not walk the subnet in the predictable ascending order scanners are
+  fingerprinted by.
+- **Pacing** — probes are sent in bursts with per-probe jitter
+  (`stealth_jitter`, `stealth_burst`, `stealth_pause`) so traffic is neither
+  a flat uniform stream nor a single synchronized flood.
+- **ARP** — who-has requests use randomized Ethernet padding
+  (`stealth_pad`) instead of the zero-padded frames most scanners emit, and
+  the active `net.scan` sweep is collected by a single capture loop while the
+  passive listener keeps ingesting traffic.
+- **SYN scan** — every probe varies its source port (`stealth_ports`), IP
+  TTL and identification (`stealth_ttl`, `stealth_id`), TCP sequence number
+  and window, and occasionally clears the DF bit, so the probe stream does
+  not resolve to a single tool signature.
+- **Fingerprinting** — HTTP probing rotates realistic browser user agents and
+  banner grabs are jittered, so service identification does not advertise the
+  framework.
+
+Tunables are read per module, e.g. `set net.scan.stealth_jitter 5ms`,
+`set service.synscan.stealth_burst 128`. The REPL prompt stays visible and
+live while any module runs, like bettercap.
+
 ## Tests
 
 ```sh
