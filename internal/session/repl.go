@@ -243,7 +243,6 @@ func (s *Session) help() {
 		}
 		s.UI.Table([]string{"command", "description"}, rows)
 	}
-	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) listModules(args []string) {
@@ -270,7 +269,7 @@ func (s *Session) listModules(args []string) {
 		}
 		s.UI.Table([]string{"id", "risk", "description"}, rows)
 	}
-	fmt.Fprintf(s.Out, "\n%s %s\n", s.UI.BoldWhite("total:"), s.UI.White(strconv.Itoa(len(mods))))
+	s.goodf("%d modules listed", len(mods))
 }
 
 func (s *Session) showModule(id string) error {
@@ -295,7 +294,6 @@ func (s *Session) showModule(id string) error {
 		s.UI.KV("mode", "passive")
 	}
 	s.UI.KV("running", strconv.FormatBool(s.IsRunning(id)))
-	fmt.Fprintln(s.Out)
 	return nil
 }
 
@@ -316,7 +314,6 @@ func (s *Session) status() {
 		}
 	}
 	s.UI.Table([]string{"id", "risk", "started"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 // runningModule returns a live runningModule by id (locked access).
@@ -380,7 +377,6 @@ func (s *Session) showConfig(args []string) {
 		rows = append(rows, []string{k, s.Conf.GetFromKey(k)})
 	}
 	s.UI.Table([]string{"key", "value"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) netShow(args []string) {
@@ -396,7 +392,6 @@ func (s *Session) netShow(args []string) {
 		rows = append(rows, []string{h.IP.String(), h.MAC.String(), h.Vendor, fmt.Sprint(h.OpenPorts())})
 	}
 	s.UI.Table([]string{"ip", "mac", "vendor", "ports"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) eventsShow(args []string) {
@@ -421,7 +416,6 @@ func (s *Session) eventsShow(args []string) {
 		rows = append(rows, []string{e.Time.Format("15:04:05"), e.Topic, msg})
 	}
 	s.UI.Table([]string{"time", "topic", "detail"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) credsShow(args []string) {
@@ -437,7 +431,6 @@ func (s *Session) credsShow(args []string) {
 		rows = append(rows, []string{strconv.Itoa(c.ID), c.Service, c.Username, c.Password, c.VictimIP, c.Source})
 	}
 	s.UI.Table([]string{"id", "service", "username", "password", "victim", "source"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) sessionsShow() {
@@ -457,7 +450,6 @@ func (s *Session) sessionsShow() {
 		rows = append(rows, []string{strconv.Itoa(ss.ID), ss.VictimIP, ss.Host, strings.Join(cookies, " ")})
 	}
 	s.UI.Table([]string{"id", "victim", "host", "cookies"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 // startModuleByName is a helper to start a module with optional args.
@@ -502,7 +494,6 @@ func (s *Session) netProfile() {
 		return
 	}
 	s.printVectors(vecs, engine, profile)
-	fmt.Fprintln(s.Out)
 }
 
 // printVectors renders a ranked vector list with confidence and satisfiability.
@@ -511,7 +502,7 @@ func (s *Session) printVectors(vecs []vectors.Vector, engine *vectors.Engine, pr
 	for i, v := range vecs {
 		sat := "yes"
 		if !engine.Satisfiable(profile, v) {
-			sat = s.UI.Red("no")
+			sat = s.UI.Amber("no")
 		}
 		rows = append(rows, []string{
 			strconv.Itoa(i + 1),
@@ -543,7 +534,6 @@ func (s *Session) vectorsShow() {
 	}
 	s.UI.Section("ranked attack vectors")
 	s.printVectors(vecs, engine, profile)
-	fmt.Fprintln(s.Out)
 }
 
 // phishList displays all available phishing templates.
@@ -559,7 +549,6 @@ func (s *Session) phishList() {
 		rows = append(rows, []string{t.ID, t.Title, t.Description})
 	}
 	s.UI.Table([]string{"id", "title", "description"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 // phishServe starts a standalone phishing page on the attacker's IP.
@@ -610,7 +599,6 @@ func (s *Session) hijackDump() {
 		rows = append(rows, []string{strconv.Itoa(ss.ID), ss.VictimIP, ss.Host, strings.Join(cookies, " ")})
 	}
 	s.UI.Table([]string{"id", "victim", "host", "cookies"}, rows)
-	fmt.Fprintln(s.Out)
 }
 
 // runCaplet executes a script file of REPL commands, one per line.
@@ -634,7 +622,7 @@ func (s *Session) runCaplet(path string) error {
 
 // echoCommand prints a command being executed (caplets and eval mode).
 func (s *Session) echoCommand(line string) {
-	fmt.Fprintf(s.Out, "%s %s\n", s.UI.BoldWhite("»"), s.UI.White(line))
+	fmt.Fprintf(s.Out, "  %s %s\n", s.UI.Glyph(">"), s.UI.White(line))
 }
 
 // Eval runs a one-shot sequence of REPL commands separated by ';' or newlines,

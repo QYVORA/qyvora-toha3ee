@@ -1,8 +1,13 @@
 // Package ui renders the toha3ee console: an ANSI-styled, bettercap-inspired
-// output layer restricted to the framework's black/red/white palette. It
-// builds the banner, colored sections, aligned tables and status glyphs used
-// by the REPL, the wizard and the one-shot commands. When output is not a
-// terminal (pipes, caplet logs, CI) every renderer falls back to plain text.
+// output layer. It builds the banner, fixed-width sections, aligned tables and
+// status glyphs used by the REPL, the wizard and the one-shot commands. When
+// output is not a terminal (pipes, caplet logs, CI) every renderer falls back
+// to plain text.
+//
+// Glyph colouring is deliberate: green for success, amber for warnings, red
+// reserved for hard errors, and white/dim for information. Horizontal rules
+// are used sparingly and always span the full section width so the console
+// stays clean and aligned.
 package ui
 
 import (
@@ -11,20 +16,25 @@ import (
 	"io"
 	"os"
 	"strings"
-	"unicode/utf8"
 )
 
-// ANSI style codes for the black/red/white palette.
+// ANSI style codes. Red is reserved for hard errors; warnings use Amber and
+// successes use Green.
 const (
 	Reset   = "\x1b[0m"
 	Bold    = "\x1b[1m"
 	Dim     = "\x1b[2m"
 	Red     = "\x1b[31m"
+	Green   = "\x1b[32m"
+	Amber   = "\x1b[33m"
 	White   = "\x1b[37m"
 	OnBlack = "\x1b[40m"
 	OnRed   = "\x1b[41m"
 	OnWhite = "\x1b[107m"
 )
+
+// sectionWidth is the fixed visible width of every section rule.
+const sectionWidth = 60
 
 // UI renders styled output to one writer. Colors are enabled only when the
 // writer is a terminal and NO_COLOR is not set.
@@ -61,39 +71,48 @@ func (u *UI) paint(s, code string) string {
 	return code + s + Reset
 }
 
-// Red paints a string red (framework "warning/error" color).
+// Red paints a string red (reserved for hard errors).
 func (u *UI) Red(s string) string { return u.paint(s, Red) }
 
-// White paints a string plain white (framework "information" color).
+// Green paints a string green (success).
+func (u *UI) Green(s string) string { return u.paint(s, Green) }
+
+// Amber paints a string amber (warning).
+func (u *UI) Amber(s string) string { return u.paint(s, Amber) }
+
+// White paints a string plain white (information).
 func (u *UI) White(s string) string { return u.paint(s, White) }
 
-// BoldWhite paints a string bold white (framework "heading" color).
+// BoldWhite paints a string bold white (headings).
 func (u *UI) BoldWhite(s string) string { return u.paint(s, Bold+White) }
 
-// DimWhite paints a string dim white (framework "muted" color).
+// DimWhite paints a string dim white (muted).
 func (u *UI) DimWhite(s string) string { return u.paint(s, Dim+White) }
 
 // Black paints a string black (on the default terminal background).
 func (u *UI) Black(s string) string { return u.paint(s, "\x1b[30m") }
 
-const sectionWidth = 60
-
-// Section prints a centered title on a horizontal rule, e.g. "── hosts ──".
+// Section prints a fixed-width horizontal rule carrying the title, e.g.
+// "──────────────────────── hosts ─────────────────────────". Every section
+// line is exactly sectionWidth visible columns wide regardless of the title,
+// so rules always line up. A blank line separates sections from prior output.
 func (u *UI) Section(title string) {
 	label := strings.TrimSpace(title)
 	if label == "" {
-		fmt.Fprintln(u.w, u.DimWhite(strings.Repeat("─", sectionWidth)))
+		u.Rule()
 		return
 	}
-	left := (sectionWidth - runeLen(label) - 2) / 2
-	if left < 1 {
-		left = 1
+	inner := sectionWidth - runeLen(label) - 2
+	if inner < 2 {
+		inner = 2
 	}
-	rule := strings.Repeat("─", left)
-	fmt.Fprintf(u.w, "\n%s %s %s\n", u.DimWhite(rule), u.BoldWhite(label), u.DimWhite(rule))
+	left := inner / 2
+	right := inner - left
+	line := strings.Repeat("─", left) + " " + label + " " + strings.Repeat("─", right)
+	fmt.Fprintf(u.w, "\n%s\n", u.DimWhite(line))
 }
 
-// Rule prints a full-width dim rule.
+// Rule prints a full-width dim rule. Use it sparingly; Section is preferred.
 func (u *UI) Rule() {
 	fmt.Fprintln(u.w, u.DimWhite(strings.Repeat("─", sectionWidth)))
 }
@@ -118,30 +137,39 @@ func (u *UI) KVf(key, format string, args ...any) {
 
 // Status prints a bettercap-style status line with a colored glyph:
 //
-//	[+] good / info (bold white)
-//	[*] running / notice (white)
-//	[!] warning / error (bold red)
+//	[+] success (green)
+//	[*] info / running (white)
+//	[!] warning (amber; hard errors stay red)
 //	[>] system (bold white)
 //	[-] neutral (dim white)
 func (u *UI) Status(glyph, format string, args ...any) {
-	sym := "  " + glyph
-	switch glyph {
-	case "+", ">":
-		sym = u.paint("[+]", Bold+White)
-	case "*":
-		sym = u.paint("[*]", White)
-	case "!":
-		sym = u.paint("[!]", Bold+Red)
-	case "-":
-		sym = u.paint("[-]", Dim+White)
-	default:
-		sym = u.paint("["+glyph+"]", White)
-	}
-	fmt.Fprintf(u.w, "%s %s\n", sym, u.White(fmt.Sprintf(format, args...)))
+	sym := u.Glyph(glyph)
+	fmt.Fprintf(u.w, "  %s %s\n", sym, u.White(fmt.Sprintf(format, args...)))
 }
 
-// Table prints a header, an underline rule and aligned rows. Header cells are
-// bold white, rows plain white and the separator dim white.
+// Glyph returns a colored "[x]" token for a status glyph character.
+func (u *UI) Glyph(glyph string) string {
+	switch glyph {
+	case "+":
+		return u.paint("[+]", Green)
+	case "*":
+		return u.paint("[*]", White)
+	case "!":
+		return u.paint("[!]", Amber)
+	case ">":
+		return u.paint("[>]", Bold+White)
+	case "-":
+		return u.paint("[-]", Dim+White)
+	default:
+		return u.paint("["+glyph+"]", White)
+	}
+}
+
+// Table prints a header and aligned rows. Header cells are bold white and
+// rows plain white; columns are padded to their widest visible cell using the
+// display width (ANSI codes and wide characters are accounted for). Tables
+// carry no horizontal rules of their own — the section header above is the
+// structural line.
 func (u *UI) Table(headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
@@ -167,15 +195,6 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	}
 	fmt.Fprintln(u.w, b.String())
 
-	var sep strings.Builder
-	for i, wdt := range widths {
-		if i > 0 {
-			sep.WriteString("  ")
-		}
-		sep.WriteString(strings.Repeat("─", wdt))
-	}
-	fmt.Fprintln(u.w, u.DimWhite(sep.String()))
-
 	for _, r := range rows {
 		var rb strings.Builder
 		for i := 0; i < len(headers); i++ {
@@ -192,15 +211,9 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	}
 }
 
-// Banner prints the console banner (figlet "small" font, uppercase ASCII).
+// Banner prints the console banner art followed by the tagline.
 func (u *UI) Banner(tagline string) {
-	art := []string{
-		" _       _         ____",
-		"| |_ ___| |_  __ _|__ / ___ ___",
-		"|  _/ _ \\ ' \\/ _` ||_ \\/ -_) -_)",
-		" \\__\\___/_||_\\__,_|___/\\___\\___|",
-	}
-	for _, line := range art {
+	for _, line := range bannerArt {
 		fmt.Fprintln(u.w, u.White(line))
 	}
 	fmt.Fprintln(u.w)
@@ -211,22 +224,50 @@ func (u *UI) Banner(tagline string) {
 // BannerFoot prints the interface/version footer under the banner.
 func (u *UI) BannerFoot(iface, version string) {
 	if iface != "" {
-		fmt.Fprintf(u.w, "  %s %s\n", u.Red("iface"), u.White(iface))
+		u.Status(">", "iface %s", iface)
 	}
-	fmt.Fprintf(u.w, "  %s %s\n", u.Red("v"), u.White(version))
+	u.Status(">", "v %s", version)
 	fmt.Fprintln(u.w, u.DimWhite("type 'help' for commands, 'modules' for the catalogue, 'quit' to exit"))
 	fmt.Fprintln(u.w)
 }
 
-// width reports the visible rune count of a string (ANSI codes ignored).
+// width reports the visible width of a string (ANSI codes ignored).
 func (u *UI) width(s string) int { return runeLen(s) }
 
-// runeLen counts runes, stripping ANSI escape sequences first.
+// runeLen counts the display width of s, stripping ANSI escape sequences
+// first and counting wide (CJK/emoji) characters as two columns.
 func runeLen(s string) int {
-	if !strings.Contains(s, "\x1b") {
-		return utf8.RuneCountInString(s)
+	if strings.Contains(s, "\x1b") {
+		s = stripANSI(s)
 	}
-	return utf8.RuneCountInString(stripANSI(s))
+	n := 0
+	for _, r := range s {
+		if isWide(r) {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
+}
+
+// isWide reports whether r occupies two terminal columns (East Asian width).
+func isWide(r rune) bool {
+	switch {
+	case r >= 0x1100 && r <= 0x115F, // Hangul Jamo
+		r >= 0x2329 && r <= 0x232A, // angle brackets
+		r >= 0x2E80 && r <= 0xA4CF, // CJK radicals, Kanji, Hangul
+		r >= 0xAC00 && r <= 0xD7A3, // Hangul syllables
+		r >= 0xF900 && r <= 0xFAFF, // CJK compatibility ideographs
+		r >= 0xFE10 && r <= 0xFE19, // vertical forms
+		r >= 0xFE30 && r <= 0xFE6F, // CJK compatibility forms
+		r >= 0xFF00 && r <= 0xFF60, // fullwidth forms
+		r >= 0xFFE0 && r <= 0xFFE6, // fullwidth signs
+		r >= 0x1F300 && r <= 0x1F64F,
+		r >= 0x1F900 && r <= 0x1F9FF:
+		return true
+	}
+	return false
 }
 
 // stripANSI removes ANSI escape sequences from s.
@@ -251,7 +292,7 @@ func stripANSI(s string) string {
 }
 
 // padTo pads s (which may contain ANSI codes) with trailing spaces to a
-// visible width of n runes.
+// visible width of n columns.
 func padTo(s string, n int) string {
 	pad := n - runeLen(s)
 	if pad <= 0 {
@@ -307,9 +348,9 @@ func recolorPrefix(line []byte, u *UI) []byte {
 	case "*":
 		tok = u.paint("*", White)
 	case "+":
-		tok = u.paint("+", Bold+White)
+		tok = u.paint("+", Green)
 	case "!":
-		tok = u.paint("!", Bold+Red)
+		tok = u.paint("!", Amber)
 	case ">":
 		tok = u.paint(">", Bold+White)
 	case "-":
@@ -317,11 +358,11 @@ func recolorPrefix(line []byte, u *UI) []byte {
 	case "~":
 		tok = u.paint("~", White)
 	case "OK":
-		tok = u.paint("OK", Bold+White)
+		tok = u.paint("OK", Green)
 	case "FIX":
-		tok = u.paint("FIX", Bold+White)
+		tok = u.paint("FIX", Amber)
 	case "BLK":
-		tok = u.paint("BLK", Bold+Red)
+		tok = u.paint("BLK", Amber)
 	default:
 		tok = u.paint(tok, Bold+White)
 	}
@@ -344,4 +385,46 @@ func isTerminal(w io.Writer) bool {
 		return false
 	}
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// bannerArt is the framework banner (ASCII art). Kept as its own file so it
+// can be regenerated independently of the renderer.
+var bannerArt = []string{
+	"@@@@@@@@",
+	"    @@@@@@@@@@@@@",
+	"    @@@@@@@@     @@@@@@@",
+	"  @@@@@@@@           @@@@@@@@",
+	"  @@@@@@@@                 @@@@@@@@",
+	" @@@@@@@         @               @@@@@@@",
+	" @@@@@@@@        @@@@@@@@@              @@@@@@@",
+	" @@@@@@@@         @@@   @                     @@@@@@@",
+	"  @@@@@@@            @@       @@@@@@@@@@              @@@@@@@",
+	"  @@@@@@    @@        @     @@@@@@@@@@@@@@@@@@             @@@@@@",
+	"  @@@        @@@   @@@@@@@  @@@@@@@@@@@@@@@@@@@@@@            @@@",
+	"  @@@         @@@@@   @    @@@@@@@@@@@@@@@@@@@@@@@            @@@",
+	"  @@@          @@@@@@  @   @@@@@@@@@@@@@@@@@@ @@@             @@@",
+	"  @@@          @@@@@@   @ @@@@@@@@@@@@@@@@@   @@@             @@@",
+	"  @@@           @@@@@@    @@@@@@@@@@@@@@@@@@@@@@              @@@",
+	"  @@@              @@@@@  @@@@@@@@@@@@@@@    @@@              @@@",
+	"  @@@               @@@@@  @@@@@@@@@@@@@@   @@@               @@@",
+	"  @@@                 @@@    @@@@@@@@@@@@@ @@@@               @@@",
+	"  @@@               @@  @@@@  @@@@@   @@@@@@@@@               @@@",
+	"  @@@            @@@@@@@@@@@@@  @@@@@@    @@@                 @@@",
+	"  @@@        @@@@@@@@@@@@@@@@@@@  @@@@@@@   @@@               @@@",
+	"  @@@       @@@@@@@@@@@@@@@@@@@@@@@     @@@ @@@@@@            @@@",
+	"  @@@      @@@@@@@@@@@@@@@@@@@@@@   @@@   @@@@@@@@@@          @@@",
+	"  @@@      @@@@@@@@@@@@@@@@@@@@@@@@@@@@@   @@@@@@@@@          @@@",
+	"  @@@     @@@@@@@@@@@@@@@@@@   @@@@@@@@@@@@ @@@@@@@@@         @@@",
+	"  @@@    @@@@@@@@@@@@@@@    @@@@@@@@@@@@@  @@@@@@@@@@@        @@@",
+	"  @@@@@    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@  @@@@@@@@@@@    @@@@@",
+	"   @@@@@@@    @@@@@@@@@@@@@@@@@@@@@@@@  @@@@  @@@@@@@   @@@@@@@@",
+	"     @@@@@@    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@  @@   @@@@@@@",
+	"      @@@@@@@   @@@@@@@@@@@@@@@@@@@@@@@@@@@   @@@@@@@",
+	"       @@@@@@@    @@@@@@@@@@@@@@@@@@@    @@@@@@@",
+	"         @@@@@@@    @@@@@@@@@@@@@    @@@@@@@",
+	"           @@@@@@@    @@@@@@@    @@@@@@",
+	"               @@@@@@        @@@@@@@",
+	"                 @@@@@@@@ @@@@@@@",
+	"                     @@@@@@@@",
+	"                        @@@",
 }

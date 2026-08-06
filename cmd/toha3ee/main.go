@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -179,7 +178,7 @@ func printModules(u *ui.UI, mods []attacks.Module) {
 		}
 		u.Table([]string{"id", "risk", "description"}, rows)
 	}
-	fmt.Fprintf(u.Writer(), "\n%s %s\n", u.BoldWhite("total:"), u.White(strconv.Itoa(len(mods))))
+	u.Status("+", "%d modules registered", len(mods))
 }
 
 func run(ifaceName, configPath string, verbose, noColor bool, body func(*session.Session) error) error {

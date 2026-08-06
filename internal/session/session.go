@@ -191,9 +191,9 @@ func (s *Session) finishModule(id string, rm *runningModule) {
 	}
 	if imp, err := rm.mod.Verify(rm.ctx); err == nil && imp != nil {
 		s.UI.Section("verified " + id)
-		fmt.Fprintf(s.Out, "%s\n", imp.Summary)
+		s.goodf("%s", imp.Summary)
 		for k, v := range imp.Metrics {
-			fmt.Fprintf(s.Out, "  %s %s\n", s.UI.BoldWhite(k+":"), s.UI.White(v))
+			s.UI.KV(k, v)
 		}
 	}
 	if err := rm.mod.Cleanup(rm.ctx); err != nil {
