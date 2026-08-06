@@ -148,9 +148,10 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 
 Bare `toha3ee` (or `toha3ee interactive`) opens a bettercap/metasploit-style
 console: the `@@@` banner, a `toha3ee> ` prompt with tab-completion, and
-grouped, aligned output in a green/amber/white palette (red is reserved for
-hard errors). Every command's output is sectioned (`─── modules ───`), tables
-are column-aligned (colors are ignored when computing alignment), and module
+grouped, aligned output in a green/amber/white palette — red is used
+sparingly, for hard errors and critical-risk modules (high risk is amber).
+Every command's output is sectioned (`─── modules ───`), tables are
+column-aligned (colors are ignored when computing alignment), and module
 messages are colorized centrally, so every module gets consistent status
 glyphs with no per-module work. Output falls back to plain text automatically
 when piped.

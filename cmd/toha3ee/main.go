@@ -183,7 +183,7 @@ func printModules(u *ui.UI, mods []attacks.Module) {
 		rows := make([][]string, 0, len(byCat[c]))
 		for _, m := range byCat[c] {
 			meta := m.Meta()
-			rows = append(rows, []string{meta.ID, meta.Risk.String(), meta.Description})
+			rows = append(rows, []string{meta.ID, u.RiskLevel(meta.Risk.String()), meta.Description})
 		}
 		u.Table([]string{"id", "risk", "description"}, rows)
 	}

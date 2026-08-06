@@ -80,6 +80,20 @@ func (u *UI) Green(s string) string { return u.paint(s, Green) }
 // Amber paints a string amber (warning).
 func (u *UI) Amber(s string) string { return u.paint(s, Amber) }
 
+// RiskLevel paints a risk label: critical is red, high is amber, and the
+// remaining levels stay plain white. Red is used sparingly, so it is reserved
+// for the most disruptive classification only.
+func (u *UI) RiskLevel(name string) string {
+	switch strings.ToLower(name) {
+	case "critical":
+		return u.Red(name)
+	case "high":
+		return u.Amber(name)
+	default:
+		return u.White(name)
+	}
+}
+
 // White paints a string plain white (information).
 func (u *UI) White(s string) string { return u.paint(s, White) }
 

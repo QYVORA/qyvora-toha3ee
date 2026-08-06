@@ -265,7 +265,7 @@ func (s *Session) listModules(args []string) {
 		rows := make([][]string, 0, len(byCat[c]))
 		for _, m := range byCat[c] {
 			meta := m.Meta()
-			rows = append(rows, []string{meta.ID, meta.Risk.String(), meta.Description})
+			rows = append(rows, []string{meta.ID, s.UI.RiskLevel(meta.Risk.String()), meta.Description})
 		}
 		s.UI.Table([]string{"id", "risk", "description"}, rows)
 	}
@@ -280,7 +280,7 @@ func (s *Session) showModule(id string) error {
 	meta := m.Meta()
 	s.UI.Section("module " + meta.ID)
 	s.UI.KV("category", meta.Category)
-	s.UI.KV("risk", meta.Risk.String())
+	s.UI.KV("risk", s.UI.RiskLevel(meta.Risk.String()))
 	if meta.Description != "" {
 		s.UI.KV("description", meta.Description)
 	}
@@ -310,7 +310,7 @@ func (s *Session) status() {
 	for _, id := range running {
 		if rm, ok := s.runningModule(id); ok {
 			meta, _ := attacks.Get(id)
-			rows = append(rows, []string{id, meta.Meta().Risk.String(), rm.started.Format("15:04:05")})
+			rows = append(rows, []string{id, s.UI.RiskLevel(meta.Meta().Risk.String()), rm.started.Format("15:04:05")})
 		}
 	}
 	s.UI.Table([]string{"id", "risk", "started"}, rows)
@@ -509,7 +509,7 @@ func (s *Session) printVectors(vecs []vectors.Vector, engine *vectors.Engine, pr
 			v.ModuleID,
 			v.Target,
 			fmt.Sprintf("%.2f", v.Confidence),
-			v.Risk,
+			s.UI.RiskLevel(v.Risk),
 			sat,
 		})
 	}
