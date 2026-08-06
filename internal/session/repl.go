@@ -19,7 +19,7 @@ import (
 // REPL runs the interactive console. It returns when the user quits.
 func (s *Session) REPL() error {
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:      "toha3ee> ",
+		Prompt:      s.UI.BoldWhite("toha3ee> "),
 		HistoryFile: ".toha3ee_history",
 		AutoComplete: readline.NewPrefixCompleter(
 			commandsCompleter()...,
@@ -30,10 +30,10 @@ func (s *Session) REPL() error {
 	}
 	defer rl.Close()
 
-	fmt.Fprintf(s.Out, `toha3ee framework
-Type 'help' for commands, 'modules' to list modules, 'wizard' for guided attack setup.
-Interface: %s
-`, s.Iface.String())
+	s.UI.Banner("network exploitation & MITM framework")
+	s.UI.BannerFoot(s.Iface.String(), versionString())
+	s.statusf("session ready. type 'help' for commands.")
+	s.Store.LogEvent(events.TopicLog, "console started")
 
 	for {
 		line, err := rl.Readline()
@@ -48,7 +48,7 @@ Interface: %s
 			if e == errQuit {
 				return nil
 			}
-			fmt.Fprintf(s.Out, "[!] %v\n", e)
+			s.warnf("%v", e)
 		} else if quit {
 			return nil
 		}
@@ -56,6 +56,11 @@ Interface: %s
 }
 
 var errQuit = fmt.Errorf("quit")
+
+// versionString returns the build version (injected by the CLI at build time).
+func versionString() string {
+	return Version
+}
 
 // exec dispatches a single command line.
 func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
@@ -126,7 +131,7 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 	case "report":
 		return false, s.report(args)
 	case "clear":
-		return false, nil
+		s.UI.Clear()
 	case "sleep":
 		if len(args) == 0 {
 			return false, fmt.Errorf("usage: sleep <seconds>")
@@ -189,32 +194,56 @@ func parseOpts(args []string) map[string]string {
 }
 
 func (s *Session) help() {
-	fmt.Fprintf(s.Out, `Commands:
-  on <module> [k v ...]   start a module (e.g. "on arp.spoof")
-  off <module>            stop a module
-  status                  list running modules
-  modules                 list all modules
-  show <module>           module metadata + preflight summary
-  set <module.key> <val>  set a config value (e.g. "set arp.spoof.targets 192.168.8.0/24")
-  get <module.key>        show a config value
-  config                  dump the current configuration
-  net.show                discovered hosts
-  net.recon               start passive HTTP/credential sniffing
-  net.profile             dump the network profile and ranked attack vectors
-  vectors.show            show ranked attack vectors for the current profile
-  events.show             recent framework events
-  creds.show              captured credentials
-  sessions.show           captured sessions
-  phish.list              list available phishing templates
-  phish.serve <template>  serve a standalone phishing page
-  hijack.dump             dump captured sessions and cookies
-  session.hijack          manage cookie injection
-  wizard                  guided attack setup
-  report <file>           write a session report
-  sleep <seconds>         pause before the next command (caplet scripts)
-  run.caplet <file>       execute a caplet script
-  quit                    stop everything and exit
-`)
+	type grp struct {
+		name string
+		cmds [][2]string
+	}
+	groups := []grp{
+		{"Core", [][2]string{
+			{"on <module> [k v ...]", "start a module (e.g. \"on arp.spoof\")"},
+			{"off <module>", "stop a running module"},
+			{"status", "list running modules"},
+			{"set <module.key> <val>", "set a config value (e.g. \"set arp.spoof.targets 192.168.8.0/24\")"},
+			{"get <module.key>", "show a config value"},
+			{"config", "dump the current configuration"},
+		}},
+		{"Modules", [][2]string{
+			{"modules [category]", "list all modules (optionally filtered by category)"},
+			{"show <module>", "module metadata + preflight summary"},
+			{"module on|off [k v ...]", "start/stop a module by its id"},
+		}},
+		{"Recon", [][2]string{
+			{"net.show", "discovered hosts"},
+			{"net.recon", "start passive HTTP/credential sniffing"},
+			{"net.profile", "network profile + ranked attack vectors"},
+			{"vectors.show", "show ranked attack vectors for the current profile"},
+		}},
+		{"Loot", [][2]string{
+			{"events.show [n]", "recent framework events"},
+			{"creds.show", "captured credentials"},
+			{"sessions.show", "captured sessions"},
+			{"hijack.dump", "dump captured sessions and cookies"},
+			{"phish.list", "list available phishing templates"},
+			{"phish.serve <template>", "serve a standalone phishing page"},
+			{"session.hijack", "manage cookie injection"},
+		}},
+		{"Automation", [][2]string{
+			{"wizard", "guided attack setup"},
+			{"report <file>", "write a session report"},
+			{"run.caplet <file>", "execute a caplet script"},
+			{"sleep <seconds>", "pause before the next command (caplet scripts)"},
+			{"quit", "stop everything and exit"},
+		}},
+	}
+	for _, g := range groups {
+		s.UI.Section(g.name)
+		rows := make([][]string, 0, len(g.cmds))
+		for _, item := range g.cmds {
+			rows = append(rows, []string{item[0], item[1]})
+		}
+		s.UI.Table([]string{"command", "description"}, rows)
+	}
+	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) listModules(args []string) {
@@ -222,11 +251,26 @@ func (s *Session) listModules(args []string) {
 	if len(args) == 1 {
 		mods = attacks.ListByCategory(args[0])
 	}
-	fmt.Fprintf(s.Out, "%-24s %-10s %-8s %s\n", "ID", "category", "risk", "description")
+	byCat := make(map[string][]attacks.Module)
+	var cats []string
 	for _, m := range mods {
-		meta := m.Meta()
-		fmt.Fprintf(s.Out, "%-24s %-10s %-8s %s\n", meta.ID, meta.Category, meta.Risk, meta.Description)
+		c := m.Meta().Category
+		if _, ok := byCat[c]; !ok {
+			cats = append(cats, c)
+		}
+		byCat[c] = append(byCat[c], m)
 	}
+	sort.Strings(cats)
+	for _, c := range cats {
+		s.UI.Section(c)
+		rows := make([][]string, 0, len(byCat[c]))
+		for _, m := range byCat[c] {
+			meta := m.Meta()
+			rows = append(rows, []string{meta.ID, meta.Risk.String(), meta.Description})
+		}
+		s.UI.Table([]string{"id", "risk", "description"}, rows)
+	}
+	fmt.Fprintf(s.Out, "\n%s %s\n", s.UI.BoldWhite("total:"), s.UI.White(strconv.Itoa(len(mods))))
 }
 
 func (s *Session) showModule(id string) error {
@@ -235,17 +279,23 @@ func (s *Session) showModule(id string) error {
 		return fmt.Errorf("unknown module %q", id)
 	}
 	meta := m.Meta()
-	fmt.Fprintf(s.Out, "%s  [%s / %s]\n", meta.ID, meta.Category, meta.Risk)
+	s.UI.Section("module " + meta.ID)
+	s.UI.KV("category", meta.Category)
+	s.UI.KV("risk", meta.Risk.String())
 	if meta.Description != "" {
-		fmt.Fprintf(s.Out, "  %s\n", meta.Description)
+		s.UI.KV("description", meta.Description)
 	}
 	if len(meta.Requires) > 0 {
-		fmt.Fprintf(s.Out, "  requires: %s\n", strings.Join(meta.Requires, ", "))
+		s.UI.KV("requires", strings.Join(meta.Requires, ", "))
 	}
 	if meta.Limitations != "" {
-		fmt.Fprintf(s.Out, "  limits: %s\n", meta.Limitations)
+		s.UI.KV("limitations", meta.Limitations)
 	}
-	fmt.Fprintf(s.Out, "  running: %v\n", s.IsRunning(id))
+	if meta.Passive {
+		s.UI.KV("mode", "passive")
+	}
+	s.UI.KV("running", strconv.FormatBool(s.IsRunning(id)))
+	fmt.Fprintln(s.Out)
 	return nil
 }
 
@@ -253,17 +303,33 @@ func (s *Session) status() {
 	running := s.Running()
 	sort.Strings(running)
 	if len(running) == 0 {
-		fmt.Fprintln(s.Out, "no modules running")
+		s.UI.Section("running modules")
+		s.statusf("no modules running")
 		return
 	}
+	s.UI.Section("running modules")
+	rows := make([][]string, 0, len(running))
 	for _, id := range running {
-		fmt.Fprintf(s.Out, "  %s\n", id)
+		if rm, ok := s.runningModule(id); ok {
+			meta, _ := attacks.Get(id)
+			rows = append(rows, []string{id, meta.Meta().Risk.String(), rm.started.Format("15:04:05")})
+		}
 	}
+	s.UI.Table([]string{"id", "risk", "started"}, rows)
+	fmt.Fprintln(s.Out)
+}
+
+// runningModule returns a live runningModule by id (locked access).
+func (s *Session) runningModule(id string) (*runningModule, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rm, ok := s.running[id]
+	return rm, ok
 }
 
 func (s *Session) setConfig(key, value string) error {
-	parts := strings.SplitN(key, ".", 2)
-	if len(parts) != 2 {
+	module, param, ok := splitModuleKey(key)
+	if !ok {
 		return fmt.Errorf("config key must be 'module.key'")
 	}
 	if strings.EqualFold(value, "true") || strings.EqualFold(value, "false") {
@@ -275,16 +341,28 @@ func (s *Session) setConfig(key, value string) error {
 			}
 		}
 	}
-	s.Conf.Set(parts[0], parts[1], value)
+	s.Conf.Set(module, param, value)
+	s.goodf("%s = %s", key, value)
 	return nil
 }
 
+// splitModuleKey resolves "module.param" by splitting on the last dot so that
+// dotted module IDs like "arp.spoof.targets" resolve correctly.
+func splitModuleKey(key string) (module, param string, ok bool) {
+	for i := len(key) - 1; i > 0; i-- {
+		if key[i] == '.' {
+			return key[:i], key[i+1:], true
+		}
+	}
+	return "", "", false
+}
+
 func (s *Session) getConfig(key string) error {
-	parts := strings.SplitN(key, ".", 2)
-	if len(parts) != 2 {
+	module, param, ok := splitModuleKey(key)
+	if !ok {
 		return fmt.Errorf("config key must be 'module.key'")
 	}
-	fmt.Fprintf(s.Out, "%s = %s\n", key, s.Conf.Get(parts[0], parts[1]))
+	s.UI.KV(key, s.Conf.Get(module, param))
 	return nil
 }
 
@@ -293,25 +371,32 @@ func (s *Session) showConfig(args []string) {
 	if len(args) > 0 {
 		mod = args[0]
 	}
+	s.UI.Section("configuration")
+	rows := make([][]string, 0)
 	for _, k := range s.Conf.Keys() {
 		if mod != "" && !strings.HasPrefix(k, mod+".") {
 			continue
 		}
-		fmt.Fprintf(s.Out, "  %-32s = %s\n", k, s.Conf.GetFromKey(k))
+		rows = append(rows, []string{k, s.Conf.GetFromKey(k)})
 	}
+	s.UI.Table([]string{"key", "value"}, rows)
+	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) netShow(args []string) {
 	hosts := s.Store.Hosts()
 	if len(hosts) == 0 {
-		fmt.Fprintln(s.Out, "no hosts discovered; run 'on net.scan'")
+		s.UI.Section("net.show")
+		s.statusf("no hosts discovered; run 'on net.scan'")
 		return
 	}
-	fmt.Fprintf(s.Out, "%-18s %-20s %-24s %s\n", "IP", "MAC", "vendor", "ports")
+	s.UI.Section("net.show " + strconv.Itoa(len(hosts)) + " hosts")
+	rows := make([][]string, 0, len(hosts))
 	for _, h := range hosts {
-		ports := h.OpenPorts()
-		fmt.Fprintf(s.Out, "%-18s %-20s %-24s %v\n", h.IP, h.MAC, h.Vendor, ports)
+		rows = append(rows, []string{h.IP.String(), h.MAC.String(), h.Vendor, fmt.Sprint(h.OpenPorts())})
 	}
+	s.UI.Table([]string{"ip", "mac", "vendor", "ports"}, rows)
+	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) eventsShow(args []string) {
@@ -322,41 +407,57 @@ func (s *Session) eventsShow(args []string) {
 		}
 	}
 	evs := s.Bus.Recent(n)
+	if len(evs) == 0 {
+		s.statusf("no events recorded")
+		return
+	}
+	s.UI.Section("events.show")
+	rows := make([][]string, 0, len(evs))
 	for _, e := range evs {
 		msg := ""
 		if s, ok := e.Payload.(string); ok {
 			msg = s
 		}
-		fmt.Fprintf(s.Out, "%s  %-24s %s\n", e.Time.Format("15:04:05"), e.Topic, msg)
+		rows = append(rows, []string{e.Time.Format("15:04:05"), e.Topic, msg})
 	}
+	s.UI.Table([]string{"time", "topic", "detail"}, rows)
+	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) credsShow(args []string) {
 	creds := s.Store.Creds()
 	if len(creds) == 0 {
-		fmt.Fprintln(s.Out, "no credentials captured")
+		s.UI.Section("creds.show")
+		s.statusf("no credentials captured")
 		return
 	}
-	fmt.Fprintf(s.Out, "%-6s %-12s %-22s %-22s %-10s %s\n", "ID", "service", "username", "password", "victim", "source")
+	s.UI.Section("creds.show " + strconv.Itoa(len(creds)) + " entries")
+	rows := make([][]string, 0, len(creds))
 	for _, c := range creds {
-		fmt.Fprintf(s.Out, "%-6d %-12s %-22s %-22s %-10s %s\n", c.ID, c.Service, c.Username, c.Password, c.VictimIP, c.Source)
+		rows = append(rows, []string{strconv.Itoa(c.ID), c.Service, c.Username, c.Password, c.VictimIP, c.Source})
 	}
+	s.UI.Table([]string{"id", "service", "username", "password", "victim", "source"}, rows)
+	fmt.Fprintln(s.Out)
 }
 
 func (s *Session) sessionsShow() {
 	sess := s.Store.Sessions()
 	if len(sess) == 0 {
-		fmt.Fprintln(s.Out, "no sessions captured")
+		s.UI.Section("sessions.show")
+		s.statusf("no sessions captured")
 		return
 	}
-	fmt.Fprintf(s.Out, "%-6s %-22s %-30s %s\n", "ID", "victim", "host", "cookies")
+	s.UI.Section("sessions.show " + strconv.Itoa(len(sess)) + " sessions")
+	rows := make([][]string, 0, len(sess))
 	for _, ss := range sess {
-		cookies := ""
+		var cookies []string
 		for k := range ss.Cookies {
-			cookies += k + " "
+			cookies = append(cookies, k)
 		}
-		fmt.Fprintf(s.Out, "%-6d %-22s %-30s %s\n", ss.ID, ss.VictimIP, ss.Host, cookies)
+		rows = append(rows, []string{strconv.Itoa(ss.ID), ss.VictimIP, ss.Host, strings.Join(cookies, " ")})
 	}
+	s.UI.Table([]string{"id", "victim", "host", "cookies"}, rows)
+	fmt.Fprintln(s.Out)
 }
 
 // startModuleByName is a helper to start a module with optional args.
@@ -370,38 +471,62 @@ func (s *Session) netProfile() {
 	engine := vectors.NewEngine(s.metaResolver())
 	vecs := engine.Analyze(profile)
 
-	fmt.Fprintf(s.Out, "== network profile ==\n")
 	gw := "unknown"
 	if profile.Gateway != nil {
 		gw = profile.Gateway.IP.String()
 	}
-	fmt.Fprintf(s.Out, "hosts: %d | gateway: %s | HTTP: %v | LLMNR: %v | SMB: %v | DHCPv6: %v | monitor: %v\n",
-		len(profile.Hosts), gw, profile.SeesPlainHTTP, profile.SeesLLMNR,
-		profile.SeesSMB, profile.SeesDHCPv6, profile.MonitorCapable)
+	s.UI.Section("network profile")
+	s.UI.KV("hosts", strconv.Itoa(len(profile.Hosts)))
+	s.UI.KV("gateway", gw)
+	s.UI.KV("plaintext http", strconv.FormatBool(profile.SeesPlainHTTP))
+	s.UI.KV("llmnr", strconv.FormatBool(profile.SeesLLMNR))
+	s.UI.KV("smb", strconv.FormatBool(profile.SeesSMB))
+	s.UI.KV("dhcpv6", strconv.FormatBool(profile.SeesDHCPv6))
+	s.UI.KV("monitor", strconv.FormatBool(profile.MonitorCapable))
 
 	if len(profile.Hosts) > 0 {
-		fmt.Fprintf(s.Out, "\n%-18s %-20s %-24s %s\n", "IP", "MAC", "vendor", "ports")
+		rows := make([][]string, 0, len(profile.Hosts))
 		for _, h := range profile.Hosts {
 			ports := make([]uint16, 0, len(h.Ports))
 			for p := range h.Ports {
 				ports = append(ports, p)
 			}
-			fmt.Fprintf(s.Out, "%-18s %-20s %-24s %v\n", h.IP, h.MAC, h.Vendor, ports)
+			rows = append(rows, []string{h.IP.String(), h.MAC.String(), h.Vendor, fmt.Sprint(ports)})
 		}
+		s.UI.Table([]string{"ip", "mac", "vendor", "ports"}, rows)
 	}
 
-	fmt.Fprintf(s.Out, "\n== ranked attack vectors ==\n")
+	s.UI.Section("ranked attack vectors")
 	if len(vecs) == 0 {
-		fmt.Fprintln(s.Out, "no viable vectors; run net.scan or net.recon first")
+		s.statusf("no viable vectors; run net.scan or net.recon first")
 		return
 	}
+	s.printVectors(vecs, engine, profile)
+	fmt.Fprintln(s.Out)
+}
+
+// printVectors renders a ranked vector list with confidence and satisfiability.
+func (s *Session) printVectors(vecs []vectors.Vector, engine *vectors.Engine, profile *vectors.Profile) {
+	rows := make([][]string, 0, len(vecs))
 	for i, v := range vecs {
-		sat := ""
+		sat := "yes"
 		if !engine.Satisfiable(profile, v) {
-			sat = "  [not satisfiable]"
+			sat = s.UI.Red("no")
 		}
-		fmt.Fprintf(s.Out, "%2d. %-24s target=%-18s conf=%.2f risk=%-8s%s\n      %s\n",
-			i+1, v.ModuleID, v.Target, v.Confidence, v.Risk, sat, v.Impact)
+		rows = append(rows, []string{
+			strconv.Itoa(i + 1),
+			v.ModuleID,
+			v.Target,
+			fmt.Sprintf("%.2f", v.Confidence),
+			v.Risk,
+			sat,
+		})
+	}
+	s.UI.Table([]string{"#", "module", "target", "conf", "risk", "satisfiable"}, rows)
+	for i, v := range vecs {
+		if v.Impact != "" {
+			fmt.Fprintf(s.Out, "  %s %s\n", s.UI.DimWhite(strconv.Itoa(i+1)+"."), s.UI.White(v.Impact))
+		}
 	}
 }
 
@@ -412,31 +537,29 @@ func (s *Session) vectorsShow() {
 	vecs := engine.Analyze(profile)
 
 	if len(vecs) == 0 {
-		fmt.Fprintln(s.Out, "no vectors available; run net.scan or net.recon first")
+		s.UI.Section("vectors.show")
+		s.statusf("no vectors available; run net.scan or net.recon first")
 		return
 	}
-	fmt.Fprintf(s.Out, "%-4s %-24s %-18s %-8s %-8s %s\n", "#", "module", "target", "conf", "risk", "impact")
-	for i, v := range vecs {
-		sat := ""
-		if !engine.Satisfiable(profile, v) {
-			sat = " [!]"
-		}
-		fmt.Fprintf(s.Out, "%-4d %-24s %-18s %.2f    %-8s%s %s\n",
-			i+1, v.ModuleID, v.Target, v.Confidence, v.Risk, sat, v.Impact)
-	}
+	s.UI.Section("ranked attack vectors")
+	s.printVectors(vecs, engine, profile)
+	fmt.Fprintln(s.Out)
 }
 
 // phishList displays all available phishing templates.
 func (s *Session) phishList() {
 	templates := phish.ListTemplates()
 	if len(templates) == 0 {
-		fmt.Fprintln(s.Out, "no phishing templates available")
+		s.statusf("no phishing templates available")
 		return
 	}
-	fmt.Fprintf(s.Out, "%-16s %-30s %s\n", "ID", "title", "description")
+	s.UI.Section("phishing templates")
+	rows := make([][]string, 0, len(templates))
 	for _, t := range templates {
-		fmt.Fprintf(s.Out, "%-16s %-30s %s\n", t.ID, t.Title, t.Description)
+		rows = append(rows, []string{t.ID, t.Title, t.Description})
 	}
+	s.UI.Table([]string{"id", "title", "description"}, rows)
+	fmt.Fprintln(s.Out)
 }
 
 // phishServe starts a standalone phishing page on the attacker's IP.
@@ -460,8 +583,8 @@ func (s *Session) phishServe(args []string) error {
 	if err != nil {
 		return fmt.Errorf("phish.serve: %w", err)
 	}
-	fmt.Fprintf(s.Out, "[*] phish.serve: serving %s on http://%s/phish/%s\n", templateID, addr, templateID)
-	fmt.Fprintf(s.Out, "[*] Open in victim browser: http://%s/phish/%s\n", addr, templateID)
+	s.statusf("phish.serve: serving %s on http://%s/phish/%s", templateID, addr, templateID)
+	s.statusf("open in victim browser: http://%s/phish/%s", addr, templateID)
 	_ = html
 	return nil
 }
@@ -470,20 +593,24 @@ func (s *Session) phishServe(args []string) error {
 func (s *Session) hijackDump() {
 	sess := s.Store.Sessions()
 	if len(sess) == 0 {
-		fmt.Fprintln(s.Out, "no sessions captured")
+		s.UI.Section("hijack.dump")
+		s.statusf("no sessions captured")
 		return
 	}
-	fmt.Fprintf(s.Out, "%-6s %-22s %-30s %s\n", "ID", "victim", "host", "cookies")
+	s.UI.Section("hijack.dump " + strconv.Itoa(len(sess)) + " sessions")
+	rows := make([][]string, 0, len(sess))
 	for _, ss := range sess {
-		cookies := ""
+		var cookies []string
 		for k, v := range ss.Cookies {
-			cookies += k + "=" + v + " "
+			cookies = append(cookies, k+"="+v)
 		}
-		if cookies == "" && ss.AuthHeader != "" {
-			cookies = "Authorization: " + ss.AuthHeader
+		if len(cookies) == 0 && ss.AuthHeader != "" {
+			cookies = append(cookies, "Authorization: "+ss.AuthHeader)
 		}
-		fmt.Fprintf(s.Out, "%-6d %-22s %-30s %s\n", ss.ID, ss.VictimIP, ss.Host, cookies)
+		rows = append(rows, []string{strconv.Itoa(ss.ID), ss.VictimIP, ss.Host, strings.Join(cookies, " ")})
 	}
+	s.UI.Table([]string{"id", "victim", "host", "cookies"}, rows)
+	fmt.Fprintln(s.Out)
 }
 
 // runCaplet executes a script file of REPL commands, one per line.
@@ -497,12 +624,17 @@ func (s *Session) runCaplet(path string) error {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		fmt.Fprintf(s.Out, "> %s\n", line)
+		s.echoCommand(line)
 		if _, err := s.exec(nil, line); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// echoCommand prints a command being executed (caplets and eval mode).
+func (s *Session) echoCommand(line string) {
+	fmt.Fprintf(s.Out, "%s %s\n", s.UI.BoldWhite("»"), s.UI.White(line))
 }
 
 // Eval runs a one-shot sequence of REPL commands separated by ';' or newlines,
@@ -515,7 +647,7 @@ func (s *Session) Eval(seq string) error {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		fmt.Fprintf(s.Out, "> %s\n", line)
+		s.echoCommand(line)
 		if _, err := s.exec(nil, line); err != nil {
 			return err
 		}

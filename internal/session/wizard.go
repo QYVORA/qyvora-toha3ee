@@ -16,7 +16,7 @@ import (
 // "toha3ee wizard" subcommand works outside the REPL.
 func (s *Session) WizardWithStdin() error {
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:      "wizard> ",
+		Prompt:      s.UI.BoldWhite("wizard> "),
 		HistoryFile: ".toha3ee_history",
 	})
 	if err != nil {
@@ -29,7 +29,7 @@ func (s *Session) WizardWithStdin() error {
 // Wizard guides the user through recon → vector analysis → module launch.
 func (s *Session) Wizard(rl *readline.Instance) error {
 	ask := func(prompt, def string) string {
-		line, err := rl.ReadlineWithDefault(prompt)
+		line, err := rl.ReadlineWithDefault(s.UI.White(prompt + " "))
 		if err != nil {
 			return def
 		}
@@ -40,23 +40,23 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 		return line
 	}
 
-	fmt.Fprintln(s.Out, "== toha3ee wizard ==")
-	fmt.Fprintf(s.Out, "Interface: %s  (%s)\n", s.Iface.Name, s.Iface.IP)
+	s.UI.Banner("guided attack wizard")
+	s.UI.BannerFoot(s.Iface.String(), versionString())
 
 	if ans := strings.ToLower(ask("Run a network sweep (net.scan for ~10s)? [Y/n]: ", "y")); !strings.HasPrefix(ans, "n") {
-		fmt.Fprintln(s.Out, "[*] sweeping subnet (10s)...")
+		s.statusf("sweeping subnet (10s)...")
 		if err := s.StartModule("net.scan", nil); err != nil {
 			return err
 		}
 		time.Sleep(10 * time.Second)
 		_ = s.StopModule("net.scan")
-		fmt.Fprintf(s.Out, "[*] %d host(s) discovered.\n", len(s.Store.Hosts()))
+		s.goodf("%d host(s) discovered.", len(s.Store.Hosts()))
 	}
 
 	if ans := strings.ToLower(ask("Run a passive HTTP/LLMNR probe for ~15s? [Y/n]: ", "y")); !strings.HasPrefix(ans, "n") {
-		fmt.Fprintln(s.Out, "[*] probing network traffic (15s)...")
+		s.statusf("probing network traffic (15s)...")
 		if err := s.StartModule("http.harvest", nil); err != nil {
-			fmt.Fprintf(s.Out, "[!] probe: %v\n", err)
+			s.warnf("probe: %v", err)
 		} else {
 			time.Sleep(15 * time.Second)
 			_ = s.StopModule("http.harvest")
@@ -67,28 +67,25 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 	engine := vectors.NewEngine(s.metaResolver())
 	vectorsList := engine.Analyze(profile)
 
-	fmt.Fprintf(s.Out, "\n== network profile ==\n")
-	fmt.Fprintf(s.Out, "hosts: %d | gateway: %v | plaintext HTTP: %v | LLMNR: %v | SMB: %v | DHCPv6: %v | monitor: %v\n",
-		len(profile.Hosts), gatewayStr(profile), profile.SeesPlainHTTP, profile.SeesLLMNR,
-		profile.SeesSMB, profile.SeesDHCPv6, profile.MonitorCapable)
+	s.UI.Section("network profile")
+	s.UI.KV("hosts", strconv.Itoa(len(profile.Hosts)))
+	s.UI.KV("gateway", gatewayStr(profile))
+	s.UI.KV("plaintext http", strconv.FormatBool(profile.SeesPlainHTTP))
+	s.UI.KV("llmnr", strconv.FormatBool(profile.SeesLLMNR))
+	s.UI.KV("smb", strconv.FormatBool(profile.SeesSMB))
+	s.UI.KV("dhcpv6", strconv.FormatBool(profile.SeesDHCPv6))
+	s.UI.KV("monitor", strconv.FormatBool(profile.MonitorCapable))
 
-	fmt.Fprintf(s.Out, "\n== ranked attack vectors ==\n")
+	s.UI.Section("ranked attack vectors")
 	if len(vectorsList) == 0 {
-		fmt.Fprintln(s.Out, "no viable vectors; run recon first")
+		s.statusf("no viable vectors; run recon first")
 		return nil
 	}
-	for i, v := range vectorsList {
-		sat := ""
-		if !engine.Satisfiable(profile, v) {
-			sat = "  [not satisfiable]"
-		}
-		fmt.Fprintf(s.Out, "%2d. %-24s target=%-18s conf=%.2f risk=%-8s%s\n      %s\n",
-			i+1, v.ModuleID, v.Target, v.Confidence, v.Risk, sat, v.Impact)
-	}
+	s.printVectors(vectorsList, engine, profile)
 
 	sel := ask("\nPick vector number to launch (comma list, 'all', or blank to skip): ", "")
 	if sel == "" {
-		fmt.Fprintln(s.Out, "wizard done (nothing launched)")
+		s.statusf("wizard done (nothing launched)")
 		return nil
 	}
 
@@ -102,14 +99,14 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 	for _, idx := range indexes {
 		v := vectorsList[idx]
 		if !engine.Satisfiable(profile, v) {
-			fmt.Fprintf(s.Out, "[!] skipping %s (prerequisites not satisfiable)\n", v.ModuleID)
+			s.warnf("skipping %s (prerequisites not satisfiable)", v.ModuleID)
 			continue
 		}
 		if err := s.launchVector(v, ask); err != nil {
-			fmt.Fprintf(s.Out, "[!] %s: %v\n", v.ModuleID, err)
+			s.warnf("%s: %v", v.ModuleID, err)
 		}
 	}
-	fmt.Fprintln(s.Out, "\nwizard done. Use 'status' to see running modules, 'creds.show' for loot.")
+	s.goodf("wizard done. use 'status' to see running modules, 'creds.show' for loot.")
 	return nil
 }
 

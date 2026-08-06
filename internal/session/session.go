@@ -16,7 +16,12 @@ import (
 	"github.com/qyvora/toha3ee/internal/netx"
 	"github.com/qyvora/toha3ee/internal/safety"
 	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/qyvora/toha3ee/internal/ui"
 )
+
+// Version is the framework version reported by the console banner and the
+// `version` subcommand. The CLI overrides it via -ldflags at release builds.
+var Version = "0.1.0"
 
 // Session is one interactive framework instance bound to an interface.
 type Session struct {
@@ -27,6 +32,7 @@ type Session struct {
 	Safety *safety.Manager
 	Log    *slog.Logger
 	Out    io.Writer
+	UI     *ui.UI
 
 	mu      sync.Mutex
 	running map[string]*runningModule
@@ -60,8 +66,30 @@ func New(iface *netx.Iface, out io.Writer, log *slog.Logger) *Session {
 		Safety:  safety.NewManager(bus, log),
 		Log:     log,
 		Out:     out,
+		UI:      ui.New(out),
 		running: make(map[string]*runningModule),
 	}
+}
+
+// SetColor forces colors on or off for the whole session.
+func (s *Session) SetColor(on bool) { s.UI.SetColor(on) }
+
+// section prints a section header through the console UI.
+func (s *Session) section(title string) { s.UI.Section(title) }
+
+// statusf prints a [*] status line through the console UI.
+func (s *Session) statusf(format string, args ...any) {
+	s.UI.Status("*", format, args...)
+}
+
+// warnf prints a [!] warning line through the console UI.
+func (s *Session) warnf(format string, args ...any) {
+	s.UI.Status("!", format, args...)
+}
+
+// goodf prints a [+] success line through the console UI.
+func (s *Session) goodf(format string, args ...any) {
+	s.UI.Status("+", format, args...)
 }
 
 // Running returns the IDs of all currently running modules.
@@ -107,7 +135,7 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 		Iface:     s.Iface,
 		Safety:    s.Safety,
 		Logger:    s.Log,
-		Out:       s.Out,
+		Out:       ui.NewLineWriter(s.UI),
 		Done:      done,
 		State:     &sync.Map{},
 		Heartbeat: func() {},
@@ -117,9 +145,10 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("%s preflight: %w", id, err)
 	}
-	fmt.Fprintf(s.Out, "== %s preflight ==\n%s", id, rep.String())
+	s.UI.Section("preflight " + id)
+	fmt.Fprint(ui.NewLineWriter(s.UI), rep.String())
 	if blk := rep.Blocked(); blk != "" {
-		fmt.Fprintf(s.Out, "[!] %s blocked by %s; not started.\n", id, blk)
+		s.warnf("%s blocked by %s; not started.", id, blk)
 		return fmt.Errorf("%s blocked (missing %s)", id, blk)
 	}
 	meta := mod.Meta()
@@ -156,18 +185,19 @@ func (s *Session) finishModule(id string, rm *runningModule) {
 	s.mu.Unlock()
 
 	if rm.err != nil {
-		fmt.Fprintf(s.Out, "[%s] finished with error: %v\n", id, rm.err)
+		s.UI.Status("!", "%s finished with error: %v", id, rm.err)
 		s.Store.LogEvent(events.TopicModuleFailed, fmt.Sprintf("%s failed: %v", id, rm.err))
 		return
 	}
 	if imp, err := rm.mod.Verify(rm.ctx); err == nil && imp != nil {
-		fmt.Fprintf(s.Out, "== %s verified ==\n%s\n", id, imp.Summary)
+		s.UI.Section("verified " + id)
+		fmt.Fprintf(s.Out, "%s\n", imp.Summary)
 		for k, v := range imp.Metrics {
-			fmt.Fprintf(s.Out, "  %-14s %s\n", k, v)
+			fmt.Fprintf(s.Out, "  %s %s\n", s.UI.BoldWhite(k+":"), s.UI.White(v))
 		}
 	}
 	if err := rm.mod.Cleanup(rm.ctx); err != nil {
-		fmt.Fprintf(s.Out, "[!] %s cleanup: %v\n", id, err)
+		s.warnf("%s cleanup: %v", id, err)
 	}
 	s.Store.LogEvent(events.TopicModuleStopped, fmt.Sprintf("%s stopped", id))
 	s.Bus.Emit(events.TopicModuleStopped, id)
@@ -200,7 +230,7 @@ func (s *Session) StopAll() {
 func (s *Session) Shutdown() {
 	s.StopAll()
 	if err := s.Safety.RunAll(); err != nil {
-		fmt.Fprintf(s.Out, "[!] cleanup: %v\n", err)
+		s.warnf("cleanup: %v", err)
 	}
 	s.Bus.Close()
 }
