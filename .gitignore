@@ -6,6 +6,7 @@
 
 # Local automation helper (contains session identifiers)
 /continue_AI.sh
+/continue_AI.sht
 
 # Generated artifacts
 /toha3ee-report.md
