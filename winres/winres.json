@@ -1,0 +1,26 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": "../assets/toha3ee.ico"
+    }
+  },
+  "RT_VERSION": {
+    "APP": {
+      "0000": {
+        "StringFileInfo": {
+          "040904B0": {
+            "ProductName": "toha3ee",
+            "FileDescription": "network exploitation & MITM framework",
+            "CompanyName": "QYVORA",
+            "ProductVersion": "0.1.0",
+            "FileVersion": "0.1.0",
+            "OriginalFilename": "toha3ee.exe"
+          }
+        },
+        "VarFileInfo": {
+          "Translation": [1033, 1200]
+        }
+      }
+    }
+  }
+}

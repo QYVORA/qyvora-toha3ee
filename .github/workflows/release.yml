@@ -1,0 +1,88 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          - runner: macos-13
+            goos: darwin
+            goarch: amd64
+          - runner: macos-14
+            goos: darwin
+            goarch: arm64
+      # gopacket ships pcap bindings only for windows/386 and windows/amd64;
+      # Windows-on-ARM64 runs x64 binaries, so amd64 covers it.
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install libpcap (linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      # Windows uses gopacket's cgo-free pcap bindings, so it cross-compiles
+      # with CGO_ENABLED=0; linux and darwin link against libpcap via cgo.
+      - name: embed windows resources (icon + version info)
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: cmd/toha3ee
+        run: go run github.com/tc-hib/go-winres@v0.3.3 make --in ../../winres/winres.json
+
+      - name: build
+        shell: bash
+        env:
+          CGO_ENABLED: ${{ matrix.goos == 'windows' && '0' || '1' }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -ldflags="-s -w" -o toha3ee${{ matrix.goos == 'windows' && '.exe' || '' }} ./cmd/toha3ee
+
+      - name: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            # ship the .ico so install.ps1 can create a Start Menu shortcut
+            powershell -Command "Compress-Archive -Path toha3ee.exe,assets/toha3ee.ico -DestinationPath toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.zip -Force"
+            sha256sum toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.zip | awk '{print $1}' > toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.sha256
+          elif [ "${{ matrix.goos }}" = "linux" ]; then
+            # ship the app icon next to the binary so install.sh can register
+            # the GNOME .desktop entry from the same verified tarball
+            tar -czf toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz toha3ee assets/toha3ee.png
+            sha256sum toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz | awk '{print $1}' > toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.sha256
+          else
+            tar -czf toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz toha3ee
+            sha256sum toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz | awk '{print $1}' > toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.sha256
+          fi
+          ls -la toha3ee_*
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.*
+          fail_on_unmatched_files: true

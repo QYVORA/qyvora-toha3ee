@@ -11,6 +11,47 @@ a guided wizard, or one-shot command sequences.
 > authorised to test**. Running these modules against third parties is illegal
 > in most jurisdictions.
 
+## Install
+
+One-liner installers fetch the prebuilt binary for your platform from the
+latest release, verify its SHA-256 checksum and add it to your PATH. If no
+prebuilt binary exists yet they build from source instead.
+
+Linux / macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/qyvora/qyvora-toha3ee/main/scripts/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/qyvora/qyvora-toha3ee/main/scripts/install.ps1 | iex
+```
+
+Or from a checkout:
+
+```sh
+make install   # installs ~/.local/bin/toha3ee and adds it to PATH
+```
+
+Install options (Unix): `--prefix <dir>` (default: `/usr/local/bin` as root,
+else `~/.local/bin`), `--no-path` to skip editing your shell rc, `--from-source`
+to build instead of downloading, and `TOHA3EE_VERSION=<tag>` to pin a release.
+Run with `sudo sh ...` to install system-wide. The Windows installer puts the
+binary in `%LOCALAPPDATA%\Programs\toha3ee\bin` and updates your user PATH;
+Windows-on-ARM64 runs the x64 build.
+
+On Linux the installer also registers the app with the desktop environment: it
+installs the logo to the hicolor icon theme and drops a `.desktop` entry
+next to the install prefix (e.g. `/usr/local/share` or `~/.local/share`), so
+`toha3ee` shows up in GNOME's search with its icon. On Windows it copies the
+`.ico` and creates a Start Menu shortcut. The release tarball/zip carry the
+icon so the installer can register it from the same verified artifact.
+
+Uninstall: delete the binary and the PATH line the installer added to your
+shell rc (or `%LOCALAPPDATA%\Programs\toha3ee` on Windows).
+
 ## Build
 
 Requires Go 1.26+ and libpcap.
@@ -22,6 +63,10 @@ sudo apt install libpcap-dev
 # then
 go build ./cmd/toha3ee
 ```
+
+Linux builds need libpcap headers (the installer's from-source fallback checks
+for them and prints the right apt/dnf command if they are missing). macOS ships
+libpcap with Xcode Command Line Tools.
 
 ## Quick start
 
@@ -97,24 +142,58 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 ## Console
 
 Bare `toha3ee` (or `toha3ee interactive`) opens a bettercap/metasploit-style
-console: a figlet banner, a `toha3ee> ` prompt with tab-completion, and
-grouped, aligned output in the framework's red/black/white palette. Every
-command's output is sectioned (`─── modules ───`), tables are column-aligned
-(colors are ignored when computing alignment), and module messages are
-colorized centrally, so every module gets consistent status glyphs with no
-per-module work. Output falls back to plain text automatically when piped.
+console: the `@@@` banner, a `toha3ee> ` prompt with tab-completion, and
+grouped, aligned output in a green/amber/white palette (red is reserved for
+hard errors). Every command's output is sectioned (`─── modules ───`), tables
+are column-aligned (colors are ignored when computing alignment), and module
+messages are colorized centrally, so every module gets consistent status
+glyphs with no per-module work. Output falls back to plain text automatically
+when piped.
 
 ```
 $ sudo ./toha3ee --iface eth0
- _       _         ____
-| |_ ___| |_  __ _|__ / ___ ___
-|  _/ _ \ ' \/ _` ||_ \/ -_) -_)
- \__\___/_||_\__,_|___/\___\___|
+@@@@@@@@
+    @@@@@@@@@@@@@
+    @@@@@@@@     @@@@@@@
+  @@@@@@@@           @@@@@@@@
+  @@@@@@@@                 @@@@@@@@
+ @@@@@@@         @               @@@@@@@
+ @@@@@@@@        @@@@@@@@@              @@@@@@@
+ @@@@@@@@         @@@   @                     @@@@@@@
+  @@@@@@@            @@       @@@@@@@@@@              @@@@@@@
+  @@@@@@    @@        @     @@@@@@@@@@@@@@@@@@             @@@@@@
+  @@@        @@@   @@@@@@@  @@@@@@@@@@@@@@@@@@@@@@            @@@
+  @@@         @@@@@   @    @@@@@@@@@@@@@@@@@@@@@@@            @@@
+  @@@          @@@@@@  @   @@@@@@@@@@@@@@@@@@ @@@             @@@
+  @@@          @@@@@@   @ @@@@@@@@@@@@@@@@@   @@@             @@@
+  @@@           @@@@@@    @@@@@@@@@@@@@@@@@@@@@@              @@@
+  @@@              @@@@@  @@@@@@@@@@@@@@@    @@@              @@@
+  @@@               @@@@@  @@@@@@@@@@@@@@   @@@               @@@
+  @@@                 @@@    @@@@@@@@@@@@@ @@@@               @@@
+  @@@               @@  @@@@  @@@@@   @@@@@@@@@               @@@
+  @@@            @@@@@@@@@@@@@  @@@@@@    @@@                 @@@
+  @@@        @@@@@@@@@@@@@@@@@@@  @@@@@@@   @@@               @@@
+  @@@       @@@@@@@@@@@@@@@@@@@@@@@     @@@ @@@@@@            @@@
+  @@@      @@@@@@@@@@@@@@@@@@@@@@   @@@   @@@@@@@@@@          @@@
+  @@@      @@@@@@@@@@@@@@@@@@@@@@@@@@@@@   @@@@@@@@@          @@@
+  @@@     @@@@@@@@@@@@@@@@@@   @@@@@@@@@@@@ @@@@@@@@@         @@@
+  @@@    @@@@@@@@@@@@@@@    @@@@@@@@@@@@@  @@@@@@@@@@@        @@@
+  @@@@@    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@  @@@@@@@@@@@    @@@@@
+   @@@@@@@    @@@@@@@@@@@@@@@@@@@@@@@@  @@@@  @@@@@@@   @@@@@@@@
+     @@@@@@    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@  @@   @@@@@@@
+      @@@@@@@   @@@@@@@@@@@@@@@@@@@@@@@@@@@   @@@@@@@
+       @@@@@@@    @@@@@@@@@@@@@@@@@@@    @@@@@@@
+         @@@@@@@    @@@@@@@@@@@@@    @@@@@@@
+           @@@@@@@    @@@@@@@    @@@@@@
+               @@@@@@        @@@@@@@
+                 @@@@@@@@ @@@@@@@
+                     @@@@@@@@
+                        @@@
 
 network exploitation & MITM framework
 
-  iface wlan0 (10.135.199.31, 8c:c8:4b:30:bf:91)
-  v 0.1.0
+  [>] iface wlan0 (10.135.199.31, 8c:c8:4b:30:bf:91)
+  [>] v 0.1.0
 type 'help' for commands, 'modules' for the catalogue, 'quit' to exit
 
 [*] session ready. type 'help' for commands.
@@ -125,11 +204,12 @@ Status glyphs follow bettercap's convention:
 
 | Glyph | Meaning |
 |-------|---------|
-| `[*]` | info / running |
-| `[+]` | success |
-| `[!]` | warning / error (red) |
-| `[>]` | system |
+| `[*]` | info / running (white) |
+| `[+]` | success (green) |
+| `[!]` | warning (amber) |
+| `[>]` | system (bold white) |
 | `[-]` | neutral (dim) |
+| `[OK]` | verified / passed (green) |
 
 Example session:
 
