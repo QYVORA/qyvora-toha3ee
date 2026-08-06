@@ -1,0 +1,14 @@
+# wireless-scan.caplet — Wireless network reconnaissance
+# Scans for access points and wireless clients using monitor mode.
+
+# Start passive wireless scanning
+on wlan.scan
+
+# Run for 60 seconds
+sleep 60
+
+# Stop scanning
+off wlan.scan
+
+# Show discovered APs and clients
+net.profile

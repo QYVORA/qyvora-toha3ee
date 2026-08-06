@@ -1,0 +1,29 @@
+# basic-recon.caplet — Basic network reconnaissance
+# Scans the subnet, sniffs for credentials, and profiles the network.
+
+# Start ARP sweep to discover hosts
+on net.scan
+
+# Wait 15 seconds for hosts to be discovered
+sleep 15
+
+# Stop the scanner
+off net.scan
+
+# Show discovered hosts
+net.show
+
+# Start passive HTTP credential harvesting
+on http.harvest
+
+# Wait 30 seconds to capture credentials
+sleep 30
+
+# Stop passive harvesting
+off http.harvest
+
+# Show captured credentials
+creds.show
+
+# Build and display network profile with ranked attack vectors
+net.profile
