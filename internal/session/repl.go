@@ -44,7 +44,7 @@ func (s *Session) REPL() error {
 		if line == "" {
 			continue
 		}
-		if quit, e := s.exec(rl, line); e != nil {
+		if quit, e := s.execWithPrompt(rl, line); e != nil {
 			if e == errQuit {
 				return nil
 			}
@@ -56,6 +56,32 @@ func (s *Session) REPL() error {
 }
 
 var errQuit = fmt.Errorf("quit")
+
+// execWithPrompt runs one command while keeping the readline prompt visible
+// and refreshed. Long-running modules (scans, sniffers, spoofers) block exec,
+// so a ticker re-renders the prompt until the command returns, matching the
+// live prompt behavior of tools like bettercap.
+func (s *Session) execWithPrompt(rl *readline.Instance, line string) (bool, error) {
+	if rl == nil {
+		return s.exec(rl, line)
+	}
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(250 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				rl.Refresh()
+			}
+		}
+	}()
+	quit, err := s.exec(rl, line)
+	close(done)
+	return quit, err
+}
 
 // versionString returns the build version (injected by the CLI at build time).
 func versionString() string {
