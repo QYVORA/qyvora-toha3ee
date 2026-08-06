@@ -1,0 +1,81 @@
+package session
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/qyvora/toha3ee/internal/hijack"
+)
+
+// hijackState holds the session-wide cookie injector shared with the proxy.
+type hijackState struct {
+	inj *hijack.Injector
+}
+
+// Injector returns the shared injector (created lazily).
+func (s *Session) Injector() *hijack.Injector {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hijack == nil {
+		s.hijack = &hijackState{inj: hijack.NewInjector()}
+	}
+	return s.hijack.inj
+}
+
+// sessionHijack manages cookie injection rules:
+//
+//	session.hijack add <victim-ip> [host=<host>] [cookie="name=value"] [header="K: V"]
+//	session.hijack rm <victim-ip>
+//	session.hijack show
+func (s *Session) sessionHijack(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: session.hijack add|rm|show ...")
+	}
+	switch args[0] {
+	case "add":
+		return s.hijackAdd(args[1:])
+	case "rm", "remove", "del":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: session.hijack rm <victim-ip>")
+		}
+		s.Injector().Remove(args[1])
+		fmt.Fprintf(s.Out, "removed injection for %s\n", args[1])
+	case "show", "list":
+		for _, r := range s.Injector().Rules() {
+			fmt.Fprintf(s.Out, "  %-18s host=%-24s cookies=%v headers=%v\n", r.VictimIP, r.Host, r.Cookies, r.Headers)
+		}
+	default:
+		return fmt.Errorf("usage: session.hijack add|rm|show ...")
+	}
+	return nil
+}
+
+func (s *Session) hijackAdd(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: session.hijack add <victim-ip> [host=<host>] [cookie=\"n=v\"] [header=\"K: V\"]")
+	}
+	rule := hijack.CookieInjection{VictimIP: args[0], Cookies: map[string]string{}, Headers: map[string]string{}}
+	for _, arg := range args[1:] {
+		switch {
+		case strings.HasPrefix(arg, "host="):
+			rule.Host = strings.TrimPrefix(arg, "host=")
+		case strings.HasPrefix(arg, "cookie="):
+			kv := strings.TrimPrefix(arg, "cookie=")
+			if i := strings.IndexByte(kv, '='); i > 0 {
+				rule.Cookies[kv[:i]] = kv[i+1:]
+			}
+		case strings.HasPrefix(arg, "header="):
+			kv := strings.TrimPrefix(arg, "header=")
+			if i := strings.IndexByte(kv, ':'); i > 0 {
+				rule.Headers[strings.TrimSpace(kv[:i])] = strings.TrimSpace(kv[i+1:])
+			}
+		}
+	}
+	s.Injector().Add(rule)
+	fmt.Fprintf(s.Out, "injection added for %s\n", rule.VictimIP)
+	return nil
+}
+
+// Ensure the session struct carries the injector.
+var _ = attacks.Get
