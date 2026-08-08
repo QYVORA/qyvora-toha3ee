@@ -6,11 +6,14 @@ import (
 	"github.com/qyvora/toha3ee/internal/attacks"
 
 	_ "github.com/qyvora/toha3ee/internal/attacks/auth"
+	_ "github.com/qyvora/toha3ee/internal/attacks/enum"
 	_ "github.com/qyvora/toha3ee/internal/attacks/espionage"
 	_ "github.com/qyvora/toha3ee/internal/attacks/mitm"
+	_ "github.com/qyvora/toha3ee/internal/attacks/osint"
 	_ "github.com/qyvora/toha3ee/internal/attacks/post"
 	_ "github.com/qyvora/toha3ee/internal/attacks/recon"
 	_ "github.com/qyvora/toha3ee/internal/attacks/switch"
+	_ "github.com/qyvora/toha3ee/internal/attacks/web"
 	_ "github.com/qyvora/toha3ee/internal/attacks/wlan"
 	_ "github.com/qyvora/toha3ee/internal/vectors/rules"
 )
@@ -27,8 +30,21 @@ func TestRegistryCompleteness(t *testing.T) {
 		"http.harvest", "http.proxy", "https.proxy", "ssl.strip", "phish.inject",
 		// auth
 		"default.creds", "ntlm.relay", "smb.signing", "smb.kerberoast",
+		"auth.spray", "auth.brute", "auth.userenum", "auth.asrep",
 		// recon
-		"net.scan", "service.synscan", "service.fingerprint", "cve.suggest",
+		"net.scan", "service.synscan", "service.fingerprint", "web.dir",
+		"service.tls", "cve.suggest",
+		"net.ping", "net.traceroute", "net.osdetect", "service.tcpconnect",
+		"service.udpscan", "service.finxmas", "service.ack",
+		"service.protoscan", "service.idle",
+		// osint
+		"osint.dns", "osint.whois", "osint.ct",
+		"osint.asn", "osint.shodan", "osint.bucket", "osint.wayback",
+		"osint.github", "osint.hibp", "osint.metadata", "osint.dork", "osint.harvest",
+		// web
+		"web.misconfig",
+		// enum
+		"smtp.enum", "snmp.enum", "ldap.enum", "nfs.enum", "smb.enum", "net.ip6sweep",
 		// post
 		"report.generate", "session.replay", "pcap.export",
 		// switch

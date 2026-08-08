@@ -7,7 +7,12 @@ import (
 )
 
 func TestModuleRegistration(t *testing.T) {
-	expected := []string{"net.scan", "service.synscan", "service.fingerprint"}
+	expected := []string{
+		"net.scan", "service.synscan", "service.fingerprint", "web.dir", "service.tls",
+		"net.ping", "net.traceroute", "net.osdetect", "service.tcpconnect",
+		"service.udpscan", "service.finxmas", "service.ack",
+		"service.protoscan", "service.idle",
+	}
 	for _, id := range expected {
 		m, ok := attacks.Get(id)
 		if !ok {
