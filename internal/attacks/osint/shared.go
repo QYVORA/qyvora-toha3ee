@@ -18,9 +18,9 @@ func sha1Hex(s string) string {
 // authClient is an HTTP client that presents a bearer token, used for APIs that
 // require authentication (GitHub, HIBP breach lookups).
 type authClient struct {
-	http    *http.Client
-	token   string
-	agent   string
+	http  *http.Client
+	token string
+	agent string
 }
 
 func newAuthClient(token string, timeout time.Duration) *authClient {

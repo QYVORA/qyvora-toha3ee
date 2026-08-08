@@ -15,24 +15,24 @@ import (
 
 // BER tags used by SNMP.
 const (
-	berInteger    = 0x02
+	berInteger     = 0x02
 	berOctetString = 0x04
-	berNull       = 0x05
-	berOID        = 0x06
-	berSequence   = 0x30
-	berIpAddress  = 0x40
-	berGetResp    = 0xa2 // response PDU
+	berNull        = 0x05
+	berOID         = 0x06
+	berSequence    = 0x30
+	berIpAddress   = 0x40
+	berGetResp     = 0xa2 // response PDU
 )
 
 // OIDs commonly gathered during a system walk.
 var (
-	oidSystem      = []uint32{1, 3, 6, 1, 2, 1, 1}        // system subtree
+	oidSystem      = []uint32{1, 3, 6, 1, 2, 1, 1} // system subtree
 	oidSysDescr    = []uint32{1, 3, 6, 1, 2, 1, 1, 1, 0}
 	oidSysUpTime   = []uint32{1, 3, 6, 1, 2, 1, 1, 3, 0}
 	oidSysContact  = []uint32{1, 3, 6, 1, 2, 1, 1, 4, 0}
 	oidSysName     = []uint32{1, 3, 6, 1, 2, 1, 1, 5, 0}
 	oidSysLocation = []uint32{1, 3, 6, 1, 2, 1, 1, 6, 0}
-	oidInterfaces  = []uint32{1, 3, 6, 1, 2, 1, 2, 2, 1, 2} // ifDescr
+	oidInterfaces  = []uint32{1, 3, 6, 1, 2, 1, 2, 2, 1, 2}  // ifDescr
 	oidIPRouteNext = []uint32{1, 3, 6, 1, 2, 1, 4, 21, 1, 7} // ipRouteNextHop
 )
 

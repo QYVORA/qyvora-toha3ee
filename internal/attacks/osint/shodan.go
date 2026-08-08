@@ -26,12 +26,12 @@ func (*Shodan) Meta() attacks.ModuleMeta {
 }
 
 type shodanHost struct {
-	IP       string   `json:"ip_str"`
+	IP        string   `json:"ip_str"`
 	Hostnames []string `json:"hostnames"`
-	OS       string   `json:"os"`
-	Ports    []int    `json:"ports"`
-	Vulns    []string `json:"vulns"`
-	Services []struct {
+	OS        string   `json:"os"`
+	Ports     []int    `json:"ports"`
+	Vulns     []string `json:"vulns"`
+	Services  []struct {
 		Port    int    `json:"port"`
 		Product string `json:"product"`
 		Version string `json:"version"`
@@ -40,10 +40,10 @@ type shodanHost struct {
 }
 
 type shodanResult struct {
-	IP     string
-	OS     string
-	Ports  []int
-	Vulns  []string
+	IP    string
+	OS    string
+	Ports []int
+	Vulns []string
 }
 
 // Preflight needs an API key and a target.

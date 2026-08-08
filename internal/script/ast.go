@@ -176,22 +176,22 @@ type ContinueStmt struct{}
 // HaltStmt stops the whole script.
 type HaltStmt struct{}
 
-func (AssignStmt) stmt() string  { return "assign" }
-func (SetStmt) stmt() string     { return "set" }
-func (GetStmt) stmt() string     { return "get" }
-func (StartStmt) stmt() string   { return "start" }
-func (StopStmt) stmt() string    { return "stop" }
-func (WaitStmt) stmt() string    { return "wait" }
-func (SleepStmt) stmt() string   { return "sleep" }
-func (EchoStmt) stmt() string    { return "echo" }
-func (ShowStmt) stmt() string    { return "show" }
-func (ExecStmt) stmt() string    { return "exec" }
-func (ReportStmt) stmt() string  { return "report" }
-func (IfStmt) stmt() string      { return "if" }
-func (ForEachStmt) stmt() string { return "for-each" }
-func (RepeatStmt) stmt() string  { return "repeat" }
-func (WhileStmt) stmt() string   { return "while" }
-func (BreakStmt) stmt() string   { return "break" }
+func (AssignStmt) stmt() string   { return "assign" }
+func (SetStmt) stmt() string      { return "set" }
+func (GetStmt) stmt() string      { return "get" }
+func (StartStmt) stmt() string    { return "start" }
+func (StopStmt) stmt() string     { return "stop" }
+func (WaitStmt) stmt() string     { return "wait" }
+func (SleepStmt) stmt() string    { return "sleep" }
+func (EchoStmt) stmt() string     { return "echo" }
+func (ShowStmt) stmt() string     { return "show" }
+func (ExecStmt) stmt() string     { return "exec" }
+func (ReportStmt) stmt() string   { return "report" }
+func (IfStmt) stmt() string       { return "if" }
+func (ForEachStmt) stmt() string  { return "for-each" }
+func (RepeatStmt) stmt() string   { return "repeat" }
+func (WhileStmt) stmt() string    { return "while" }
+func (BreakStmt) stmt() string    { return "break" }
 func (ContinueStmt) stmt() string { return "continue" }
 func (HaltStmt) stmt() string     { return "halt" }
 

@@ -25,10 +25,10 @@ type State string
 
 // Port states.
 const (
-	Open        State = "open"
-	Closed      State = "closed"
-	Filtered    State = "filtered"
-	Unfiltered  State = "unfiltered"
+	Open         State = "open"
+	Closed       State = "closed"
+	Filtered     State = "filtered"
+	Unfiltered   State = "unfiltered"
 	OpenFiltered State = "open|filtered"
 )
 

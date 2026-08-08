@@ -139,8 +139,8 @@ func PortMapGetPort(host string, prog, vers uint32, prot int, timeout time.Durat
 
 // MountExport is one exported share.
 type MountExport struct {
-	Dir     string
-	Groups  []string
+	Dir      string
+	Groups   []string
 	Readonly bool
 }
 
@@ -224,7 +224,7 @@ func (r *xdrReader) readString() (string, error) {
 	if n > 1<<20 {
 		return "", errors.New("xdr: string too large")
 	}
-	bytes := n + (4 - n%4) % 4
+	bytes := n + (4-n%4)%4
 	if r.pos+int(bytes) > len(r.buf) {
 		return "", errors.New("xdr: string overflow")
 	}

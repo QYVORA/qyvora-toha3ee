@@ -26,16 +26,16 @@ func (*GitHubDork) Meta() attacks.ModuleMeta {
 }
 
 type ghItem struct {
-	Repo        string `json:"repository"`
-	Path        string `json:"path"`
-	HTMLURL     string `json:"html_url"`
-	Source      string `json:"text_matches"`
+	Repo    string `json:"repository"`
+	Path    string `json:"path"`
+	HTMLURL string `json:"html_url"`
+	Source  string `json:"text_matches"`
 }
 
 type ghResult struct {
-	Query  string
-	Count  int
-	Items  []ghItem
+	Query string
+	Count int
+	Items []ghItem
 }
 
 var ghQueries = []struct {

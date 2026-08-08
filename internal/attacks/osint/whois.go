@@ -105,9 +105,9 @@ func (*WHOIS) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 }
 
 var (
-	referRe  = regexp.MustCompile(`(?m)^refer:\s*(\S+)`)
-	whoisRe  = regexp.MustCompile(`(?m)^whois:\s*(\S+)`)
-	keyRe    = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z -]{0,32}):\s*(.+)$`)
+	referRe = regexp.MustCompile(`(?m)^refer:\s*(\S+)`)
+	whoisRe = regexp.MustCompile(`(?m)^whois:\s*(\S+)`)
+	keyRe   = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z -]{0,32}):\s*(.+)$`)
 )
 
 // referralServer extracts the authoritative WHOIS server from an IANA answer.

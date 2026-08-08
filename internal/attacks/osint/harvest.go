@@ -30,9 +30,9 @@ func (*Harvest) Meta() attacks.ModuleMeta {
 var emailRe = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 
 type harvestResult struct {
-	Domain  string
-	Emails  []string
-	Count   int
+	Domain string
+	Emails []string
+	Count  int
 }
 
 var harvestQueries = []func(string) string{

@@ -32,18 +32,18 @@ func (*Metadata) Meta() attacks.ModuleMeta {
 }
 
 type docMeta struct {
-	File    string
-	Title   string
-	Author  string
-	Creator string
+	File     string
+	Title    string
+	Author   string
+	Creator  string
 	Producer string
-	Created string
+	Created  string
 	Software string
 }
 
 type metadataResult struct {
-	Files  []docMeta
-	Total  int
+	Files []docMeta
+	Total int
 }
 
 // Preflight needs a file or directory path.
@@ -150,11 +150,11 @@ func parsePDFMeta(data []byte, m *docMeta) {
 }
 
 type coreProps struct {
-	XMLName  xml.Name `xml:"core-properties"`
-	Title    string   `xml:"title"`
-	Creator  string   `xml:"creator"`
-	Created  string   `xml:"created"`
-	LastMod  string   `xml:"modified"`
+	XMLName xml.Name `xml:"core-properties"`
+	Title   string   `xml:"title"`
+	Creator string   `xml:"creator"`
+	Created string   `xml:"created"`
+	LastMod string   `xml:"modified"`
 }
 
 func parseOOXMLMeta(data []byte, m *docMeta) {

@@ -27,10 +27,10 @@ func (*SMTPEnum) Meta() attacks.ModuleMeta {
 }
 
 type smtpResult struct {
-	Host    string
-	Users   []string
-	Relay   bool
-	Banner  string
+	Host   string
+	Users  []string
+	Relay  bool
+	Banner string
 }
 
 // Preflight needs at least a host with port 25 open.

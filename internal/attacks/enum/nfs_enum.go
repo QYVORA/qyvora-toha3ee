@@ -27,9 +27,9 @@ func (*NFSEnum) Meta() attacks.ModuleMeta {
 }
 
 type nfsResult struct {
-	Host     string
-	NFSv4    bool
-	Exports  []*rpc.MountExport
+	Host    string
+	NFSv4   bool
+	Exports []*rpc.MountExport
 }
 
 // Preflight needs a host with NFS-ish ports.

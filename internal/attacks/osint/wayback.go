@@ -28,9 +28,9 @@ func (*WaybackEnum) Meta() attacks.ModuleMeta {
 }
 
 type waybackResult struct {
-	Target   string
-	Count    int
-	URLs     []string
+	Target string
+	Count  int
+	URLs   []string
 }
 
 // Preflight needs a domain.

@@ -231,8 +231,8 @@ func (*SSHUserEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	longPass := strings.Repeat("A", 512)
 
 	type probe struct {
-		user    string
-		avg     time.Duration
+		user string
+		avg  time.Duration
 	}
 	var results []probe
 	baseline := time.Duration(0)

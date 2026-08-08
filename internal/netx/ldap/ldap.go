@@ -14,21 +14,21 @@ import (
 
 // LDAPMessage / protocol operation tags (application tags).
 const (
-	opBindRequest    = 0x60
-	opBindResponse   = 0x61
-	opSearchRequest  = 0x63
-	opSearchResult   = 0x64
-	opSearchDone     = 0x65
-	opUnbindRequest  = 0x42
+	opBindRequest   = 0x60
+	opBindResponse  = 0x61
+	opSearchRequest = 0x63
+	opSearchResult  = 0x64
+	opSearchDone    = 0x65
+	opUnbindRequest = 0x42
 )
 
 // Filter type tags.
 const (
-	filterAnd      = 0xa0
-	filterOr       = 0xa1
-	filterNot      = 0xa2
-	filterEq       = 0xa3
-	filterPresent  = 0x87
+	filterAnd     = 0xa0
+	filterOr      = 0xa1
+	filterNot     = 0xa2
+	filterEq      = 0xa3
+	filterPresent = 0x87
 )
 
 // Search scopes.

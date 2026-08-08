@@ -61,8 +61,8 @@ func NewEngine(r Runner) *Engine {
 
 // value is a script runtime value: either a scalar string or a list.
 type value struct {
-	s     string
-	list  []string
+	s      string
+	list   []string
 	isList bool
 }
 

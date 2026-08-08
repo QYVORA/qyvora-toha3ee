@@ -41,24 +41,24 @@ const (
 	tkNewline
 	tkIdent // names, module ids, keywords, raw values
 	tkString
-	tkArrow   // ->
-	tkAssign  // =
-	tkAppend  // >>
-	tkEq      // ==
-	tkNe      // !=
-	tkLt      // <
-	tkGt      // >
-	tkLe      // <=
-	tkGe      // >=
-	tkAnd     // &&
-	tkOr      // ||
-	tkNot     // !
-	tkLBrack  // [
-	tkRBrack  // ]
-	tkComma   // ,
-	tkLParen  // (
-	tkRParen  // )
-	tkDollar  // $(
+	tkArrow  // ->
+	tkAssign // =
+	tkAppend // >>
+	tkEq     // ==
+	tkNe     // !=
+	tkLt     // <
+	tkGt     // >
+	tkLe     // <=
+	tkGe     // >=
+	tkAnd    // &&
+	tkOr     // ||
+	tkNot    // !
+	tkLBrack // [
+	tkRBrack // ]
+	tkComma  // ,
+	tkLParen // (
+	tkRParen // )
+	tkDollar // $(
 )
 
 // token is a single lexical token with its source position.
