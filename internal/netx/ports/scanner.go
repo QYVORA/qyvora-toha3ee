@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,9 +25,11 @@ type State string
 
 // Port states.
 const (
-	Open     State = "open"
-	Closed   State = "closed"
-	Filtered State = "filtered"
+	Open        State = "open"
+	Closed      State = "closed"
+	Filtered    State = "filtered"
+	Unfiltered  State = "unfiltered"
+	OpenFiltered State = "open|filtered"
 )
 
 // Result describes the outcome of probing one port.
@@ -37,9 +40,12 @@ type Result struct {
 
 // Scanner performs raw SYN scans from a pcap handle.
 type Scanner struct {
-	iface   *netx.Iface
-	handle  *pcap.Handle
-	stealth *stealth.Config
+	iface           *netx.Iface
+	handle          *pcap.Handle
+	stealth         *stealth.Config
+	decoys          []net.IP
+	fragment        bool
+	zombieProbePort uint16
 }
 
 // NewScanner opens a pcap handle on iface for scanning.
@@ -154,7 +160,281 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 	return results, nil
 }
 
-// resolveMAC resolves the target's L2 address via an ARP who-has probe.
+// ScanMode selects the crafted TCP control-flag pattern for a scan.
+type ScanMode int
+
+// Scan modes. The flag sets follow the classic Nmap taxonomy.
+const (
+	ScanSYN ScanMode = iota
+	ScanFIN
+	ScanNULL
+	ScanXMAS
+	ScanACK
+)
+
+func (m ScanMode) flags() ProbeFlags {
+	switch m {
+	case ScanFIN:
+		return ProbeFlags{FIN: true}
+	case ScanNULL:
+		return ProbeFlags{}
+	case ScanXMAS:
+		return ProbeFlags{FIN: true, PSH: true, URG: true}
+	case ScanACK:
+		return ProbeFlags{ACK: true}
+	default:
+		return ProbeFlags{SYN: true}
+	}
+}
+
+// String returns the scan mode name.
+func (m ScanMode) String() string {
+	switch m {
+	case ScanFIN:
+		return "fin"
+	case ScanNULL:
+		return "null"
+	case ScanXMAS:
+		return "xmas"
+	case ScanACK:
+		return "ack"
+	default:
+		return "syn"
+	}
+}
+
+// ParseScanMode converts a name to a ScanMode.
+func ParseScanMode(s string) ScanMode {
+	switch s {
+	case "fin":
+		return ScanFIN
+	case "null":
+		return ScanNULL
+	case "xmas", "xmass":
+		return ScanXMAS
+	case "ack":
+		return ScanACK
+	default:
+		return ScanSYN
+	}
+}
+
+// ScanFlags probes ip on the given ports using a crafted control-flag pattern.
+// RST replies mark closed ports (FIN/NULL/XMAS) or unfiltered ports (ACK);
+// silence marks filtered (or, for FIN/NULL/XMAS, open-but-silent) ports.
+func (s *Scanner) ScanFlags(ip net.IP, ports []uint16, timeout time.Duration, mode ScanMode) ([]Result, error) {
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+	dstMAC, err := s.resolveMAC(ip, timeout/2)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %s: %w", ip, err)
+	}
+
+	// RST replies are the only signal for non-SYN flag patterns.
+	if err := s.handle.SetBPFFilter(fmt.Sprintf(
+		"tcp and host %s and tcp[tcpflags] & tcp-rst != 0", ip)); err != nil {
+		return nil, fmt.Errorf("set bpf: %w", err)
+	}
+
+	var got sync.Map // port -> State
+	done := make(chan struct{})
+	go func() {
+		ps := gopacket.NewPacketSource(s.handle, layers.LayerTypeEthernet)
+		ps.NoCopy = true
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			pkt, err := ps.NextPacket()
+			if err != nil {
+				return
+			}
+			tcpL := pkt.Layer(layers.LayerTypeTCP)
+			ipL := pkt.Layer(layers.LayerTypeIPv4)
+			if tcpL == nil || ipL == nil {
+				continue
+			}
+			tcp := tcpL.(*layers.TCP)
+			ip4 := ipL.(*layers.IPv4)
+			if !ip4.SrcIP.Equal(ip) || !tcp.RST {
+				continue
+			}
+			if _, exists := got.Load(uint16(tcp.SrcPort)); !exists {
+				got.Store(uint16(tcp.SrcPort), Closed)
+			}
+		}
+	}()
+
+	pace := stealth.NewPacer(s.stealth)
+	fl := mode.flags()
+	for _, port := range ports {
+		if err := s.sendProbe(ip, dstMAC, port, fl); err != nil {
+			close(done)
+			return nil, err
+		}
+		pace.Wait()
+	}
+
+	time.Sleep(timeout)
+	close(done)
+
+	results := make([]Result, 0, len(ports))
+	for _, port := range ports {
+		st, ok := got.Load(port)
+		if !ok {
+			// FIN/NULL/XMAS silence means open or filtered; ACK silence means filtered.
+			if mode == ScanACK {
+				results = append(results, Result{Port: port, State: Filtered})
+			} else {
+				results = append(results, Result{Port: port, State: OpenFiltered})
+			}
+			continue
+		}
+		if mode == ScanACK {
+			results = append(results, Result{Port: port, State: Unfiltered})
+			continue
+		}
+		results = append(results, Result{Port: port, State: st.(State)})
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].Port < results[j].Port })
+	return results, nil
+}
+
+// sendProbe writes a crafted TCP probe with the given flag pattern and
+// stealth-randomized IP/TCP fields.
+func (s *Scanner) sendProbe(dstIP net.IP, dstMAC net.HardwareAddr, port uint16, fl ProbeFlags) error {
+	st := s.stealth
+	sport := port
+	seq := uint32(time.Now().UnixNano() & 0xffffffff)
+	var ack uint32
+	ttl, window, id := uint8(64), uint16(64240), uint16(0)
+	df := true
+	if st.Feature(st.RandomizePort) {
+		sport = st.RandomSrcPort()
+	}
+	if st.Feature(st.RandomizeTTL) {
+		ttl = st.TTL(64, 8)
+		if st.DF(0.15) {
+			df = false
+		}
+	}
+	if st.Feature(st.RandomizeID) {
+		id = st.RandomIPID()
+		window = st.Window()
+		seq = st.RandomSeq()
+	}
+	if fl.ACK {
+		ack = st.RandomSeq()
+	}
+	raw, err := BuildProbe(s.iface.IP, dstIP, s.iface.MAC, dstMAC, sport, port, seq, ack, fl, ttl, df, window, id)
+	if err != nil {
+		return err
+	}
+	return s.writeRaw(raw)
+}
+
+// TCPFingerprint is the TCP-stack answer parsed from a target's SYN-ACK,
+// used to identify the operating system from network behavior.
+type TCPFingerprint struct {
+	TTL     uint8
+	Window  uint16
+	MSS     uint16
+	WS      uint8
+	SACKOK  bool
+	DF      bool
+	Options string // canonical options string for signature matching
+}
+
+// Fingerprint sends one SYN to a single port and parses the SYN-ACK reply
+// into a TCPFingerprint. It returns an error when no SYN-ACK is seen.
+func (s *Scanner) Fingerprint(ip net.IP, port uint16, timeout time.Duration) (*TCPFingerprint, error) {
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	dstMAC, err := s.resolveMAC(ip, timeout/3)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %s: %w", ip, err)
+	}
+	if err := s.handle.SetBPFFilter(fmt.Sprintf(
+		"tcp and host %s and tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)", ip)); err != nil {
+		return nil, fmt.Errorf("set bpf: %w", err)
+	}
+
+	sport := port
+	seq := uint32(time.Now().UnixNano() & 0xffffffff)
+	if s.stealth.Feature(s.stealth.RandomizePort) {
+		sport = s.stealth.RandomSrcPort()
+	}
+	ttl := uint8(64)
+	if s.stealth.Feature(s.stealth.RandomizeTTL) {
+		ttl = s.stealth.TTL(64, 8)
+	}
+	raw, err := BuildSYNEx(s.iface.IP, ip, s.iface.MAC, dstMAC, sport, port, seq, ttl, true, 64240, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.handle.WritePacketData(raw); err != nil {
+		return nil, err
+	}
+
+	deadline := time.Now().Add(timeout)
+	ps := gopacket.NewPacketSource(s.handle, layers.LayerTypeEthernet)
+	ps.NoCopy = true
+	for time.Now().Before(deadline) {
+		pkt, err := ps.NextPacket()
+		if err != nil {
+			continue
+		}
+		ipL := pkt.Layer(layers.LayerTypeIPv4)
+		tcpL := pkt.Layer(layers.LayerTypeTCP)
+		if ipL == nil || tcpL == nil {
+			continue
+		}
+		ip4 := ipL.(*layers.IPv4)
+		tcp := tcpL.(*layers.TCP)
+		if !ip4.SrcIP.Equal(ip) || tcp.SrcPort != layers.TCPPort(port) || !tcp.SYN || !tcp.ACK {
+			continue
+		}
+		fp := &TCPFingerprint{
+			TTL:    ip4.TTL,
+			Window: tcp.Window,
+			DF:     ip4.Flags&layers.IPv4DontFragment != 0,
+		}
+		parseTCPOptions(tcp.Options, fp)
+		return fp, nil
+	}
+	return nil, fmt.Errorf("no SYN-ACK from %s:%d", ip, port)
+}
+
+// parseTCPOptions extracts MSS, window scale and SACK-permitted from the
+// SYN-ACK option list and builds the canonical options signature.
+func parseTCPOptions(opts []layers.TCPOption, fp *TCPFingerprint) {
+	var parts []string
+	for _, o := range opts {
+		switch o.OptionType {
+		case 2: // MSS
+			if len(o.OptionData) == 2 {
+				fp.MSS = uint16(o.OptionData[0])<<8 | uint16(o.OptionData[1])
+			}
+			parts = append(parts, "mss")
+		case 3: // window scale
+			if len(o.OptionData) == 1 {
+				fp.WS = o.OptionData[0]
+			}
+			parts = append(parts, "ws")
+		case 4: // SACK permitted
+			fp.SACKOK = true
+			parts = append(parts, "sackok")
+		default:
+			parts = append(parts, fmt.Sprintf("opt%d", o.OptionType))
+		}
+	}
+	fp.Options = fmt.Sprintf("ttl:%d win:%d mss:%d ws:%d sackok:%v df:%v [%s]",
+		fp.TTL, fp.Window, fp.MSS, fp.WS, fp.SACKOK, fp.DF, strings.Join(parts, ","))
+}
 func (s *Scanner) resolveMAC(ip net.IP, timeout time.Duration) (net.HardwareAddr, error) {
 	raw, err := arp.BuildRequest(s.iface.MAC, s.iface.IP, broadcastMAC, ip)
 	if err != nil {
@@ -207,7 +487,7 @@ func (s *Scanner) sendSYN(dstIP net.IP, dstMAC net.HardwareAddr, port uint16) er
 	if err != nil {
 		return err
 	}
-	return s.handle.WritePacketData(raw)
+	return s.writeRaw(raw)
 }
 
 // Banner is the result of a banner grab on an open port.

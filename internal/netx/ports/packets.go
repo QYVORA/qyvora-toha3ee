@@ -16,12 +16,24 @@ func BuildSYN(srcIP, dstIP net.IP, srcMAC, dstMAC net.HardwareAddr, sport, dport
 // BuildSYNEx is BuildSYN with full control over the fingerprintable IP/TCP
 // fields so callers can vary TTL, DF, window and IP identification per probe.
 func BuildSYNEx(srcIP, dstIP net.IP, srcMAC, dstMAC net.HardwareAddr, sport, dport uint16, seq uint32, ttl uint8, df bool, window, id uint16) ([]byte, error) {
+	return BuildProbe(srcIP, dstIP, srcMAC, dstMAC, sport, dport, seq, 0, ProbeFlags{SYN: true}, ttl, df, window, id)
+}
+
+// ProbeFlags is the TCP control-flag set for a crafted probe.
+type ProbeFlags struct {
+	FIN, SYN, RST, PSH, ACK, URG bool
+}
+
+// BuildProbe crafts a raw TCP probe packet with an arbitrary control-flag set
+// and full control over the fingerprintable IP/TCP fields. It backs the
+// half-open SYN scan and the FIN/NULL/XMAS/ACK scan modes.
+func BuildProbe(srcIP, dstIP net.IP, srcMAC, dstMAC net.HardwareAddr, sport, dport uint16, seq, ack uint32, flags ProbeFlags, ttl uint8, df bool, window, id uint16) ([]byte, error) {
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 
-	var flags layers.IPv4Flag
+	var ipflags layers.IPv4Flag
 	if df {
-		flags = layers.IPv4DontFragment
+		ipflags = layers.IPv4DontFragment
 	}
 	ip := &layers.IPv4{
 		SrcIP:    srcIP.To4(),
@@ -30,13 +42,19 @@ func BuildSYNEx(srcIP, dstIP net.IP, srcMAC, dstMAC net.HardwareAddr, sport, dpo
 		TTL:      ttl,
 		Id:       id,
 		Protocol: layers.IPProtocolTCP,
-		Flags:    flags,
+		Flags:    ipflags,
 	}
 	tcp := &layers.TCP{
 		SrcPort: layers.TCPPort(sport),
 		DstPort: layers.TCPPort(dport),
 		Seq:     seq,
-		SYN:     true,
+		Ack:     ack,
+		FIN:     flags.FIN,
+		SYN:     flags.SYN,
+		RST:     flags.RST,
+		PSH:     flags.PSH,
+		ACK:     flags.ACK,
+		URG:     flags.URG,
 		Window:  window,
 	}
 	if err := tcp.SetNetworkLayerForChecksum(ip); err != nil {
