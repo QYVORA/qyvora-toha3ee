@@ -1,12 +1,18 @@
 package recon
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/qyvora/toha3ee/internal/events"
 	"github.com/qyvora/toha3ee/internal/store"
 )
 
@@ -35,8 +41,8 @@ func (*CVESuggest) Meta() attacks.ModuleMeta {
 		Risk:        attacks.RiskInfo,
 		Targets:     []string{"host"},
 		Passive:     true,
-		Description: "map captured service banners and OS guesses to known CVE candidates from an embedded rule table",
-		Limitations: "the embedded table covers common services only; versions must match banners exactly; always verify against a CVE database",
+		Description: "map captured service banners to known CVEs from an embedded table, or look up CVE IDs / keywords live via the NVD and cve.org APIs",
+		Limitations: "embedded mode matches the local rule table only; live mode needs outbound HTTPS to services.nvd.nist.gov / cveawg.mitre.org and is rate-limited",
 	}
 }
 
@@ -59,8 +65,16 @@ func (*CVESuggest) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 	return rep, nil
 }
 
-// Run evaluates every host banner against the rule table.
+// Run evaluates every host banner against the rule table, or queries the CVE
+// APIs live when mode=live.
 func (*CVESuggest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+	mode := ctx.Conf.Get("cve.suggest", "mode")
+	if m, ok := opts["mode"]; ok && m != "" {
+		mode = m
+	}
+	if mode == "live" {
+		return cveRunLive(ctx)
+	}
 	var out []CVE
 	for _, h := range ctx.Store.Hosts() {
 		out = append(out, suggestForHost(h)...)
@@ -74,6 +88,212 @@ func (*CVESuggest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		ctx.Printf("[!] cve.suggest: %-12s %s on %s (%s): %s\n", c.Severity, c.ID, c.Host, c.Service, c.Reason)
 	}
 	return nil
+}
+
+// cveRunLive queries the CVE databases for the configured lookup: a CVE ID
+// goes to the cve.org API, a keyword to the NVD keyword search.
+func cveRunLive(ctx *attacks.AttackCtx) error {
+	lookup := ctx.Conf.Get("cve.suggest", "lookup")
+	if lookup == "" {
+		return fmt.Errorf("cve.suggest: set cve.suggest.lookup to a CVE ID or keyword (and mode=live)")
+	}
+	timeout := ctx.Conf.GetDuration("cve.suggest", "timeout", 20*time.Second)
+	limit := ctx.Conf.GetInt("cve.suggest", "limit", 8)
+
+	var out []CVE
+	if strings.HasPrefix(strings.ToUpper(lookup), "CVE-") {
+		c, err := cveByID(lookup, timeout)
+		if err != nil {
+			return fmt.Errorf("cve.suggest: %w", err)
+		}
+		if c != nil {
+			out = append(out, *c)
+		}
+	} else {
+		got, err := cveByKeyword(lookup, limit, timeout)
+		if err != nil {
+			return fmt.Errorf("cve.suggest: %w", err)
+		}
+		out = got
+	}
+	ctx.SetState("cve.suggest", out)
+	for _, c := range out {
+		ctx.Emit(events.TopicLog, fmt.Sprintf("cve.suggest: %s %s (%s): %s", c.ID, c.Severity, c.Service, c.Reason), nil)
+		ctx.Printf("[!] cve.suggest: %-12s %s %s: %s\n", c.Severity, c.ID, c.Service, c.Reason)
+	}
+	if len(out) == 0 {
+		ctx.Printf("[*] cve.suggest: no live CVE results for %q.\n", lookup)
+	}
+	return nil
+}
+
+// cveByKeyword searches the NVD keyword endpoint.
+func cveByKeyword(keyword string, limit int, timeout time.Duration) ([]CVE, error) {
+	u := "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=" +
+		url.QueryEscape(keyword) + "&resultsPerPage=" + url.QueryEscape(fmt.Sprint(limit))
+	body, err := httpGetCVE(u, timeout)
+	if err != nil {
+		return nil, err
+	}
+	return parseNVD(body)
+}
+
+// nvdRecord mirrors the fields of an NVD 2.0 CVE record we care about.
+type nvdRecord struct {
+	Vulnerabilities []struct {
+		CVE struct {
+			ID           string `json:"id"`
+			Descriptions []struct {
+				Lang  string `json:"lang"`
+				Value string `json:"value"`
+			} `json:"descriptions"`
+			Metrics struct {
+				CvssMetricV31 []struct {
+					CvssData struct {
+						BaseSeverity string `json:"baseSeverity"`
+					} `json:"cvssData"`
+				} `json:"cvssMetricV31"`
+				CvssMetricV30 []struct {
+					CvssData struct {
+						BaseSeverity string `json:"baseSeverity"`
+					} `json:"cvssMetricV30"`
+				} `json:"cvssMetricV30"`
+				CvssMetricV2 []struct {
+					BaseSeverity string `json:"baseSeverity"`
+				} `json:"cvssMetricV2"`
+			} `json:"metrics"`
+		} `json:"cve"`
+	} `json:"vulnerabilities"`
+}
+
+// parseNVD decodes an NVD 2.0 keyword-search response into CVE records.
+func parseNVD(body []byte) ([]CVE, error) {
+	var resp nvdRecord
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	var out []CVE
+	for _, v := range resp.Vulnerabilities {
+		sev := ""
+		if len(v.CVE.Metrics.CvssMetricV31) > 0 {
+			sev = v.CVE.Metrics.CvssMetricV31[0].CvssData.BaseSeverity
+		}
+		if sev == "" && len(v.CVE.Metrics.CvssMetricV30) > 0 {
+			sev = v.CVE.Metrics.CvssMetricV30[0].CvssData.BaseSeverity
+		}
+		if sev == "" && len(v.CVE.Metrics.CvssMetricV2) > 0 {
+			sev = v.CVE.Metrics.CvssMetricV2[0].BaseSeverity
+		}
+		desc := firstEnglish(v.CVE.Descriptions)
+		if len(desc) > 140 {
+			desc = desc[:137] + "..."
+		}
+		out = append(out, CVE{ID: v.CVE.ID, Severity: sev, Service: "nvd", Reason: desc})
+	}
+	return out, nil
+}
+
+// cveByID looks a single CVE up via the cve.org API.
+func cveByID(id string, timeout time.Duration) (*CVE, error) {
+	body, err := httpGetCVE("https://cveawg.mitre.org/api/cve/"+strings.ToUpper(id), timeout)
+	if err != nil {
+		return nil, err
+	}
+	return parseCVEOrg(body, strings.ToUpper(id))
+}
+
+// cveorgRecord mirrors the fields of a cve.org API record we care about.
+type cveorgRecord struct {
+	CveID      string `json:"cveId"`
+	Containers struct {
+		CNA struct {
+			Descriptions []struct {
+				Lang  string `json:"lang"`
+				Value string `json:"value"`
+			} `json:"descriptions"`
+			Metrics []struct {
+				CvssV31 struct {
+					BaseSeverity string `json:"baseSeverity"`
+				} `json:"cvssV3_1"`
+				CvssV30 struct {
+					BaseSeverity string `json:"baseSeverity"`
+				} `json:"cvssV3_0"`
+				CvssV2 struct {
+					BaseSeverity string `json:"baseSeverity"`
+				} `json:"cvssV2_0"`
+			} `json:"metrics"`
+		} `json:"cna"`
+	} `json:"containers"`
+}
+
+// parseCVEOrg decodes a cve.org API record into a CVE.
+func parseCVEOrg(body []byte, id string) (*CVE, error) {
+	var resp cveorgRecord
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	sev := ""
+	for _, m := range resp.Containers.CNA.Metrics {
+		if m.CvssV31.BaseSeverity != "" {
+			sev = m.CvssV31.BaseSeverity
+			break
+		}
+		if m.CvssV30.BaseSeverity != "" {
+			sev = m.CvssV30.BaseSeverity
+			break
+		}
+		if m.CvssV2.BaseSeverity != "" {
+			sev = m.CvssV2.BaseSeverity
+			break
+		}
+	}
+	desc := ""
+	for _, d := range resp.Containers.CNA.Descriptions {
+		if d.Lang == "en" {
+			desc = d.Value
+			break
+		}
+	}
+	if len(desc) > 140 {
+		desc = desc[:137] + "..."
+	}
+	cid := resp.CveID
+	if cid == "" {
+		cid = id
+	}
+	return &CVE{ID: cid, Severity: sev, Service: "cve.org", Reason: desc}, nil
+}
+
+// httpGetCVE performs a short HTTPS GET for CVE database queries.
+func httpGetCVE(u string, timeout time.Duration) ([]byte, error) {
+	client := &http.Client{Timeout: timeout}
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "toha3ee/1.0 (authorized assessment)")
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("CVE API returned HTTP %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+}
+
+func firstEnglish(ds []struct {
+	Lang  string `json:"lang"`
+	Value string `json:"value"`
+}) string {
+	for _, d := range ds {
+		if d.Lang == "en" || d.Lang == "" {
+			return d.Value
+		}
+	}
+	return ""
 }
 
 // Verify reports the number of suggested CVEs.
