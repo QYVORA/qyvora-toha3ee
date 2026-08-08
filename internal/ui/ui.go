@@ -16,6 +16,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // ANSI style codes. Red is reserved for hard errors; warnings use Amber and
@@ -154,11 +156,24 @@ func (u *UI) KVf(key, format string, args ...any) {
 //	[+] success (green)
 //	[*] info / running (white)
 //	[!] warning (amber; hard errors stay red)
+//	[x] hard error (red)
 //	[>] system (bold white)
 //	[-] neutral (dim white)
 func (u *UI) Status(glyph, format string, args ...any) {
 	sym := u.Glyph(glyph)
 	fmt.Fprintf(u.w, "  %s %s\n", sym, u.White(fmt.Sprintf(format, args...)))
+}
+
+// Err prints a hard-error line with a red [x] glyph. It is the console's one
+// red emphasis: warnings use [!], only failures and the prompt accent use red.
+func (u *UI) Err(format string, args ...any) {
+	fmt.Fprintf(u.w, "  %s %s\n", u.paint("[x]", Bold+Red), u.Red(fmt.Sprintf(format, args...)))
+}
+
+// Prompt builds the interactive prompt with the framework name in bold red
+// (the deliberate accent color) and a bold white chevron.
+func (u *UI) Prompt(name string) string {
+	return u.paint(name, Bold+Red) + u.paint(" > ", Bold+White)
 }
 
 // Glyph returns a colored "[x]" token for a status glyph character.
@@ -170,6 +185,8 @@ func (u *UI) Glyph(glyph string) string {
 		return u.paint("[*]", White)
 	case "!":
 		return u.paint("[!]", Amber)
+	case "x", "X":
+		return u.paint("[x]", Bold+Red)
 	case ">":
 		return u.paint("[>]", Bold+White)
 	case "-":
@@ -177,6 +194,35 @@ func (u *UI) Glyph(glyph string) string {
 	default:
 		return u.paint("["+glyph+"]", White)
 	}
+}
+
+// HUD prints a single-line status bar with a red edge block, left and right
+// sections, and space padding between them so the bar spans the terminal
+// width. It is the persistent status strip shown above the prompt.
+func (u *UI) HUD(left, right string) {
+	cols := 80
+	if w := u.TermWidth(); w > 20 {
+		cols = w
+	}
+	pad := cols - runeLen(left) - runeLen(right) - 1
+	if pad < 1 {
+		pad = 1
+	}
+	fmt.Fprintf(u.w, "%s %s%s\n", u.paint("▮", Bold+Red), left, strings.Repeat(" ", pad)+right)
+}
+
+// TermWidth reports the terminal column count, or 0 when the writer is not an
+// interactive terminal.
+func (u *UI) TermWidth() int {
+	f, ok := u.w.(*os.File)
+	if !ok {
+		return 0
+	}
+	ws, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
+	if err != nil {
+		return 0
+	}
+	return int(ws.Col)
 }
 
 // Table prints a header and aligned rows. Header cells are bold white and
@@ -371,6 +417,8 @@ func recolorPrefix(line []byte, u *UI) []byte {
 		tok = u.paint("-", Dim+White)
 	case "~":
 		tok = u.paint("~", White)
+	case "x", "X":
+		tok = u.paint("x", Bold+Red)
 	case "OK":
 		tok = u.paint("OK", Green)
 	case "FIX":
