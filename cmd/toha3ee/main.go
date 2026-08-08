@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -27,11 +28,14 @@ import (
 
 	// Register all attack modules and vector rules.
 	_ "github.com/qyvora/toha3ee/internal/attacks/auth"
+	_ "github.com/qyvora/toha3ee/internal/attacks/enum"
 	_ "github.com/qyvora/toha3ee/internal/attacks/espionage"
 	_ "github.com/qyvora/toha3ee/internal/attacks/mitm"
+	_ "github.com/qyvora/toha3ee/internal/attacks/osint"
 	_ "github.com/qyvora/toha3ee/internal/attacks/post"
 	_ "github.com/qyvora/toha3ee/internal/attacks/recon"
 	_ "github.com/qyvora/toha3ee/internal/attacks/switch"
+	_ "github.com/qyvora/toha3ee/internal/attacks/web"
 	_ "github.com/qyvora/toha3ee/internal/attacks/wlan"
 	_ "github.com/qyvora/toha3ee/internal/vectors/rules"
 )
@@ -125,11 +129,36 @@ func main() {
 
 	runCapletCmd := &cobra.Command{
 		Use:   "run",
-		Short: "execute a caplet script non-interactively",
+		Short: "execute a script or caplet non-interactively",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+				if strings.HasSuffix(args[0], ".toha3ee") {
+					return s.RunScript(args[0])
+				}
 				return s.RunCaplet(args[0])
+			})
+		},
+	}
+
+	scriptCmd := &cobra.Command{
+		Use:   "script",
+		Short: "execute a .toha3ee script file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+				return s.RunScript(args[0])
+			})
+		},
+	}
+
+	buildCmd := &cobra.Command{
+		Use:   "build",
+		Short: "validate a .toha3ee script and print a dry-run plan",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+				return s.BuildScript(args[0])
 			})
 		},
 	}
@@ -158,7 +187,7 @@ func main() {
 		},
 	}
 
-	root.AddCommand(replCmd, wizardCmd, evalCmd, runCapletCmd, modulesCmd, versionCmd)
+	root.AddCommand(replCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd)
 	root.SetArgs(os.Args[1:])
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toha3ee:", err)
