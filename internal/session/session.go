@@ -87,6 +87,11 @@ func (s *Session) warnf(format string, args ...any) {
 	s.UI.Status("!", format, args...)
 }
 
+// errorf prints a red [x] error line through the console UI.
+func (s *Session) errorf(format string, args ...any) {
+	s.UI.Err(format, args...)
+}
+
 // goodf prints a [+] success line through the console UI.
 func (s *Session) goodf(format string, args ...any) {
 	s.UI.Status("+", format, args...)

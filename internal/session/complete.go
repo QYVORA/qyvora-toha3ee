@@ -61,6 +61,10 @@ func commandsCompleter() []readline.PrefixCompleterInterface {
 		readline.PcItem("report"),
 		readline.PcItem("sleep"),
 		readline.PcItem("run.caplet"),
+		readline.PcItem("script"),
+		readline.PcItem("run.script"),
+		readline.PcItem("build"),
+		readline.PcItem("plan"),
 		readline.PcItem("clear"),
 	}
 }

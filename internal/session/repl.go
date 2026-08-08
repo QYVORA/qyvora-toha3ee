@@ -19,7 +19,7 @@ import (
 // REPL runs the interactive console. It returns when the user quits.
 func (s *Session) REPL() error {
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:      s.UI.BoldWhite("toha3ee> "),
+		Prompt:      s.UI.Prompt("toha3ee"),
 		HistoryFile: ".toha3ee_history",
 		AutoComplete: readline.NewPrefixCompleter(
 			commandsCompleter()...,
@@ -32,6 +32,7 @@ func (s *Session) REPL() error {
 
 	s.UI.Banner("network exploitation & MITM framework")
 	s.UI.BannerFoot(s.Iface.String(), versionString())
+	s.hud()
 	s.statusf("session ready. type 'help' for commands.")
 	s.Store.LogEvent(events.TopicLog, "console started")
 
@@ -44,11 +45,13 @@ func (s *Session) REPL() error {
 		if line == "" {
 			continue
 		}
-		if quit, e := s.execWithPrompt(rl, line); e != nil {
+		quit, e := s.execWithPrompt(rl, line)
+		s.hud()
+		if e != nil {
 			if e == errQuit {
 				return nil
 			}
-			s.warnf("%v", e)
+			s.errorf("%v", e)
 		} else if quit {
 			return nil
 		}
@@ -86,6 +89,24 @@ func (s *Session) execWithPrompt(rl *readline.Instance, line string) (bool, erro
 // versionString returns the build version (injected by the CLI at build time).
 func versionString() string {
 	return Version
+}
+
+// execOnce runs a single command line outside the interactive loop (used by
+// the script engine's `exec` statement). Commands that need a readline
+// instance, or that would quit the session, are rejected.
+func (s *Session) execOnce(line string) error {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return nil
+	}
+	if fields[0] == "wizard" {
+		return fmt.Errorf("wizard is interactive; run it from the REPL")
+	}
+	quit, err := s.exec(nil, line)
+	if quit {
+		return fmt.Errorf("command %q is not allowed in scripts", fields[0])
+	}
+	return err
 }
 
 // exec dispatches a single command line.
@@ -172,6 +193,16 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 			return false, fmt.Errorf("usage: run.caplet <file>")
 		}
 		return false, s.runCaplet(args[0])
+	case "script", "run.script":
+		if len(args) == 0 {
+			return false, fmt.Errorf("usage: script <file.toha3ee>")
+		}
+		return false, s.RunScript(args[0])
+	case "build", "plan":
+		if len(args) == 0 {
+			return false, fmt.Errorf("usage: build <file.toha3ee>")
+		}
+		return false, s.BuildScript(args[0])
 	default:
 		// Allow "module on" / "module off" and "module [key value...]".
 		if m, ok := attacks.Get(cmd); ok {
@@ -193,16 +224,24 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 	return false, nil
 }
 
-// runArgs handles "on module [key value...]" style invocations.
+// runArgs handles "on module [key value...]" style invocations and script
+// files: `run <module>` starts a module, while `run <file>.toha3ee` or
+// `run <file>.cap` executes a script or caplet.
 func (s *Session) runArgs(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: on <module-id> [key value ...]")
+		return fmt.Errorf("usage: on <module-id> [key value ...] | on <file>.toha3ee | on <file>.cap")
 	}
 	id := args[0]
-	if _, ok := attacks.Get(id); !ok {
-		return fmt.Errorf("unknown module %q", id)
+	if _, ok := attacks.Get(id); ok {
+		return s.StartModule(id, parseOpts(args[1:]))
 	}
-	return s.StartModule(id, parseOpts(args[1:]))
+	if strings.HasSuffix(id, ".toha3ee") {
+		return s.RunScript(id)
+	}
+	if strings.HasSuffix(id, ".cap") {
+		return s.runCaplet(id)
+	}
+	return fmt.Errorf("unknown module %q (try 'modules' or 'script <file>.toha3ee')", id)
 }
 
 // runModuleWithOpts handles "module key1 val1 key2 val2" where the first token
