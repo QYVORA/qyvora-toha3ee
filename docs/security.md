@@ -105,3 +105,11 @@ toha3ee is MIT-licensed. The license grants you freedom to use, modify and
 distribute the code — it does **not** grant you permission to use it against
 networks you don't own. That permission comes from the network owner, in
 writing.
+
+## What toha3ee will not do
+
+Some attacks are excluded by design, not by omission. See
+[Declined techniques](declined-techniques.md) for the full list with
+implementation sketches and reasons: host persistence, C2/beaconing, EDR/AV
+evasion, rootkits, anti-forensics, payload/dropper generation, ransomware-style
+destruction, and third-party exfiltration are never implemented.

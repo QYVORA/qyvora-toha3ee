@@ -24,6 +24,7 @@ scripts or one-shot command sequences.
 | [Module reference](module-reference.md) | Every module, its risk, targets and settings |
 | [Reporting](reporting.md) | The `report.generate` output format and interpretation |
 | [Security & responsible use](security.md) | Risk model, blast radius, legal and ethical use |
+| [Declined techniques](declined-techniques.md) | What is deliberately not implemented and why (ethical + technical) |
 | [Contributing](contributing.md) | Developer setup, how to add a module, conventions |
 | [FAQ](faq.md) | Common questions and troubleshooting |
 
