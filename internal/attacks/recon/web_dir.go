@@ -1,0 +1,209 @@
+package recon
+
+import (
+	"bufio"
+	"embed"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/qyvora/toha3ee/internal/events"
+	"github.com/qyvora/toha3ee/internal/netx/ports"
+	"github.com/qyvora/toha3ee/internal/stealth"
+)
+
+//go:embed wordlists/*.txt
+var wordlistFS embed.FS
+
+// WebDir is a directory/file brute-forcer against discovered HTTP(S) services.
+// It is deliberately light: the default wordlist is small and every request is
+// paced through the stealth profile so the scan stays hard to fingerprint.
+type WebDir struct{}
+
+// Meta implements attacks.Module.
+func (*WebDir) Meta() attacks.ModuleMeta {
+	return attacks.ModuleMeta{
+		ID:          "web.dir",
+		Category:    "recon",
+		Risk:        attacks.RiskLow,
+		Targets:     []string{"service"},
+		Description: "brute-force common web directories and files on discovered HTTP/HTTPS services",
+		Limitations: "detection relies on status codes only (200/30x/401/403); servers returning 200 for missing paths cause false positives",
+	}
+}
+
+// Preflight needs discovered hosts.
+func (*WebDir) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+	rep := &attacks.PreflightReport{}
+	if len(ctx.Store.Hosts()) == 0 {
+		rep.AddFixable("targets", "no hosts discovered; run net.scan first")
+	} else {
+		rep.AddOK("targets", fmt.Sprintf("%d host(s) available", len(ctx.Store.Hosts())))
+	}
+	wordlist := ctx.Conf.Get("web.dir", "wordlist")
+	if wordlist != "" && wordlist != "common" {
+		if _, err := os.Open(wordlist); err != nil {
+			rep.AddBlocked("wordlist", fmt.Sprintf("cannot read %s: %v", wordlist, err))
+		} else {
+			rep.AddOK("wordlist", wordlist)
+		}
+	} else {
+		rep.AddOK("wordlist", "embedded common wordlist")
+	}
+	return rep, nil
+}
+
+type dirFinding struct {
+	Host string
+	Port uint16
+	Path string
+	Code int
+}
+
+// Run walks the wordlist against every discovered HTTP/HTTPS service.
+func (*WebDir) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+	st := stealth.FromConfig(ctx.Conf, "web.dir")
+
+	wordlist := ctx.Conf.Get("web.dir", "wordlist")
+	if w, ok := opts["wordlist"]; ok && w != "" {
+		wordlist = w
+	}
+	entries, err := loadWordlist(wordlist)
+	if err != nil {
+		return fmt.Errorf("web.dir: %w", err)
+	}
+	exts := splitList(ctx.Conf.Get("web.dir", "extensions"))
+	timeout := ctx.Conf.GetDuration("web.dir", "timeout", 2*time.Second)
+	client := &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	var findings []dirFinding
+	total := 0
+	for _, h := range ctx.Store.Hosts() {
+		if len(h.OpenPorts()) == 0 {
+			continue
+		}
+		for _, p := range h.OpenPorts() {
+			svc := ports.GuessService(p)
+			if svc != "http" && svc != "http-proxy" && svc != "https" && svc != "https-alt" {
+				continue
+			}
+			scheme := "http"
+			if p == 443 || p == 8443 {
+				scheme = "https"
+			}
+			base := fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(h.IP.String(), strconv.Itoa(int(p))))
+			for _, e := range entries {
+				for _, path := range expandExtensions(e, exts) {
+					select {
+					case <-ctx.Done:
+						return nil
+					default:
+					}
+					st.JitterSleep()
+					url := base + "/" + path
+					resp, err := client.Get(url)
+					if err != nil {
+						continue
+					}
+					io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+					resp.Body.Close()
+					total++
+					if resp.StatusCode == 200 || (resp.StatusCode >= 301 && resp.StatusCode <= 308) || resp.StatusCode == 401 || resp.StatusCode == 403 {
+						findings = append(findings, dirFinding{Host: h.IP.String(), Port: p, Path: path, Code: resp.StatusCode})
+						ctx.Emit(events.TopicLog, fmt.Sprintf("web.dir: %s:%d/%s [%d]", h.IP, p, path, resp.StatusCode), nil)
+					}
+				}
+			}
+		}
+	}
+	ctx.SetState("web.dir", findings)
+	ctx.Printf("[*] web.dir complete: %d request(s), %d interesting path(s).\n", total, len(findings))
+	return nil
+}
+
+func loadWordlist(wordlist string) ([]string, error) {
+	if wordlist == "" || wordlist == "common" {
+		data, err := wordlistFS.ReadFile("wordlists/common.txt")
+		if err != nil {
+			return nil, fmt.Errorf("embedded wordlist: %w", err)
+		}
+		var out []string
+		sc := bufio.NewScanner(strings.NewReader(string(data)))
+		for sc.Scan() {
+			if e := strings.TrimSpace(sc.Text()); e != "" {
+				out = append(out, e)
+			}
+		}
+		return out, nil
+	}
+	f, err := os.Open(wordlist)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var out []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if e := strings.TrimSpace(sc.Text()); e != "" {
+			out = append(out, e)
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// expandExtensions yields e itself plus e+ext for each configured extension
+// when e has no extension of its own.
+func expandExtensions(e string, exts []string) []string {
+	out := []string{e}
+	if len(exts) == 0 || strings.Contains(e, ".") {
+		return out
+	}
+	for _, x := range exts {
+		out = append(out, e+x)
+	}
+	return out
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// Verify reports the discovered paths.
+func (*WebDir) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
+	v, ok := ctx.GetState("web.dir")
+	if !ok {
+		return nil, fmt.Errorf("web.dir not run")
+	}
+	findings, _ := v.([]dirFinding)
+	imp := &attacks.Impact{Summary: fmt.Sprintf("found %d interesting web path(s)", len(findings))}
+	imp.Add("requests", "see session log")
+	imp.Add("findings", strconv.Itoa(len(findings)))
+	for _, f := range findings {
+		imp.Add("found", fmt.Sprintf("%s:%d/%s [%d]", f.Host, f.Port, f.Path, f.Code))
+	}
+	return imp, nil
+}
+
+// Cleanup is a no-op.
+func (*WebDir) Cleanup(ctx *attacks.AttackCtx) error {
+	return nil
+}
+
+var _ attacks.Module = (*WebDir)(nil)
