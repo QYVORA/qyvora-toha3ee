@@ -3,12 +3,16 @@ package script
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-// mockRunner is a scriptable test double for the script engine.
+// mockRunner is a scriptable test double for the script engine. All maps and
+// slices are guarded by mu because the engine can drive the runner from
+// background goroutines (e.g. "wait for" polling) while the test mutates state.
 type mockRunner struct {
+	mu      sync.Mutex
 	conf    map[string]string
 	running map[string]bool
 	props   map[string]string
@@ -27,27 +31,52 @@ func newMock() *mockRunner {
 	}
 }
 
-func (m *mockRunner) Echo(s string) { m.echos = append(m.echos, s) }
+func (m *mockRunner) Echo(s string) {
+	m.mu.Lock()
+	m.echos = append(m.echos, s)
+	m.mu.Unlock()
+}
 func (m *mockRunner) SetConfig(key, value string) error {
+	m.mu.Lock()
 	m.conf[key] = value
+	m.mu.Unlock()
 	return nil
 }
-func (m *mockRunner) GetConfig(key string) string { return m.conf[key] }
+func (m *mockRunner) GetConfig(key string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.conf[key]
+}
 func (m *mockRunner) Start(id string, opts map[string]string) error {
+	m.mu.Lock()
 	m.started = append(m.started, id)
 	m.running[id] = true
+	m.mu.Unlock()
 	return nil
 }
 func (m *mockRunner) Stop(id string) error {
+	m.mu.Lock()
 	m.stopped = append(m.stopped, id)
 	m.running[id] = false
+	m.mu.Unlock()
 	return nil
 }
-func (m *mockRunner) IsRunning(id string) bool { return m.running[id] }
-func (m *mockRunner) Show(id string) error     { return nil }
+func (m *mockRunner) IsRunning(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running[id]
+}
+func (m *mockRunner) Show(id string) error { return nil }
 func (m *mockRunner) Report(path string) error {
+	m.mu.Lock()
 	m.reports = append(m.reports, path)
+	m.mu.Unlock()
 	return nil
+}
+func (m *mockRunner) setRunning(id string, val bool) {
+	m.mu.Lock()
+	m.running[id] = val
+	m.mu.Unlock()
 }
 func (m *mockRunner) Cmd(line string) error {
 	m.cmds = append(m.cmds, line)
@@ -201,9 +230,9 @@ func TestWaitFor(t *testing.T) {
 	// Simulate a module that finishes after 300ms.
 	go func() {
 		time.Sleep(300 * time.Millisecond)
-		m.running["net.scan"] = false
+		m.setRunning("net.scan", false)
 	}()
-	m.running["net.scan"] = true
+	m.setRunning("net.scan", true)
 	src := "on net.scan\nwait for net.scan max 5\necho -> \"done\"\n"
 	start := time.Now()
 	if err := e.Run(src); err != nil {
@@ -219,7 +248,7 @@ func TestWaitFor(t *testing.T) {
 
 func TestWaitForTimeout(t *testing.T) {
 	m := newMock()
-	m.running["net.scan"] = true
+	m.setRunning("net.scan", true)
 	e := NewEngine(m)
 	err := e.Run("on net.scan\nwait for net.scan max 0.1\necho -> \"after\"\n")
 	if err == nil {
@@ -332,14 +361,14 @@ func TestReport(t *testing.T) {
 
 func TestSyntaxErrors(t *testing.T) {
 	cases := []string{
-		"if true\n",              // missing end
-		"end\n",                  // stray end
-		"set\n",                  // missing key
-		"on\n",                   // missing module id
-		"for each _x 1\nend\n",   // missing 'in'
-		"echo -> $(\n",           // unterminated property
-		"\"unterminated\n",       // unterminated string
-		"_x -> 1 extra stuff\n",  // trailing junk after value
+		"if true\n",             // missing end
+		"end\n",                 // stray end
+		"set\n",                 // missing key
+		"on\n",                  // missing module id
+		"for each _x 1\nend\n",  // missing 'in'
+		"echo -> $(\n",          // unterminated property
+		"\"unterminated\n",      // unterminated string
+		"_x -> 1 extra stuff\n", // trailing junk after value
 	}
 	for _, src := range cases {
 		if _, err := Parse(src); err == nil {
