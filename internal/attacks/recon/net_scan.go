@@ -18,6 +18,17 @@ func init() {
 	attacks.Register(&NetScan{})
 	attacks.Register(&ServiceScan{})
 	attacks.Register(&ServiceFingerprint{})
+	attacks.Register(&WebDir{})
+	attacks.Register(&ServiceTLS{})
+	attacks.Register(&NetPing{})
+	attacks.Register(&NetTraceroute{})
+	attacks.Register(&NetOSDetect{})
+	attacks.Register(&TCPConnectScan{})
+	attacks.Register(&UDPScan{})
+	attacks.Register(&FlagScan{})
+	attacks.Register(&ACKScan{})
+	attacks.Register(&ProtocolScan{})
+	attacks.Register(&IdleScan{})
 }
 
 // NetScan is an ARP-based host discovery module.
