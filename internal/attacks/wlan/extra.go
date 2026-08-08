@@ -22,6 +22,7 @@ func init() {
 // handshake, enabling offline cracking without a connected client.
 type WLANPMKID struct{}
 
+// Meta implements attacks.Module.
 func (*WLANPMKID) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wlan.pmkid",
@@ -34,11 +35,13 @@ func (*WLANPMKID) Meta() attacks.ModuleMeta {
 	}
 }
 
+// pmkidState tracks the live PMKID scanner and the monitor-mode restore hook.
 type pmkidState struct {
 	scanner *wlan.PMKIDScanner
 	restore func() error
 }
 
+// Preflight checks for a wireless interface that can enter monitor mode.
 func (*WLANPMKID) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
@@ -50,6 +53,8 @@ func (*WLANPMKID) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 	return rep, nil
 }
 
+// Run starts the PMKID scanner in monitor mode and reports every captured
+// PMKID until stopped.
 func (*WLANPMKID) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
@@ -95,6 +100,7 @@ func (*WLANPMKID) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports how many PMKIDs were captured during the run.
 func (*WLANPMKID) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("wlan.pmkid")
 	if !ok {
@@ -109,6 +115,7 @@ func (*WLANPMKID) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the scanner and restores the interface's previous mode.
 func (*WLANPMKID) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("wlan.pmkid")
 	ctx.Safety.UnregisterCleanup("wlan.pmkid")
@@ -126,6 +133,7 @@ func (*WLANPMKID) Cleanup(ctx *attacks.AttackCtx) error {
 // to confuse scanners and force clients to see phantom networks.
 type WLANBeaconFlood struct{}
 
+// Meta implements attacks.Module.
 func (*WLANBeaconFlood) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wlan.beaconflood",
@@ -138,6 +146,7 @@ func (*WLANBeaconFlood) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for a wireless interface that can enter monitor mode.
 func (*WLANBeaconFlood) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
@@ -148,6 +157,7 @@ func (*WLANBeaconFlood) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRep
 	return rep, nil
 }
 
+// Run broadcasts pre-built phantom beacons in a loop until stopped.
 func (*WLANBeaconFlood) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
@@ -225,6 +235,7 @@ func (*WLANBeaconFlood) Run(ctx *attacks.AttackCtx, opts map[string]string) erro
 	}
 }
 
+// Verify reports how many phantom beacons were broadcast.
 func (*WLANBeaconFlood) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("wlan.beaconflood")
 	if !ok {
@@ -236,6 +247,7 @@ func (*WLANBeaconFlood) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) 
 	return imp, nil
 }
 
+// Cleanup stops the beacon flood and restores the interface's previous mode.
 func (*WLANBeaconFlood) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("wlan.beaconflood")
 	ctx.Safety.UnregisterCleanup("wlan.beaconflood")
@@ -252,6 +264,7 @@ func (*WLANBeaconFlood) Cleanup(ctx *attacks.AttackCtx) error {
 // causing clients to associate to the attacker.
 type WLANKarma struct{}
 
+// Meta implements attacks.Module.
 func (*WLANKarma) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wlan.karma",
@@ -264,12 +277,15 @@ func (*WLANKarma) Meta() attacks.ModuleMeta {
 	}
 }
 
+// karmaState tracks the probe scanner, the restore hook and the set of seen
+// client MACs (so each client is only reported once).
 type karmaState struct {
 	scanner *wlan.Scanner
 	restore func() error
 	seen    map[string]int
 }
 
+// Preflight checks for a wireless interface that can enter monitor mode.
 func (*WLANKarma) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
@@ -280,6 +296,7 @@ func (*WLANKarma) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 	return rep, nil
 }
 
+// Run logs client probe requests in monitor mode until stopped.
 func (*WLANKarma) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
@@ -330,6 +347,7 @@ func (*WLANKarma) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports the number of probing clients and unique probe events.
 func (*WLANKarma) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("wlan.karma")
 	if !ok {
@@ -344,6 +362,7 @@ func (*WLANKarma) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the probe scanner and restores the interface's previous mode.
 func (*WLANKarma) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("wlan.karma")
 	ctx.Safety.UnregisterCleanup("wlan.karma")

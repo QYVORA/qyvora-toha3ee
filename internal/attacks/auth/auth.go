@@ -45,7 +45,9 @@ var defaultCreds = []struct{ user, pass string }{
 	{"admin", "default"},
 }
 
-// default.creds probes web-enabled hosts for bundled default credentials.
+// DefaultCreds probes web-enabled hosts for bundled default credentials. It
+// tries the well-known vendor credential pairs against the discovered web
+// services and reports any that authenticate.
 type DefaultCreds struct{}
 
 // Meta implements attacks.Module.
@@ -161,7 +163,8 @@ func (*DefaultCreds) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*DefaultCreds) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
-// smb.signing probes discovered SMB servers for their signing policy.
+// SMBSigning probes discovered SMB servers for their message-signing policy
+// and flags servers that do not require signing (a common relay prerequisite).
 type SMBSigning struct{}
 
 // Meta implements attacks.Module.
@@ -251,6 +254,8 @@ type dcCandidate struct {
 	ports []uint16
 }
 
+// Meta returns the module descriptor used for registry, help and REPL
+// completion.
 func (*KerberoastSuggest) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "smb.kerberoast",
@@ -314,7 +319,7 @@ func (*KerberoastSuggest) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error
 // Cleanup is a no-op.
 func (*KerberoastSuggest) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
-// ntlm.relay listens for NTLM authentication attempts and captures NTLMv2
+// NTLMRelay listens for NTLM authentication attempts and captures NTLMv2
 // hash material into the store.
 type NTLMRelay struct{}
 

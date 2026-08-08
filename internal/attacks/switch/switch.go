@@ -73,6 +73,7 @@ func serialize(opts gopacket.SerializeOptions, layers ...gopacket.SerializableLa
 // port, making the rest of the network sniffable.
 type MACFlood struct{}
 
+// Meta implements attacks.Module.
 func (*MACFlood) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "switch.flood",
@@ -85,6 +86,8 @@ func (*MACFlood) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for the root and raw-socket privileges needed to inject
+// spoofed Ethernet frames.
 func (*MACFlood) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -100,6 +103,7 @@ func (*MACFlood) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 	return rep, nil
 }
 
+// Run floods random-source ARP frames until the attack is stopped.
 func (*MACFlood) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	s, err := newRawSender(ctx.Iface)
 	if err != nil {
@@ -151,6 +155,7 @@ func (*MACFlood) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports how many spoofed-source frames were injected.
 func (*MACFlood) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("switch.flood")
 	if !ok {
@@ -162,6 +167,7 @@ func (*MACFlood) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the flood and closes the raw sender socket.
 func (*MACFlood) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("switch.flood")
 	ctx.Safety.UnregisterCleanup("switch.flood")
@@ -179,6 +185,7 @@ func (*MACFlood) Cleanup(ctx *attacks.AttackCtx) error {
 // port. This is a race the attacker must keep winning.
 type PortSteal struct{}
 
+// Meta implements attacks.Module.
 func (*PortSteal) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "switch.portsteal",
@@ -191,6 +198,7 @@ func (*PortSteal) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for raw-socket access and notes the victim MAC requirement.
 func (*PortSteal) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -202,6 +210,8 @@ func (*PortSteal) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 	return rep, nil
 }
 
+// Run continuously advertises the victim's MAC as belonging to this port
+// until the attack is stopped.
 func (*PortSteal) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	victimStr := ctx.Conf.GetDefault("switch.portsteal", "victim_mac", "")
 	if victimStr == "" {
@@ -261,6 +271,7 @@ func (*PortSteal) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports how many times the victim's MAC was claimed.
 func (*PortSteal) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("switch.portsteal")
 	if !ok {
@@ -272,6 +283,7 @@ func (*PortSteal) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the port-stealing flood and closes the raw sender socket.
 func (*PortSteal) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("switch.portsteal")
 	ctx.Safety.UnregisterCleanup("switch.portsteal")
@@ -288,6 +300,7 @@ func (*PortSteal) Cleanup(ctx *attacks.AttackCtx) error {
 // inner VLAN, letting the attacker reach hosts on a different VLAN.
 type VLANHop struct{}
 
+// Meta implements attacks.Module.
 func (*VLANHop) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "switch.vlanhop",
@@ -300,6 +313,7 @@ func (*VLANHop) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for raw-socket access and notes the target IP/VLAN config.
 func (*VLANHop) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -311,6 +325,7 @@ func (*VLANHop) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 	return rep, nil
 }
 
+// Run sends double-tagged ARP probes toward the target VLAN until stopped.
 func (*VLANHop) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	targetStr := ctx.Conf.GetDefault("switch.vlanhop", "target_ip", "")
 	if targetStr == "" {
@@ -380,6 +395,7 @@ func (*VLANHop) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports how many double-tagged frames were sent.
 func (*VLANHop) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("switch.vlanhop")
 	if !ok {
@@ -391,6 +407,7 @@ func (*VLANHop) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the VLAN-hop flood and closes the raw sender socket.
 func (*VLANHop) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("switch.vlanhop")
 	ctx.Safety.UnregisterCleanup("switch.vlanhop")
@@ -409,6 +426,7 @@ func (*VLANHop) Cleanup(ctx *attacks.AttackCtx) error {
 // deception.
 type CDPInject struct{}
 
+// Meta implements attacks.Module.
 func (*CDPInject) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "switch.cdp",
@@ -421,6 +439,7 @@ func (*CDPInject) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for raw-socket access.
 func (*CDPInject) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -431,6 +450,7 @@ func (*CDPInject) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 	return rep, nil
 }
 
+// Run injects forged CDP and LLDP frames every second until stopped.
 func (*CDPInject) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	s, err := newRawSender(ctx.Iface)
 	if err != nil {
@@ -471,6 +491,7 @@ func (*CDPInject) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports how many CDP/LLDP frames were injected.
 func (*CDPInject) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("switch.cdp")
 	if !ok {
@@ -482,6 +503,7 @@ func (*CDPInject) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the CDP/LLDP injection and closes the raw sender socket.
 func (*CDPInject) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("switch.cdp")
 	ctx.Safety.UnregisterCleanup("switch.cdp")
@@ -567,6 +589,7 @@ func buildLLDP(iface *netx.Iface) []byte {
 // interception of inter-switch traffic.
 type STPTakeover struct{}
 
+// Meta implements attacks.Module.
 func (*STPTakeover) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "switch.stp",
@@ -579,6 +602,7 @@ func (*STPTakeover) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for the raw-socket privileges needed to emit BPDUs.
 func (*STPTakeover) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -589,6 +613,7 @@ func (*STPTakeover) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport,
 	return rep, nil
 }
 
+// Run floods superior BPDUs until this host is elected root bridge.
 func (*STPTakeover) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	s, err := newRawSender(ctx.Iface)
 	if err != nil {
@@ -629,6 +654,7 @@ func (*STPTakeover) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports how many superior BPDUs were sent.
 func (*STPTakeover) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("switch.stp")
 	if !ok {
@@ -640,6 +666,7 @@ func (*STPTakeover) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the BPDU flood and closes the raw sender socket.
 func (*STPTakeover) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("switch.stp")
 	ctx.Safety.UnregisterCleanup("switch.stp")

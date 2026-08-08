@@ -36,7 +36,9 @@ var (
 	oidIPRouteNext = []uint32{1, 3, 6, 1, 2, 1, 4, 21, 1, 7} // ipRouteNextHop
 )
 
-// Common communities tried in order during a community probe.
+// CommonCommunities is the ordered list of community strings tried during a
+// read-only community probe. Values are the default strings shipped by the
+// most common network equipment vendors.
 var CommonCommunities = []string{"public", "private", "manager", "admin", "monitor", "cisco", "secret", "readonly"}
 
 // System holds the headline values of an SNMP walk.

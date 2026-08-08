@@ -20,6 +20,7 @@ func init() {
 // through the attacker.
 type IPv6RouterAdv struct{}
 
+// Meta implements attacks.Module.
 func (*IPv6RouterAdv) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "ipv6.ra",
@@ -32,6 +33,7 @@ func (*IPv6RouterAdv) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for root, an interface and IPv6 support on the link.
 func (*IPv6RouterAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -52,6 +54,7 @@ func (*IPv6RouterAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepor
 	return rep, nil
 }
 
+// Run floods Router Advertisements every few seconds until stopped.
 func (*IPv6RouterAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	s, err := ndp.NewSender(ctx.Iface.Name)
 	if err != nil {
@@ -86,6 +89,7 @@ func (*IPv6RouterAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	}
 }
 
+// Verify reports how many forged Router Advertisements were sent.
 func (*IPv6RouterAdv) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("ipv6.ra")
 	if !ok {
@@ -97,6 +101,7 @@ func (*IPv6RouterAdv) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the RA flood and closes the NDP sender socket.
 func (*IPv6RouterAdv) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("ipv6.ra")
 	ctx.Safety.UnregisterCleanup("ipv6.ra")
@@ -110,6 +115,7 @@ func (*IPv6RouterAdv) Cleanup(ctx *attacks.AttackCtx) error {
 // the victim's IP as belonging to this host (the IPv6 twin of ARP poisoning).
 type IPv6NeighborAdv struct{}
 
+// Meta implements attacks.Module.
 func (*IPv6NeighborAdv) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "ipv6.ndp",
@@ -122,6 +128,7 @@ func (*IPv6NeighborAdv) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for root, an interface and a configured victim address.
 func (*IPv6NeighborAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -141,6 +148,8 @@ func (*IPv6NeighborAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRep
 	return rep, nil
 }
 
+// Run poisons the victim's neighbor cache with forged Neighbor Advertisements
+// until stopped.
 func (*IPv6NeighborAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if ctx.Iface.IPv6 == nil {
 		return fmt.Errorf("ipv6.ndp: no IPv6 address on %s", ctx.Iface.Name)
@@ -187,6 +196,7 @@ func (*IPv6NeighborAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) erro
 	}
 }
 
+// Verify reports how many forged Neighbor Advertisements were sent.
 func (*IPv6NeighborAdv) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("ipv6.ndp")
 	if !ok {
@@ -198,6 +208,7 @@ func (*IPv6NeighborAdv) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) 
 	return imp, nil
 }
 
+// Cleanup stops the NA flood and closes the NDP sender socket.
 func (*IPv6NeighborAdv) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("ipv6.ndp")
 	ctx.Safety.UnregisterCleanup("ipv6.ndp")

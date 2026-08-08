@@ -78,8 +78,10 @@ type RunningCond struct {
 // NotCond negates a condition.
 type NotCond struct{ C Cond }
 
-// AndCond / OrCond combine conditions.
+// AndCond combines two conditions with logical AND.
 type AndCond struct{ L, R Cond }
+
+// OrCond combines two conditions with logical OR.
 type OrCond struct{ L, R Cond }
 
 func (BoolCond) cond() string     { return "bool" }

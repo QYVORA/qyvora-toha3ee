@@ -151,6 +151,7 @@ func splitCSV(s string) []string {
 // same-origin policy without the victim noticing a hostname change.
 type DNSRebind struct{}
 
+// Meta implements attacks.Module.
 func (*DNSRebind) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "dns.rebind",
@@ -163,6 +164,7 @@ func (*DNSRebind) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for root, an interface and the configured domain/target.
 func (*DNSRebind) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err != nil {
@@ -179,6 +181,7 @@ func (*DNSRebind) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 	return rep, nil
 }
 
+// Run starts the alternating-answer DNS server and serves until stopped.
 func (*DNSRebind) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	domains := splitCSV(ctx.Conf.Get("dns.rebind", "domains"))
 	if len(domains) == 0 {
@@ -223,6 +226,7 @@ func (*DNSRebind) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports DNS query and rebinding-answer counters from the server.
 func (*DNSRebind) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("dns.rebind")
 	if !ok {
@@ -237,6 +241,7 @@ func (*DNSRebind) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the DNS server and unregisters its lifecycle hooks.
 func (*DNSRebind) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("dns.rebind")
 	ctx.Safety.UnregisterCleanup("dns.rebind")

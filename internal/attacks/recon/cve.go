@@ -34,6 +34,8 @@ type CVE struct {
 // advisory module: it never touches the wire.
 type CVESuggest struct{}
 
+// Meta returns the module descriptor used for registry, help and REPL
+// completion.
 func (*CVESuggest) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "cve.suggest",

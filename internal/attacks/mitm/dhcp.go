@@ -19,6 +19,7 @@ func init() {
 // It is the standard prelude to dhcp.rogue.
 type DHCPStarve struct{}
 
+// Meta implements attacks.Module.
 func (*DHCPStarve) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "dhcp.starve",
@@ -31,6 +32,8 @@ func (*DHCPStarve) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for the privileges and interface required to send raw
+// UDP broadcast DISCOVERs.
 func (*DHCPStarve) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -47,6 +50,8 @@ func (*DHCPStarve) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 	return rep, nil
 }
 
+// Run floods spoofed-chaddr DISCOVER packets until ctx.Done is closed,
+// periodically beating the watchdog so the UI can report progress.
 func (*DHCPStarve) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	st, err := dhcp.NewStarver()
 	if err != nil {
@@ -83,6 +88,8 @@ func (*DHCPStarve) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify quantifies the starvation by reporting how many spoofed DISCOVERs
+// were sent.
 func (*DHCPStarve) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("dhcp.starve")
 	if !ok {
@@ -94,6 +101,7 @@ func (*DHCPStarve) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the DISCOVER flood and releases the starver socket.
 func (*DHCPStarve) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("dhcp.starve")
 	ctx.Safety.UnregisterCleanup("dhcp.starve")
@@ -108,6 +116,7 @@ func (*DHCPStarve) Cleanup(ctx *attacks.AttackCtx) error {
 // and DNS resolver, so client traffic is redirected through the attacker.
 type DHCPRogue struct{}
 
+// Meta implements attacks.Module.
 func (*DHCPRogue) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "dhcp.rogue",
@@ -120,6 +129,8 @@ func (*DHCPRogue) Meta() attacks.ModuleMeta {
 	}
 }
 
+// Preflight checks for root and an interface, then hints at the recommended
+// dhcp.starve -> dns.spoof -> http.harvest follow-up chain.
 func (*DHCPRogue) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
@@ -136,6 +147,8 @@ func (*DHCPRogue) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 	return rep, nil
 }
 
+// Run starts the rogue responder and keeps beating the watchdog until the
+// attack is stopped.
 func (*DHCPRogue) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if ctx.Iface == nil {
 		return fmt.Errorf("dhcp.rogue: no interface configured")
@@ -164,6 +177,7 @@ func (*DHCPRogue) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports the number of DISCOVERs answered with rogue OFFERs.
 func (*DHCPRogue) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("dhcp.rogue")
 	if !ok {
@@ -178,6 +192,7 @@ func (*DHCPRogue) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the rogue DHCP server and restores normal addressing.
 func (*DHCPRogue) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("dhcp.rogue")
 	ctx.Safety.UnregisterCleanup("dhcp.rogue")

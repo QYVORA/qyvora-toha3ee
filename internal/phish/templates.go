@@ -12,6 +12,9 @@ import (
 	"strings"
 )
 
+// TemplateFS embeds the bundled HTML login pages so the capture server and
+// MITM proxy can serve them without external asset files.
+//
 //go:embed templates/*.html
 var TemplateFS embed.FS
 

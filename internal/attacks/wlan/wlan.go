@@ -28,6 +28,7 @@ func init() {
 // WLANScan passively listens for 802.11 beacons to enumerate APs and clients.
 type WLANScan struct{}
 
+// Meta implements attacks.Module.
 func (*WLANScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wlan.scan",
@@ -41,11 +42,13 @@ func (*WLANScan) Meta() attacks.ModuleMeta {
 	}
 }
 
+// scanState tracks the live scanner and the monitor-mode restore hook.
 type scanState struct {
 	scanner *wlan.Scanner
 	restore func() error
 }
 
+// Preflight checks for a wireless interface that can enter monitor mode.
 func (*WLANScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
@@ -56,6 +59,8 @@ func (*WLANScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 	return rep, nil
 }
 
+// Run listens for beacons in monitor mode and reports AP/client tallies
+// until stopped.
 func (*WLANScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
@@ -98,6 +103,7 @@ func (*WLANScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports the discovered AP, client and beacon counts.
 func (*WLANScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("wlan.scan")
 	if !ok {
@@ -115,6 +121,7 @@ func (*WLANScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the scanner and restores the interface's previous mode.
 func (*WLANScan) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("wlan.scan")
 	ctx.Safety.UnregisterCleanup("wlan.scan")
@@ -131,6 +138,7 @@ func (*WLANScan) Cleanup(ctx *attacks.AttackCtx) error {
 // WLANDeauth sends deauthentication frames to force clients off an AP.
 type WLANDeauth struct{}
 
+// Meta implements attacks.Module.
 func (*WLANDeauth) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wlan.deauth",
@@ -143,12 +151,14 @@ func (*WLANDeauth) Meta() attacks.ModuleMeta {
 	}
 }
 
+// deauthState tracks the deauth sender, the restore hook and the frame count.
 type deauthState struct {
 	sender  *wlan.DeauthSender
 	restore func() error
 	sent    int
 }
 
+// Preflight checks for a monitor-mode interface and notes the BSSID config.
 func (*WLANDeauth) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
@@ -160,6 +170,8 @@ func (*WLANDeauth) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 	return rep, nil
 }
 
+// Run floods the target AP (and optionally a specific client) with forged
+// deauthentication frames until stopped.
 func (*WLANDeauth) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
@@ -223,6 +235,7 @@ func (*WLANDeauth) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports how many deauthentication frames were sent.
 func (*WLANDeauth) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("wlan.deauth")
 	if !ok {
@@ -236,6 +249,7 @@ func (*WLANDeauth) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup closes the deauth sender and restores the interface's previous mode.
 func (*WLANDeauth) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("wlan.deauth")
 	ctx.Safety.UnregisterCleanup("wlan.deauth")
@@ -252,6 +266,7 @@ func (*WLANDeauth) Cleanup(ctx *attacks.AttackCtx) error {
 // WLANHandshake captures WPA/WPA2 4-way handshakes for offline cracking.
 type WLANHandshake struct{}
 
+// Meta implements attacks.Module.
 func (*WLANHandshake) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wlan.handshake",
@@ -264,6 +279,8 @@ func (*WLANHandshake) Meta() attacks.ModuleMeta {
 	}
 }
 
+// handshakeState tracks the scanner, the deauth sender and the count of
+// complete handshakes captured.
 type handshakeState struct {
 	scanner  *wlan.Scanner
 	sender   *wlan.DeauthSender
@@ -271,6 +288,7 @@ type handshakeState struct {
 	captured int
 }
 
+// Preflight checks for a monitor-mode interface and notes the BSSID config.
 func (*WLANHandshake) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
@@ -282,6 +300,8 @@ func (*WLANHandshake) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepor
 	return rep, nil
 }
 
+// Run listens for EAPOL 4-way handshakes (optionally nudging clients with
+// deauth frames to force reassociation) until stopped.
 func (*WLANHandshake) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
@@ -361,6 +381,8 @@ func (*WLANHandshake) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	}
 }
 
+// Verify reports the number of complete handshakes captured and the observed
+// AP/client/EAPOL tallies.
 func (*WLANHandshake) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("wlan.handshake")
 	if !ok {
@@ -385,6 +407,7 @@ func (*WLANHandshake) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup closes the scanner and sender and restores the interface.
 func (*WLANHandshake) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("wlan.handshake")
 	ctx.Safety.UnregisterCleanup("wlan.handshake")
@@ -403,6 +426,7 @@ func (*WLANHandshake) Cleanup(ctx *attacks.AttackCtx) error {
 // captive-phishing portal that harvests credentials.
 type WLANEvilTwin struct{}
 
+// Meta implements attacks.Module.
 func (*WLANEvilTwin) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wlan.eviltwin",
@@ -415,12 +439,14 @@ func (*WLANEvilTwin) Meta() attacks.ModuleMeta {
 	}
 }
 
+// eviltwinState tracks the scanner, the restore hook and the capture count.
 type eviltwinState struct {
 	scanner  *wlan.Scanner
 	restore  func() error
 	captured int
 }
 
+// Preflight checks for a monitor-mode interface and a known phish template.
 func (*WLANEvilTwin) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
@@ -438,6 +464,9 @@ func (*WLANEvilTwin) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport
 	return rep, nil
 }
 
+// Run prepares the monitor-mode scanner and the captive-phishing portal for
+// the impersonated SSID; AP beacon injection is delegated to an external
+// tool (e.g. hostapd-mana) while this module runs.
 func (*WLANEvilTwin) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
@@ -489,6 +518,7 @@ func (*WLANEvilTwin) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 }
 
+// Verify reports harvested credentials and the APs/clients in range.
 func (*WLANEvilTwin) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	v, ok := ctx.GetState("wlan.eviltwin")
 	if !ok {
@@ -507,6 +537,7 @@ func (*WLANEvilTwin) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// Cleanup stops the scanner and restores the interface's previous mode.
 func (*WLANEvilTwin) Cleanup(ctx *attacks.AttackCtx) error {
 	ctx.Safety.UnregisterHeartbeat("wlan.eviltwin")
 	ctx.Safety.UnregisterCleanup("wlan.eviltwin")
