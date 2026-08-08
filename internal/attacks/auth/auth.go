@@ -24,6 +24,10 @@ func init() {
 	attacks.Register(&SMBSigning{})
 	attacks.Register(&NTLMRelay{})
 	attacks.Register(&KerberoastSuggest{})
+	attacks.Register(&PasswordSpray{})
+	attacks.Register(&SSHBrowse{})
+	attacks.Register(&SSHUserEnum{})
+	attacks.Register(&ASREP{})
 }
 
 // defaultCreds is a list of well-known bundled credentials for consumer
@@ -82,7 +86,7 @@ func (*DefaultCreds) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		return http.ErrUseLastResponse
 	}}
 
-	targets := credTargets(ctx)
+	targets := credTargets(ctx, "default.creds")
 	if len(targets) == 0 {
 		return fmt.Errorf("default.creds: no web-enabled hosts; run service.synscan first")
 	}
@@ -418,12 +422,12 @@ type credTarget struct {
 	port uint16
 }
 
-// credTargets resolves the hosts to probe. When the "ports" knob is set it
-// takes precedence (used by tests and for unusual web ports); otherwise the
-// standard web ports on each host are used.
-func credTargets(ctx *attacks.AttackCtx) []credTarget {
+// credTargets resolves the hosts to probe. When the "ports" knob of the given
+// module namespace is set it takes precedence (used by tests and for unusual
+// web ports); otherwise the standard web ports on each host are used.
+func credTargets(ctx *attacks.AttackCtx, ns string) []credTarget {
 	var out []credTarget
-	if raw := ctx.Conf.Get("default.creds", "ports"); strings.TrimSpace(raw) != "" {
+	if raw := ctx.Conf.Get(ns, "ports"); strings.TrimSpace(raw) != "" {
 		for _, h := range ctx.Store.Hosts() {
 			for _, s := range strings.Split(raw, ",") {
 				n, err := strconv.Atoi(strings.TrimSpace(s))
