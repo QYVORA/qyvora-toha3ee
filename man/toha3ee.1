@@ -1,0 +1,263 @@
+.TH TOHA3EE 1 "August 2026" "toha3ee 0.1.0" "User Commands"
+.SH NAME
+toha3ee \- network exploitation and MITM framework
+.SH SYNOPSIS
+.B toha3ee
+[\fIflags\fR]
+.br
+.B toha3ee
+[\fIcommand\fR] [\fIflags\fR]
+.SH DESCRIPTION
+.B toha3ee
+is an interactive network security console: it discovers hosts, enumerates
+services, profiles attack surfaces and carries out authorised MITM, wireless
+and credential-based testing from a single REPL. It ships 73 modules across
+the recon, scan, enumeration, OSINT, authentication, MITM, wireless, switch
+and post-exploitation categories, plus a scripting engine for repeatable
+engagements.
+
+.B toha3ee
+is an authorised-security tool. Use it only on systems and networks you own
+or have explicit written permission to test. See
+.BR security (1)
+for responsible-use guidance.
+
+Most modules need raw-socket, capture or IP-forwarding privileges. The console
+escalates to root via
+.BR sudo (8)
+automatically; pass
+.B \-\-no\-sudo
+to run unprivileged.
+.SH OPTIONS
+.TP
+.BI \-\-config " path"
+Config file path (default \fItoha3ee.json\fR).
+.TP
+.BI \-\-eval " commands"
+Run a one-shot command sequence and exit, e.g.
+.RS
+toha3ee \-\-eval "net.scan; net.show"
+.RE
+.TP
+.BI \-\-iface " iface"
+Network interface to attack from.
+.TP
+.B \-\-no\-color
+Disable coloured output.
+.TP
+.B \-\-no\-sudo
+Do not auto-escalate to root via sudo.
+.TP
+.B \-v, \-\-verbose
+Verbose logging.
+.TP
+.B \-h, \-\-help
+Show help for toha3ee or a subcommand.
+.SH COMMANDS
+.TP
+.B build
+Validate a
+.I .toha3ee
+script and print a dry-run plan without sending packets.
+.TP
+.B eval
+Run a one-shot command sequence and exit (same as the
+.B \-\-eval
+flag).
+.TP
+.B interactive, repl, shell
+Start the interactive console (the default action when no command is given).
+.TP
+.B modules
+List all registered modules with their risk level and description.
+.TP
+.B run
+Execute a script or caplet non-interactively.
+.TP
+.B script
+Execute a
+.I .toha3ee
+script file.
+.TP
+.B version
+Print the version and banner.
+.TP
+.B wizard
+Guided attack setup: step through target, interface and module choices.
+.TP
+.B completion
+Generate the shell autocompletion script for the specified shell.
+.TP
+.B help
+Show help about any command.
+.SH THE CONSOLE
+Interactive mode drops you into a REPL with a status HUD that live-counts
+live hosts, ports, credentials and events.
+.SS Core commands
+.TP
+.B on <module>
+Start a module, e.g.
+.BR "on net.scan" .
+.TP
+.B off <module>
+Stop a running module.
+.TP
+.B stop <module>
+Alias of
+.BR off .
+.TP
+.B net.show
+List discovered hosts (IP, MAC, vendor, OS guess).
+.TP
+.B net.profile
+Ranked attack vectors for the target set.
+.TP
+.B exec -> <module>
+Run a one-shot module, e.g.
+.BR "exec -> report.generate" .
+.TP
+.B set <key> <value>
+Set a config key.
+.TP
+.B get <key>
+Read a config key.
+.TP
+.B modules
+Print the module catalogue.
+.TP
+.B help
+Show console help.
+.TP
+.B quit
+Exit the console.
+.SS Scripting
+Scripts are
+.I .toha3ee
+files: one command per line with conditionals, variables, iteration and
+module control. Validate without executing:
+.RS
+toha3ee build scripts/full-pipeline.toha3ee
+.RE
+Run for real:
+.RS
+sudo toha3ee script scripts/full-pipeline.toha3ee
+.RE
+See
+.BR scripting (7)
+for the language reference.
+.SH MODULES
+The 73 modules are grouped into categories. The main ones:
+.TP
+.B recon
+net.ping, net.scan, net.ip6sweep, net.traceroute, net.osdetect, osint.* (asn,
+bucket, ct, dns, dork, github, harvest, hibp, metadata, shodan, wayback,
+whois), cve.suggest.
+.TP
+.B scan
+service.synscan, service.tcpconnect, service.ack, service.finxmas,
+service.idle, service.protoscan, service.udpscan, service.fingerprint,
+service.tls, web.dir, web.misconfig, pcap.export.
+.TP
+.B enum
+snmp.enum, ldap.enum, smb.enum, nfs.enum, smtp.enum, dns.rebind.
+.TP
+.B auth
+default.creds, smb.signing, smb.kerberoast, ntlm.relay, auth.brute,
+auth.spray, auth.asrep, auth.userenum.
+.TP
+.B mitm
+arp.spoof, dhcp.starve, dhcp.rogue, dns.spoof, http.harvest, http.proxy,
+https.proxy, ssl.strip, icmp.redirect, llmnr.poison, wpad.poison,
+dhcp6.spoof, ipv6.ra, ipv6.ndp.
+.TP
+.B wireless
+wlan.scan, wlan.deauth, wlan.handshake, wlan.pmkid, wlan.beaconflood,
+wlan.karma, wlan.eviltwin.
+.TP
+.B switch
+switch.flood, switch.portsteal, switch.vlanhop, switch.cdp, switch.stp.
+.TP
+.B espionage
+phish.inject, session.replay.
+.TP
+.B post
+report.generate.
+.PP
+Run
+.B "toha3ee modules"
+for the complete, current list with risk levels.
+.SH CONFIGURATION
+toha3ee reads
+.I toha3ee.json
+from the current directory (override with
+.BR \-\-config ).
+Keys are grouped by module, for example:
+.RS
+toha3ee> set arp.spoof.targets 10.0.0.5,10.0.0.6
+.br
+toha3ee> set wlan.deauth.bssid 00:11:22:33:44:55
+.br
+toha3ee> set phish.inject.brand microsoft
+.RE
+Environment variables override config for the same keys:
+.B TOHA3EE_NO_SUDO=1
+disables auto-escalation.
+.SH FILES
+.TP
+.I toha3ee.json
+Configuration file.
+.TP
+.I toha3ee-report.md
+Report written by the
+.B report.generate
+module.
+.TP
+.I scripts/
+Bundled
+.I .toha3ee
+scripts, including
+.I full-pipeline.toha3ee
+.
+.TP
+.I man/toha3ee.1
+This manual page.
+.SH ENVIRONMENT
+.TP
+.B TOHA3EE_NO_SUDO
+When set to a non-empty value, disables auto-escalation (same as
+.BR \-\-no\-sudo ).
+.TP
+.B TOHA3EE_VERSION, TOHA3EE_PREFIX, TOHA3EE_SKIP_PATH
+Installer options, see
+.BR install.sh .
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Runtime error, failed preflight, or script failure.
+.TP
+.B 2
+Usage error.
+.SH SECURITY
+This tool is capable of disrupting networks. It must only be used with
+authorisation. Modules are subject to preflight checks, a safety manager
+(heartbeat watchdog, automatic cleanup) and a risk classifier; the
+.B net.profile
+command surfaces ranked vectors before anything is run. Review
+.BR security (7)
+before your first real engagement.
+.SH SEE ALSO
+.BR scripting (7),
+.BR security (7),
+.BR sudo (8),
+.BR tcpdump (8)
+.PP
+Full documentation lives in the repository's
+.I docs/
+tree: getting-started, user-guide, module-reference, configuration, scripting,
+architecture, reporting, faq and security.
+.SH AUTHOR
+The toha3ee project. Report issues at
+https://github.com/qyvora/qyvora-toha3ee/issues.

@@ -1,0 +1,99 @@
+.TH SCRIPTING 7 "August 2026" "toha3ee 0.1.0" "toha3ee"
+.SH NAME
+scripting \- the toha3ee scripting language
+.SH DESCRIPTION
+Scripts are plain-text
+.I .toha3ee
+files executed by the console's script engine. They let you drive repeated
+engagements: start modules, wait for conditions, branch on inventory state
+and emit progress.
+.PP
+Validate a script without sending a single packet:
+.RS
+toha3ee build scripts/full-pipeline.toha3ee
+.RE
+Execute it for real (root required for most modules):
+.RS
+sudo toha3ee script scripts/full-pipeline.toha3ee
+.RE
+.SH SYNTAX
+Each line is one statement. Module control:
+.RS
+on net.scan
+.br
+off service.synscan
+.br
+stop net.scan
+.RE
+One-shot modules:
+.RS
+exec -> report.generate
+.RE
+Configuration:
+.RS
+set arp.spoof.targets 10.0.0.5,10.0.0.6
+.br
+get arp.spoof.targets
+.RE
+Progress and output:
+.RS
+echo -> "scanning hosts"
+.RE
+.SH CONDITIONS AND BRANCHING
+.PP
+.B Conditionals
+.RS
+if hosts.count >= 3
+.br
+\	on service.synscan
+.br
+else
+.br
+\	exec -> net.ping
+.br
+fi
+.RE
+.PP
+.B Module state conditions
+.RS
+if net.scan is running
+.br
+if net.scan is not running
+.br
+if "10.0.0.5" contains "10.0.0"
+.RE
+.PP
+.B Compound conditions
+.RS
+and / or, e.g. "hosts.count >= 3 and dns.spoof is not running"
+.RE
+.SH WAITING
+.PP
+.B wait for
+blocks until a module stops (or times out):
+.RS
+on net.scan
+.br
+wait for net.scan max 60
+.br
+echo -> "scan finished"
+.RE
+.SH VARIABLES
+Assign with
+.RS
+name -> value
+.RE
+and interpolate with
+.BR {name} :
+.RS
+target -> 10.0.0.1
+.br
+echo -> "scanning {target}"
+.RE
+.SH SEE ALSO
+.BR toha3ee (1),
+.BR security (7)
+.PP
+The full language reference lives in the repository's
+.I docs/scripting.md
+.

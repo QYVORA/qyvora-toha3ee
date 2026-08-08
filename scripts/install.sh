@@ -6,7 +6,8 @@
 # directory to your PATH. If no release binary is available yet it falls back
 # to building from source (requires Go, and libpcap on Linux; macOS ships it).
 # On Linux it also installs the app icon and a .desktop entry so toha3ee shows
-# up in the GNOME shell with its logo.
+# up in the GNOME shell with its logo, and (from a source checkout) the man
+# pages so `man toha3ee` works.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/qyvora/qyvora-toha3ee/main/scripts/install.sh | sh
@@ -148,6 +149,30 @@ EOF
   command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache "$DATAROOT/icons/hicolor" >/dev/null 2>&1 || true
 }
 
+# --- man pages --------------------------------------------------------------
+# Installs the bundled man pages (toha3ee(1), scripting(7), security(7)) into
+# the share/man tree next to the install prefix, so `man toha3ee` works after
+# a source install. Requires the checkout (man/ directory) to be present.
+install_man_pages() {
+  SRC_DIR=""
+  [ -d "$PWD/man" ] && SRC_DIR="$PWD"
+  [ -z "$SRC_DIR" ] && [ -d "${SRC:-}/man" ] && SRC_DIR="$SRC"
+  [ -n "$SRC_DIR" ] || { say "no man/ directory found; skipping man pages"; return 0; }
+  case "$PREFIX" in
+    */bin) MANROOT="$(dirname "$PREFIX")/share/man" ;;
+    *) MANROOT="$PREFIX/share/man" ;;
+  esac
+  [ -d "$MANROOT" ] || mkdir -p "$MANROOT"
+  for page in "$SRC_DIR"/man/*.[17]; do
+    [ -f "$page" ] || continue
+    sect="$(basename "$page" | sed -E 's/.*\.([0-9])$/\1/')"
+    install -d "$MANROOT/man$sect"
+    install -m 0644 "$page" "$MANROOT/man$sect/"
+    say "installed man page $(basename "$page")"
+  done
+  command -v mandb >/dev/null 2>&1 && mandb -q "$MANROOT" >/dev/null 2>&1 || true
+}
+
 # --- install ---------------------------------------------------------------
 if [ "$FROM_SOURCE" = "true" ]; then
   build_from_source
@@ -185,6 +210,9 @@ fi
 
 # --- desktop integration ----------------------------------------------------
 install_desktop_integration
+
+# --- man pages --------------------------------------------------------------
+install_man_pages
 
 # --- PATH ------------------------------------------------------------------
 if [ "$SKIP_PATH" = "false" ]; then

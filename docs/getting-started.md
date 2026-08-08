@@ -72,6 +72,17 @@ go build ./cmd/toha3ee
 Delete the binary and the PATH line the installer added to your shell rc. On
 Windows remove `%LOCALAPPDATA%\Programs\toha3ee`.
 
+### Updating / reinstalling
+
+See [Updating toha3ee](update.md) for upgrade, reinstall and rollback
+instructions. After a source install the man pages are available too:
+
+```sh
+man toha3ee        # console, commands, modules and options
+man scripting      # the .toha3ee scripting language
+man 7 security     # responsible use and safety controls
+```
+
 ## Verify the install
 
 ```sh

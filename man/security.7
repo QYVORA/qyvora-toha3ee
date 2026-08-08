@@ -1,0 +1,58 @@
+.TH SECURITY 7 "August 2026" "toha3ee 0.1.0" "toha3ee"
+.SH NAME
+security \- responsible use, safety controls and scope
+.SH DESCRIPTION
+.B toha3ee
+is an authorised-security console. Its modules can disrupt networks,
+disconnect clients and capture credentials. Use it only on systems you own
+or where you hold explicit written permission to test, and follow the scope
+and rules of engagement you agreed.
+.PP
+toha3ee is intentionally
+.B not
+a malware or APT framework: it has no persistence, no command-and-control,
+no anti-forensics and no EDR-evasion. Techniques that fall in that category
+are deliberately excluded regardless of their defensive value.
+.SH SAFETY CONTROLS
+.TP
+.B Preflight reports
+Every module validates its environment and returns a report; blocked checks
+must be cleared before
+.B Run
+is permitted.
+.TP
+.B Heartbeat watchdog
+Long-running attacks must beat a watchdog; if they stall, the safety manager
+flags them.
+.TP
+.B Automatic cleanup
+Modules register cleanup hooks so stopping an attack restores the network to
+its prior state (interface modes, forwarding, spoofed tables).
+.TP
+.B Risk classification
+Each module carries a risk level (info, low, medium, high, critical) shown in
+the catalogue.
+.TP
+.B Attack surface profile
+.BR "net.profile"
+ranks the vectors against the discovered target set before you run anything.
+.SH BEFORE YOU TEST
+.IP 1. 3
+Get written authorisation naming the exact scope (hosts, subnets, time window).
+.IP 2. 3
+Test in an isolated lab you control before touching anything shared.
+.IP 3. 3
+Keep a snapshot of every VM so you can roll back a failed DHCP/WLAN test.
+.IP 4. 3
+Monitor your own traffic (Wireshark/tcpdump) so you know exactly what you emit.
+.SH DISCLOSURE
+If an engagement finds a real vulnerability, disclose it responsibly to the
+owner and to any applicable vendor/cert process. Do not trade or sell the
+findings.
+.SH SEE ALSO
+.BR toha3ee (1),
+.BR scripting (7),
+.BR sudo (8)
+.PP
+The full policy lives in the repository: LICENSE, SECURITY.md,
+CODE_OF_CONDUCT.md and docs/security.md.

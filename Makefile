@@ -11,7 +11,7 @@ BIN    := toha3ee
 GO     ?= go
 PREFIX ?=
 
-.PHONY: all build install uninstall test vet fmt clean release winres
+.PHONY: all build install uninstall test vet fmt clean release winres man
 
 all: build
 
@@ -21,6 +21,13 @@ build:
 install:
 	@if [ -z "$(PREFIX)" ]; then sh scripts/install.sh --from-source; \
 	 else sh scripts/install.sh --from-source --prefix "$(PREFIX)"; fi
+
+# Validate that every man page renders cleanly with the system troff.
+man:
+	@for page in man/*.[17]; do \
+	  nroff -man "$$page" >/dev/null 2>&1 || { echo "man: $$page fails to render"; exit 1; }; \
+	  echo "man: $$page ok"; \
+	done
 
 uninstall:
 	@printf "rm -f \$$HOME/.local/bin/$(BIN) /usr/local/bin/$(BIN) \$$(CURDIR)/$(BIN)\n"

@@ -16,6 +16,7 @@ scripts or one-shot command sequences.
 | Guide | What it covers |
 |-------|----------------|
 | [Getting started](getting-started.md) | Install, build, prerequisites, first session |
+| [Updating toha3ee](update.md) | Upgrade, reinstall, rollback and what's preserved |
 | [User guide](user-guide.md) | The console, commands, wizard, caplets, common workflows |
 | [Scripting reference](scripting.md) | The full `.toha3ee` language |
 | [Configuration](configuration.md) | `toha3ee.json`, per-module settings, environment variables |
@@ -34,6 +35,7 @@ scripts or one-shot command sequences.
 - [`SECURITY.md`](../SECURITY.md) — vulnerability disclosure policy
 - [`CHANGELOG.md`](../CHANGELOG.md) — release history
 - [`LICENSE`](../LICENSE) — MIT license
+- [`man/`](../man/) — man pages (`toha3ee(1)`, `scripting(7)`, `security(7)`)
 
 ## Quick start
 
