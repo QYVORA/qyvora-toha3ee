@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a new module or capability
+title: "[feature] "
+labels: enhancement
+assignees: ""
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        toha3ee is an authorised-engagement network security framework. Features
+        must fall within that scope — see `docs/security.md`. Contributions that
+        implement malware/APT tradecraft (EDR evasion, rootkits, persistence, C2,
+        anti-forensics, weaponised exploit delivery) will be closed.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What do you want to build?
+      description: Describe the module or capability, the category it belongs to, and what it should do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why is it useful?
+      description: What engagement question does it answer that current modules cannot?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Expected risk level
+      options:
+        - info
+        - low
+        - medium
+        - high
+        - critical
+      description: The blast radius the module would have (see docs/security.md).
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: References, similar tools, protocol details, API docs, etc.

@@ -1,0 +1,11 @@
+# Ownership defaults to the maintainers. Extend per-directory as the project
+# grows; paths are matched longest-first.
+
+* @qyvora
+
+# Critical areas that gate on review
+/SECURITY.md @qyvora
+/docs/ @qyvora
+/internal/safety/ @qyvora
+/.github/workflows/ @qyvora
+/go.mod @qyvora

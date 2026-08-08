@@ -1,0 +1,22 @@
+name: Security report
+description: Report a security issue (private — see SECURITY.md)
+title: "[security] "
+labels: [security]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Do not open a public issue for security vulnerabilities.
+
+        Follow [`SECURITY.md`](../../SECURITY.md): report privately via the
+        repository's **private vulnerability reporting** (Security →
+        *Report a vulnerability*) or a private channel to the maintainers.
+
+        Public issues describing vulnerabilities will be closed and redirected.
+
+        - Acknowledgement within 72 hours, fix plan within 7 days.
+        - In scope: defects in the tool (crashes, unsafe defaults, broken
+          `Cleanup()` leaving a network disrupted).
+        - Out of scope: the tool's inherent, documented capabilities (e.g. it
+          can ARP-spoof) and misuse against networks you do not own.

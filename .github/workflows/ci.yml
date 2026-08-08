@@ -1,0 +1,94 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: fmt + vet + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install libpcap headers
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      - name: check formatting
+        run: |
+          out="$(gofmt -l cmd internal pkg)"
+          if [ -n "$out" ]; then
+            echo "needs formatting:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: build
+        run: go build ./...
+
+  test:
+    name: test (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install libpcap headers
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      - name: run tests
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  test-windows:
+    name: test (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Windows uses gopacket's cgo-free pcap bindings.
+      - name: run tests
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: go test ./...
+
+  test-macos:
+    name: test (macos)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: run tests
+        run: go test ./...

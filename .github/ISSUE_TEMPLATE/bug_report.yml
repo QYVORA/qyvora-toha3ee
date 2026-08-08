@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a defect in toha3ee
+title: "[bug] "
+labels: [bug]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please confirm you observed this on a network you
+        own or are authorised to test — see `docs/security.md`. Issues describing
+        the tool's inherent, documented capabilities (e.g. "it ARP-spoofs") are
+        out of scope and will be closed.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        toha3ee version (`toha3ee --no-sudo version`), OS/distro, Go version
+        (if building from source), interface type (wired/wireless).
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: modules
+    attributes:
+      label: Module(s) involved
+      description: Module IDs and the settings you set.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Paste relevant console output (redact credentials).
+      render: shell
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      options:
+        - label: I tested this on a network I own or am authorised to test.
+          required: true
