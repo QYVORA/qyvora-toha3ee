@@ -42,7 +42,10 @@ type Manager struct {
 	hbmu sync.Mutex
 	hbs  map[string]*Heartbeat
 
-	watching atomic.Bool
+	// wmu guards the watchdog lifecycle state so StopWatchdog never writes
+	// stopCh while the watchdog goroutine is reading it.
+	wmu      sync.Mutex
+	watching bool
 	stopCh   chan struct{}
 }
 
@@ -178,15 +181,24 @@ func (m *Manager) StartWatchdog(interval, timeout time.Duration, onFired func(ow
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	if !m.watching.CompareAndSwap(false, true) {
+	// Capture the stop channel under the lock so the goroutine never reads a
+	// field the stopper is mutating.
+	m.wmu.Lock()
+	if m.watching {
+		m.wmu.Unlock()
 		return
 	}
+	m.watching = true
+	m.stopCh = make(chan struct{})
+	stop := m.stopCh
+	m.wmu.Unlock()
+
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
 			select {
-			case <-m.stopCh:
+			case <-stop:
 				return
 			case now := <-t.C:
 				m.hbmu.Lock()
@@ -208,13 +220,16 @@ func (m *Manager) StartWatchdog(interval, timeout time.Duration, onFired func(ow
 	}()
 }
 
-// StopWatchdog halts a running watchdog goroutine.
+// StopWatchdog halts a running watchdog goroutine. It is safe to call
+// multiple times and safe to call concurrently with StartWatchdog.
 func (m *Manager) StopWatchdog() {
-	if !m.watching.CompareAndSwap(true, false) {
+	m.wmu.Lock()
+	defer m.wmu.Unlock()
+	if !m.watching {
 		return
 	}
+	m.watching = false
 	close(m.stopCh)
-	m.stopCh = make(chan struct{})
 }
 
 // RequireRoot returns an error unless the process runs as root/euid 0.
