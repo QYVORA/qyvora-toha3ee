@@ -1,5 +1,11 @@
 # toha3ee
 
+![Build](https://img.shields.io/github/actions/workflow/status/qyvora/qyvora-toha3ee/ci.yml?branch=main&label=CI)
+![Go Version](https://img.shields.io/github/go-mod/go-version/qyvora/qyvora-toha3ee)
+![License](https://img.shields.io/github/license/qyvora/qyvora-toha3ee)
+![Release](https://img.shields.io/github/v/release/qyvora/qyvora-toha3ee?sort=semver)
+[![Documentation](https://img.shields.io/badge/docs-docs%2F-blue)](/docs)
+
 A network exploitation & MITM framework written in Go. It is a research and
 authorised-penetration-testing tool that demonstrates classic layer-2/3/7
 attacks: ARP/DHCP/DNS/IPv6 poisoning, inline HTTP/HTTPS interception, wireless
@@ -9,7 +15,14 @@ a guided wizard, or one-shot command sequences.
 > **WARNING**: toha3ee actively redirects, poisons, decrypts and intercepts
 > network traffic. Use it **only on networks you own or are explicitly
 > authorised to test**. Running these modules against third parties is illegal
-> in most jurisdictions.
+> in most jurisdictions. Read [`docs/security.md`](docs/security.md) first.
+
+## Documentation
+
+- **User** — [Getting started](docs/getting-started.md) · [User guide](docs/user-guide.md) · [Scripting](docs/scripting.md) · [Configuration](docs/configuration.md) · [FAQ](docs/faq.md)
+- **Reference** — [Module reference](docs/module-reference.md) (all 73 modules) · [Reporting](docs/reporting.md)
+- **Developer** — [Architecture](docs/architecture.md) · [Contributing](docs/contributing.md) · [Changelog](CHANGELOG.md)
+- **Governance** — [Security](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [License](LICENSE)
 
 ## Install
 
@@ -85,6 +98,12 @@ sudo ./toha3ee --eval "net.scan; net.show" --iface eth0
 
 # Non-interactive caplet script
 sudo ./toha3ee run --iface eth0 caplets/basic.cap
+
+# Dry-run a .toha3ee script (validates it, prints the plan, sends no packets)
+./toha3ee --no-sudo build scripts/full-pipeline.toha3ee
+
+# Execute a .toha3ee script non-interactively
+sudo ./toha3ee script --iface eth0 scripts/full-pipeline.toha3ee
 ```
 
 Most attack modules require root (raw sockets, packet capture and IP
@@ -118,8 +137,9 @@ the event log that feeds the report generator.
 
 | Path | Purpose |
 |------|---------|
-| `cmd/toha3ee` | CLI: console, wizard, `--eval`, caplet runner |
-| `internal/ui` | console rendering: banner, palette, sections, tables, status glyphs |
+| `cmd/toha3ee` | CLI: console, wizard, `--eval`, caplet runner, `script`/`build` |
+| `internal/ui` | console rendering: banner, palette, sections, tables, status glyphs, HUD |
+| `internal/script` | the `.toha3ee` scripting language: lexer, parser, engine |
 | `internal/attacks/` | all attack modules by category |
 | `internal/netx/` | protocol primitives (ARP, DHCP, DNS, NDP, 802.11, SMB/NTLM, proxy, …) |
 | `internal/hijack` | HTTP/HTTPS MITM proxy and credential/session interception |
@@ -138,8 +158,11 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 |----------|---------|
 | **mitm** | `arp.spoof`, `dns.spoof`, `dns.rebind`, `dhcp.rogue`, `dhcp.starve`, `dhcp6.spoof`, `icmp.redirect`, `ipv6.ra`, `ipv6.ndp`, `llmnr.poison`, `wpad.poison` |
 | **espionage** | `http.harvest`, `http.proxy`, `https.proxy`, `ssl.strip`, `phish.inject` |
-| **auth** | `default.creds`, `ntlm.relay`, `smb.signing`, `smb.kerberoast` |
-| **recon** | `net.scan`, `service.synscan`, `service.fingerprint`, `cve.suggest` |
+| **auth** | `default.creds`, `ntlm.relay`, `smb.signing`, `smb.kerberoast`, `auth.spray`, `auth.brute`, `auth.userenum`, `auth.asrep` |
+| **recon** | `net.scan`, `net.ping`, `net.traceroute`, `net.osdetect`, `service.synscan`, `service.tcpconnect`, `service.udpscan`, `service.finxmas`, `service.ack`, `service.protoscan`, `service.idle`, `service.fingerprint`, `service.tls`, `web.dir`, `cve.suggest` |
+| **osint** | `osint.dns`, `osint.whois`, `osint.ct`, `osint.asn`, `osint.shodan`, `osint.bucket`, `osint.wayback`, `osint.github`, `osint.hibp`, `osint.metadata`, `osint.dork`, `osint.harvest` |
+| **enum** | `smtp.enum`, `snmp.enum`, `ldap.enum`, `nfs.enum`, `smb.enum`, `net.ip6sweep` |
+| **web** | `web.misconfig` |
 | **switch** | `switch.flood`, `switch.portsteal`, `switch.vlanhop`, `switch.cdp`, `switch.stp` |
 | **wireless** | `wlan.scan`, `wlan.deauth`, `wlan.handshake`, `wlan.eviltwin`, `wlan.pmkid`, `wlan.beaconflood`, `wlan.karma` |
 | **post** | `report.generate`, `session.replay`, `pcap.export` |
@@ -147,14 +170,17 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 ## Console
 
 Bare `toha3ee` (or `toha3ee interactive`) opens a bettercap/metasploit-style
-console: the `@@@` banner, a `toha3ee> ` prompt with tab-completion, and
-grouped, aligned output in a green/amber/white palette — red is used
-sparingly, for hard errors and critical-risk modules (high risk is amber).
-Every command's output is sectioned (`─── modules ───`), tables are
-column-aligned (colors are ignored when computing alignment), and module
-messages are colorized centrally, so every module gets consistent status
-glyphs with no per-module work. Output falls back to plain text automatically
-when piped.
+console: the `@@@` banner, a **red-accented `toha3ee > ` prompt** with
+tab-completion, and a persistent one-line **status HUD** above the prompt that
+shows the interface, running modules and live host/port/credential/event
+counts. Output is grouped and aligned in a green/amber/white palette — red is
+used deliberately, for the prompt accent, hard errors (`[x]`), the HUD edge
+mark and critical-risk modules (high risk is amber). Every command's output is
+sectioned (`─── modules ───`), tables are column-aligned (colors are ignored
+when computing alignment), and module messages are colorized centrally, so
+every module gets consistent status glyphs with no per-module work. Output
+falls back to plain text automatically when piped, and the prompt stays
+visible and live while any module runs, like bettercap.
 
 ```
 $ sudo ./toha3ee --iface eth0
@@ -215,7 +241,11 @@ Status glyphs follow bettercap's convention:
 | `[!]` | warning (amber) |
 | `[>]` | system (bold white) |
 | `[-]` | neutral (dim) |
+| `[x]` | hard error (red) |
 | `[OK]` | verified / passed (green) |
+
+The red block `▮` at the left edge of the HUD marks the status strip; the HUD
+is reprinted after every command so counts stay current without extra typing.
 
 Example session:
 
@@ -233,6 +263,61 @@ so the split happens on the last dot: `set arp.spoof.targets 10.0.0.5`);
 `config` dumps everything set so far. Sessions keep captured data across
 module runs; `report.generate` renders a Markdown assessment from the
 in-memory store.
+
+## Scripting
+
+`.toha3ee` files drive the full recon → exploit → report pipeline with a
+Python-like language that reads like English. Execute one with `toha3ee script
+<file>`, from the REPL with `script <file>`, or run any `.toha3ee` file with
+`run <file>`. `toha3ee build <file>` (or REPL `build <file>`) validates the
+file and prints a dry-run plan without touching the network. `scripts/full-
+pipeline.toha3ee` is a working end-to-end example.
+
+```toha3ee
+# comment (or //)
+set net.scan.targets -> "192.168.8.0/24"     # configure a module
+on net.scan                                   # start a module (run/start)
+wait for net.scan                             # block until it finishes
+_hosts -> [$(net.hosts)]                      # capture a list (or =, >>)
+echo -> "found $(_hosts.size) hosts"          # print (say/print)
+
+if $(hosts.count) > 1                         # conditions
+    on arp.spoof targets "192.168.8.0/24"
+    sleep -> 30
+    off arp.spoof
+end
+
+for each _h in $(_hosts)                      # loops
+    repeat 3 times
+        exec -> net.show                      # run any REPL command once
+        break
+    end
+end
+
+get net.scan.timeout -> _t                    # read a config value
+report -> "assessment.md"                     # write the session report
+```
+
+Language notes:
+
+- **Statements** — `set`, `get`, `on`/`start`/`run`, `off`/`stop`, `wait for
+  <module> [max <secs>]`, `sleep <secs>`, `echo`/`say`/`print`, `show
+  <module>`, `report <file>`, `exec <command>`, `if/else/end`, `for each _x
+  in <list>`, `repeat N times`, `while <cond>`, `break`, `continue`, and a
+  bare `stop` halts the script.
+- **Assignments** — `_name -> value`, `_name = value` or `_name >> value`;
+  `[...]` builds a list from a property, `$(_name.size)` and `$(_list.size)`
+  are the lengths.
+- **Interpolation** — `$(...)` resolves live session state: `$(hosts.count)`,
+  `$(net.hosts)`, `$(creds.count)`, `$(sessions.count)`, `$(running.list)`,
+  `$(iface.ip)`, `$(iface.cidr)`, `$(iface.mac)`, `$(iface.gateway)`,
+  `$(config.<module.key>)`; underscore-prefixed paths read script variables.
+- **Conditions** — `== != < > <= >=`, `&&`, `||`, `!`, numbers compare
+  numerically. `while` loops are capped so a bad condition can never hang the
+  script.
+- **Modules** — every statement drives the exact same module lifecycle and
+  preflight/risk gates as the REPL, so a script cannot do anything the console
+  cannot.
 
 ## Configuration
 
@@ -278,3 +363,14 @@ go test ./...
 The suite covers the frame crafters (DHCP, NDP, 802.11, STP/CDP/LLDP), the
 store and report renderer, and a registry contract test that pins the full
 module catalogue.
+
+CI (`.github/workflows/ci.yml`) runs `gofmt`, `go vet`, `go build` and
+`go test -race` on Linux plus tests on Windows and macOS for every push/PR;
+[CodeQL](.github/workflows/codeql.yml) runs static security analysis.
+Dependency updates are handled by Dependabot.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/contributing.md](docs/contributing.md)
+and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report security issues via
+[SECURITY.md](SECURITY.md) — not as public issues.
