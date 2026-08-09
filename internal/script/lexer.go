@@ -139,6 +139,9 @@ func (l *lexer) next() (token, error) {
 				l.pos += 2
 				return tok, nil
 			}
+			// A bare '-' (not '->') is part of a raw value: negative numbers
+			// like "-1" and command-line flags like "exec nmap -sS".
+			return l.lexRaw()
 
 		case c == '>':
 			if l.pos+1 < len(l.src) && l.src[l.pos+1] == '>' {
