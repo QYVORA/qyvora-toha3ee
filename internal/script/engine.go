@@ -188,6 +188,12 @@ func (e *Engine) evalStmt(s Stmt) error {
 		}
 		for i := 0; i < int(n); i++ {
 			if err := e.evalBody(st.Body); err != nil {
+				if errors.Is(err, errBreak) {
+					return nil
+				}
+				if errors.Is(err, errContinue) {
+					continue
+				}
 				return err
 			}
 		}
@@ -201,6 +207,12 @@ func (e *Engine) evalStmt(s Stmt) error {
 				return fmt.Errorf("script: while loop exceeded %d iterations", maxLoop)
 			}
 			if err := e.evalBody(st.Body); err != nil {
+				if errors.Is(err, errBreak) {
+					return nil
+				}
+				if errors.Is(err, errContinue) {
+					continue
+				}
 				return err
 			}
 		}
