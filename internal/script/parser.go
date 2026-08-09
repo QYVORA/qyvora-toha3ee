@@ -765,16 +765,6 @@ func parseSegments(s string) StringLit {
 	return lit
 }
 
-// unquoteText renders an expression as plain text, removing the surrounding
-// quotes that exprText adds to string literals.
-func unquoteText(e Expr) string {
-	s := exprText(e)
-	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
-		return s[1 : len(s)-1]
-	}
-	return s
-}
-
 // numOf extracts a number from a literal expression, when the expression is
 // a plain string or number literal.
 func numOf(e Expr) (float64, bool) {
