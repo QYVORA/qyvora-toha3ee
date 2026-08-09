@@ -27,6 +27,9 @@ import (
 	"github.com/qyvora/toha3ee/internal/ui"
 
 	// Register all attack modules and vector rules.
+	// Each package runs an init() that self-registers its modules (and, for
+	// vectors/rules, its vector rules) in the central attacks registry, so the
+	// CLI never needs to know what modules exist at compile time.
 	_ "github.com/qyvora/toha3ee/internal/attacks/auth"
 	_ "github.com/qyvora/toha3ee/internal/attacks/enum"
 	_ "github.com/qyvora/toha3ee/internal/attacks/espionage"
@@ -40,6 +43,8 @@ import (
 	_ "github.com/qyvora/toha3ee/internal/vectors/rules"
 )
 
+// noSudo is set by the --no-sudo flag and suppresses the automatic sudo
+// re-exec escalation (see maybeElevate).
 var noSudo bool
 
 func main() {
@@ -47,6 +52,8 @@ func main() {
 	// cleanup registry so the network is restored before we exit.
 	defer func() {
 		if r := recover(); r != nil {
+			// Print the panic and a stack trace so the operator can report the
+			// bug, then continue unwinding.
 			fmt.Fprintf(os.Stderr, "\n[!] PANIC: %v\n%s\n", r, debug.Stack())
 			fmt.Fprintln(os.Stderr, "[*] Running cleanup handlers...")
 			// The session's deferred Shutdown() still runs after this
@@ -54,6 +61,8 @@ func main() {
 		}
 	}()
 
+	// Command-line state shared by every subcommand below; the persistent
+	// flags write into these locals.
 	var ifaceName string
 	var configPath string
 	var eval string
@@ -68,9 +77,13 @@ func main() {
 		// Bare "toha3ee" drops straight into the interactive console;
 		// "--eval \"net.scan; net.show\"" runs without a subcommand too.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Any invocation (subcommand or not) escalates to root before it
+			// touches the network stack.
 			return maybeElevate()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// With no subcommand, --eval runs a one-shot sequence; otherwise
+			// fall into the interactive REPL.
 			if eval != "" {
 				return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 					return s.Eval(eval)
@@ -89,6 +102,7 @@ func main() {
 	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 	root.PersistentFlags().BoolVar(&noSudo, "no-sudo", false, "do not auto-escalate to root via sudo")
 
+	// `toha3ee interactive` is the explicit spelling of the default REPL mode.
 	replCmd := &cobra.Command{
 		Use:     "interactive",
 		Aliases: []string{"repl", "shell"},
@@ -100,6 +114,7 @@ func main() {
 		},
 	}
 
+	// `toha3ee wizard` runs the guided attack setup against stdin.
 	wizardCmd := &cobra.Command{
 		Use:   "wizard",
 		Short: "guided attack setup",
@@ -114,6 +129,9 @@ func main() {
 		Use:   "eval",
 		Short: "run a one-shot command sequence and exit",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The sequence comes from --eval first, then the positional arg,
+			// so both "toha3ee eval --eval 'net.show'" and
+			// "toha3ee eval 'net.show'" work.
 			seq := eval
 			if seq == "" && len(args) > 0 {
 				seq = args[0]
@@ -127,6 +145,8 @@ func main() {
 		},
 	}
 
+	// `toha3ee run` dispatches on the file extension: ".toha3ee" scripts run
+	// through the script engine, anything else is treated as a caplet.
 	runCapletCmd := &cobra.Command{
 		Use:   "run",
 		Short: "execute a script or caplet non-interactively",
@@ -152,6 +172,8 @@ func main() {
 		},
 	}
 
+	// `toha3ee build` parses the script and prints a dry-run plan without
+	// touching the network, for safe review before an actual run.
 	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "validate a .toha3ee script and print a dry-run plan",
@@ -163,6 +185,8 @@ func main() {
 		},
 	}
 
+	// `toha3ee modules` prints the module catalogue directly, without
+	// touching the network or requiring a session at all.
 	modulesCmd := &cobra.Command{
 		Use:   "modules",
 		Short: "list all registered modules",
@@ -197,6 +221,8 @@ func main() {
 
 // printModules renders the module catalogue grouped by category through u.
 func printModules(u *ui.UI, mods []attacks.Module) {
+	// Bucket modules by category, keeping the first-seen category order for
+	// a stable listing before the final sort.
 	byCat := make(map[string][]attacks.Module)
 	var cats []string
 	for _, m := range mods {
@@ -206,6 +232,7 @@ func printModules(u *ui.UI, mods []attacks.Module) {
 		}
 		byCat[c] = append(byCat[c], m)
 	}
+	// Categories render alphabetically for predictable output.
 	sort.Strings(cats)
 	for _, c := range cats {
 		u.Section(c)
@@ -222,12 +249,14 @@ func printModules(u *ui.UI, mods []attacks.Module) {
 func run(ifaceName, configPath string, verbose, noColor bool, body func(*session.Session) error) error {
 	log := slog.Default()
 	if !verbose {
+		// Non-verbose: drop all log output so only the UI writes to stdout.
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
 	var iface *netx.Iface
 	var err error
 	if ifaceName != "" {
+		// An explicit -iface flag wins; otherwise pick a suitable default.
 		iface, err = netx.SelectIface(ifaceName)
 	} else {
 		iface, err = netx.AutoSelectIface()
@@ -240,9 +269,13 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 	if noColor {
 		s.SetColor(false)
 	}
+	// Shutdown always runs on the way out (including panics via the recover
+	// above) so modules are stopped and the network restored.
 	defer s.Shutdown()
 
 	// Handle SIGINT/SIGTERM for graceful cleanup.
+	// The channel is buffered so a signal arriving while the goroutine is
+	// still finishing up is not dropped.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -252,6 +285,8 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 		os.Exit(0)
 	}()
 
+	// Apply a user-supplied config file on top of the defaults; errors are
+	// deliberately ignored so a bad file just falls back to defaults.
 	if configPath != "" {
 		if cfg, err := config.Load(configPath); err == nil {
 			s.Conf = cfg
@@ -269,6 +304,8 @@ func runWizard(s *session.Session) error {
 // running as root (or the user explicitly opted out) every invocation escalates
 // via sudo and prompts for the admin password.
 func shouldElevate(euid int, noSudo, windows bool) bool {
+	// On Windows there is no sudo model, and a non-zero euid already running
+	// does not imply a privilege problem, so escalation never applies.
 	return euid != 0 && !noSudo && !windows
 }
 
@@ -290,16 +327,22 @@ func maybeElevate() error {
 		return fmt.Errorf("resolve own executable path: %w", err)
 	}
 	fmt.Fprintln(os.Stderr, "[*] toha3ee needs admin privileges; escalating via sudo (enter the admin password)...")
+	// Re-exec with the exact same args so flags are preserved under sudo.
+	// sudo inherits our stdio so the password prompt and output stay attached
+	// to the same terminal.
 	cmd := exec.Command("sudo", append([]string{self}, os.Args[1:]...)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
+			// The child already printed its error; mirror only its exit code.
 			os.Exit(ee.ExitCode())
 		}
 		return err
 	}
+	// The elevated child succeeded; this (original) process must not continue
+	// as non-root. Exit with success so the parent shell sees a clean status.
 	os.Exit(0)
 	return nil
 }
