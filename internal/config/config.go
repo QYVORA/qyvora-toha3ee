@@ -21,7 +21,9 @@ const DefaultConfigPath = "toha3ee.json"
 
 // Config is the on-disk representation of all framework settings.
 type Config struct {
-	// Path is where the config was loaded from / will be saved to.
+	// Path is where the config was loaded from / will be saved to. It is
+	// excluded from JSON serialization: the file location is a runtime
+	// concern, not a persisted setting.
 	Path string `json:"-"`
 
 	// Iface is the primary network interface used for L2 attacks.
@@ -48,14 +50,23 @@ type Config struct {
 }
 
 // Default returns a Config populated with sane defaults for a Kali host.
+//
+// The returned Config is the base that Load overlays JSON onto, and is also
+// used directly by code that never touches disk. The two maps are
+// pre-initialized so Set/ConfirmRisk never nil-panic on a defaulted Config.
 func Default() *Config {
 	return &Config{
-		Iface:          "eth0",
+		// Bind L2 attacks to the first wired interface; users override it
+		// via --iface or the REPL.
+		Iface: "eth0",
+		// Capture artifacts and CA material land in the working directory.
 		SniffOutput:    "capture.pcap",
 		CAFile:         "toha3ee-ca.pem",
 		CAPrivateKey:   "toha3ee-ca.key",
 		ProxyHTTPAddr:  ":8080",
 		ProxyHTTPSAddr: ":8443",
+		// Re-assert ARP spoofing every 2s to survive host counter-spoofing
+		// and neighbor cache expiry.
 		ARPRefresh:     2 * time.Second,
 		Targets:        nil,
 		Settings:       make(map[string]map[string]string),
@@ -70,20 +81,28 @@ func Load(path string) (*Config, error) {
 	cfg.Path = path
 	data, err := os.ReadFile(path)
 	if err != nil {
+		// A missing file is not an error: fall back to defaults and let the
+		// first Save create it. Any other read failure is real.
 		if errors.Is(err, os.ErrNotExist) {
 			return cfg, nil
 		}
 		return nil, fmt.Errorf("read config: %w", err)
 	}
+	// Unmarshal overlays only the tagged JSON fields onto the defaults, so a
+	// partially-populated file keeps sane values for everything else.
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	// Hand-written or older configs may omit the maps; re-init them so the
+	// accessors below never need nil guards.
 	if cfg.Settings == nil {
 		cfg.Settings = make(map[string]map[string]string)
 	}
 	if cfg.ConfirmedRisks == nil {
 		cfg.ConfirmedRisks = make(map[string]bool)
 	}
+	// Path carries a `json:"-"` tag, so Unmarshal leaves it exactly as set
+	// above; this re-assignment keeps the invariant explicit and local.
 	cfg.Path = path
 	return cfg, nil
 }
@@ -91,22 +110,30 @@ func Load(path string) (*Config, error) {
 // Save writes the config to Path, creating parent directories if needed.
 func (c *Config) Save() error {
 	if c.Path == "" {
+		// Refuse to guess a location for a Config that was never loaded or
+		// given an explicit path.
 		return errors.New("config has no path")
 	}
+	// The target directory may not exist yet (e.g. a fresh install); create
+	// it recursively so the final write cannot fail on a missing parent.
 	if dir := filepath.Dir(c.Path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create config dir: %w", err)
 		}
 	}
+	// MarshalIndent produces the human-editable, two-space-indented JSON
+	// document the REPL and users interact with.
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
 	}
+	// 0644: the file holds module tuning and target lists, no secrets.
 	return os.WriteFile(c.Path, data, 0o644)
 }
 
 // Set stores a per-module parameter. An empty value removes it.
 func (c *Config) Set(module, key, value string) {
+	// Lazily initialize the two-level map so Set works on a zero-value Config.
 	if c.Settings == nil {
 		c.Settings = make(map[string]map[string]string)
 	}
@@ -115,6 +142,9 @@ func (c *Config) Set(module, key, value string) {
 		mod = make(map[string]string)
 	}
 	if value == "" {
+		// An empty value is the way to unset a knob: delete the key, and once
+		// a module has no parameters left prune its entry entirely so it does
+		// not linger in listings as an empty section.
 		delete(mod, key)
 		if len(mod) == 0 {
 			delete(c.Settings, module)
@@ -122,12 +152,16 @@ func (c *Config) Set(module, key, value string) {
 	} else {
 		mod[key] = value
 	}
+	// Write back even for the delete path: mod was only ever a copy-on-read
+	// map that needs re-attaching when the module slot was created here.
 	c.Settings[module] = mod
 }
 
 // Get returns the raw per-module parameter value ("" if unset).
 func (c *Config) Get(module, key string) string {
 	if mod, ok := c.Settings[module]; ok {
+		// A missing key and an explicitly empty value both read as "";
+		// callers wanting a fallback use GetDefault.
 		return mod[key]
 	}
 	return ""
@@ -143,6 +177,8 @@ func (c *Config) GetDefault(module, key, def string) string {
 
 // Keys returns all "module.key" pairs currently set, sorted by module.
 func (c *Config) Keys() []string {
+	// Module names are sorted first so the resulting list is deterministic
+	// and grouped for stable REPL/config listings.
 	mods := make([]string, 0, len(c.Settings))
 	for m := range c.Settings {
 		mods = append(mods, m)
@@ -159,6 +195,9 @@ func (c *Config) Keys() []string {
 
 // GetFromKey resolves a "module.key" key to its value.
 func (c *Config) GetFromKey(key string) string {
+	// Scan backwards so the split lands on the LAST '.', which guarantees we
+	// find a separator whenever one exists and treats anything after it as
+	// the parameter name.
 	for i := len(key) - 1; i > 0; i-- {
 		if key[i] == '.' {
 			return c.Get(key[:i], key[i+1:])
@@ -175,6 +214,8 @@ func (c *Config) GetBool(module, key string, def bool) bool {
 	}
 	b, err := strconv.ParseBool(v)
 	if err != nil {
+		// Unparseable values (e.g. a typo like "tru") degrade to the default
+		// instead of erroring, keeping config handling tolerant.
 		return def
 	}
 	return b
@@ -188,6 +229,7 @@ func (c *Config) GetInt(module, key string, def int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
+		// Non-numeric values fall back to the default rather than aborting.
 		return def
 	}
 	return n
@@ -201,6 +243,8 @@ func (c *Config) GetDuration(module, key string, def time.Duration) time.Duratio
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
+		// Malformed duration strings (e.g. "10" without a unit) fall back to
+		// the default rather than aborting the module.
 		return def
 	}
 	return d
@@ -211,12 +255,14 @@ func (c *Config) ConfirmRisk(moduleID string) {
 	if c.ConfirmedRisks == nil {
 		c.ConfirmedRisks = make(map[string]bool)
 	}
+	// The bool value is always true; the map key alone records approval.
 	c.ConfirmedRisks[moduleID] = true
 }
 
 // IsRiskConfirmed reports whether the user already approved moduleID.
 func (c *Config) IsRiskConfirmed(moduleID string) bool {
 	if c.ConfirmedRisks == nil {
+		// A nil map reads as "nothing approved yet".
 		return false
 	}
 	return c.ConfirmedRisks[moduleID]

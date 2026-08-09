@@ -11,6 +11,7 @@ import (
 
 // DB resolves the first three bytes of a MAC address to a vendor name.
 type DB struct {
+	// table maps the uppercase "AA:BB:CC" OUI to its vendor name.
 	table map[string]string
 }
 
@@ -21,14 +22,19 @@ func New() *DB {
 
 // Lookup returns the vendor for a hardware address, or "" if unknown.
 func (d *DB) Lookup(mac net.HardwareAddr) string {
+	// MACs shorter than 3 bytes (e.g. bogus/empty frames) have no OUI.
 	if mac == nil || len(mac) < 3 {
 		return ""
 	}
+	// mac.String() yields "aa:bb:cc:dd:ee:ff"; the first 8 chars are the OUI
+	// as "AA:BB:CC", which is exactly the table's key format.
 	key := strings.ToUpper(mac.String()[:8]) // "AA:BB:CC"
 	if v, ok := d.table[key]; ok {
 		return v
 	}
 	// Some vendors change the third byte; match on two bytes as a fallback.
+	// This probes for a "AA:BB:XX" entry that represents a whole /24-style
+	// range for vendors that shuffle the final OUI octet.
 	key2 := key[:5] + "XX"
 	if v, ok := d.table[key2]; ok {
 		return v
@@ -37,6 +43,8 @@ func (d *DB) Lookup(mac net.HardwareAddr) string {
 }
 
 // bundled is the curated OUI table. Keys use uppercase "AA:BB:CC".
+// Entries are grouped by vendor; an "AA:BB:XX" entry would act as a two-byte
+// wildcard fallback for vendors that vary the third octet.
 var bundled = map[string]string{
 	// Apple
 	"3C:22:FB": "Apple", "F8:1E:DF": "Apple", "D0:E1:40": "Apple",

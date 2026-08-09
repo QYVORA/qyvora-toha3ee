@@ -7,8 +7,12 @@ type Status string
 
 // Preflight check outcomes.
 const (
-	StatusOK      Status = "ok"
+	// StatusOK means the check passed as-is (or was auto-fixed).
+	StatusOK Status = "ok"
+	// StatusFixable means the framework could fix it but chose not to
+	// (e.g. the user disabled auto-fix).
 	StatusFixable Status = "fixable"
+	// StatusBlocked means the check prevents the attack from running.
 	StatusBlocked Status = "blocked"
 )
 
@@ -42,6 +46,8 @@ func (r *PreflightReport) AddOK(name, detail string) {
 
 // AddFixed appends a check that the framework auto-fixed.
 func (r *PreflightReport) AddFixed(name, detail string) {
+	// An auto-fixed check reports OK (the environment is now usable) but is
+	// flagged so the UI can surface what was silently changed.
 	r.Add(name, StatusOK, true, detail)
 }
 
@@ -85,6 +91,8 @@ func (r *PreflightReport) Fixed() []Check {
 func (r *PreflightReport) String() string {
 	var b strings.Builder
 	for _, c := range r.Checks {
+		// Three-column icons keep the report scannable in the REPL; blocked
+		// checks stand out visually from passing ones.
 		icon := "[OK]  "
 		switch c.Status {
 		case StatusBlocked:

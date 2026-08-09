@@ -33,12 +33,16 @@ type Action struct {
 
 // Manager owns the cleanup registry and watchdog.
 type Manager struct {
-	bus    *events.Bus
+	// bus is where cleanup progress is announced on shutdown.
+	bus *events.Bus
+	// logger receives cleanup/watchdog diagnostics.
 	logger *slog.Logger
 
+	// mu guards actions so registration and shutdown cannot race.
 	mu      sync.Mutex
 	actions []Action
 
+	// hbmu guards hbs (heartbeat registry).
 	hbmu sync.Mutex
 	hbs  map[string]*Heartbeat
 
@@ -55,6 +59,8 @@ func NewManager(bus *events.Bus, logger *slog.Logger) *Manager {
 		bus:    bus,
 		logger: logger,
 		hbs:    make(map[string]*Heartbeat),
+		// Pre-create the stop channel so StopWatchdog has something to close
+		// even if StartWatchdog never ran.
 		stopCh: make(chan struct{}),
 	}
 }
@@ -64,6 +70,8 @@ func NewManager(bus *events.Bus, logger *slog.Logger) *Manager {
 func (m *Manager) RegisterCleanup(id, desc string, restore func() error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Replace-in-place makes re-registration idempotent: modules that start
+	// and stop repeatedly never accumulate duplicate restore actions.
 	for i := range m.actions {
 		if m.actions[i].ID == id {
 			m.actions[i].Desc = desc
@@ -84,6 +92,7 @@ func (m *Manager) UnregisterCleanup(id string) {
 	defer m.mu.Unlock()
 	for i := range m.actions {
 		if m.actions[i].ID == id {
+			// Slice splice: drop the action while preserving order.
 			m.actions = append(m.actions[:i], m.actions[i+1:]...)
 			return
 		}
@@ -94,6 +103,7 @@ func (m *Manager) UnregisterCleanup(id string) {
 func (m *Manager) Actions() []Action {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Copy so callers cannot mutate the live registry through the result.
 	return append([]Action(nil), m.actions...)
 }
 
@@ -101,18 +111,26 @@ func (m *Manager) Actions() []Action {
 // order, so the last change is undone first. Each action is isolated: a
 // failing action is reported but does not prevent the others from running.
 func (m *Manager) RunAll() error {
+	// Snapshot and clear under the lock so actions registered concurrently
+	// during shutdown are not double-run (they stay for the next RunAll).
 	m.mu.Lock()
 	actions := append([]Action(nil), m.actions...)
 	m.actions = nil
 	m.mu.Unlock()
 
 	var errs []string
+	// Reverse order unwinds the most recent change first (LIFO), which is
+	// the only safe teardown order for stacked network manipulations.
 	for i := len(actions) - 1; i >= 0; i-- {
 		a := actions[i]
 		if a.Restore == nil {
+			// A nil restore is a no-op action (e.g. a pure observation);
+			// skip it rather than panic.
 			continue
 		}
 		if err := a.Restore(); err != nil {
+			// Collect every failure instead of aborting mid-teardown: one
+			// broken action must not strand all the later restores.
 			errs = append(errs, fmt.Sprintf("%s: %v", a.ID, err))
 			if m.logger != nil {
 				m.logger.Error("cleanup failed", "id", a.ID, "err", err)
@@ -121,6 +139,8 @@ func (m *Manager) RunAll() error {
 			m.logger.Info("cleanup ok", "id", a.ID, "desc", a.Desc)
 		}
 		if m.bus != nil {
+			// Announce per-action progress so the REPL and caplets can show
+			// live teardown feedback.
 			status := "ok"
 			if len(errs) > 0 {
 				status = "failed"
@@ -137,12 +157,15 @@ func (m *Manager) RunAll() error {
 // Heartbeat tracks liveness for the watchdog. Modules call Beat from their
 // run loop; a stale heartbeat triggers framework-wide cleanup.
 type Heartbeat struct {
+	// last is the last Beat time in Unix nanoseconds. Atomic so Beat/Stale
+	// are safe from any goroutine without a lock.
 	last atomic.Int64
 }
 
 // NewHeartbeat returns a heartbeat initialized to now.
 func NewHeartbeat() *Heartbeat {
 	h := &Heartbeat{}
+	// Start live: the module is assumed healthy from the moment it exists.
 	h.Beat()
 	return h
 }
@@ -185,6 +208,8 @@ func (m *Manager) StartWatchdog(interval, timeout time.Duration, onFired func(ow
 	// field the stopper is mutating.
 	m.wmu.Lock()
 	if m.watching {
+		// A watchdog is already running; refuse to start a second one to
+		// avoid two goroutines racing on the same heartbeat set.
 		m.wmu.Unlock()
 		return
 	}
@@ -199,11 +224,16 @@ func (m *Manager) StartWatchdog(interval, timeout time.Duration, onFired func(ow
 		for {
 			select {
 			case <-stop:
+				// StopWatchdog closed stop: exit cleanly.
 				return
 			case now := <-t.C:
 				m.hbmu.Lock()
+				// Iterate owners under the lock so register/unregister can
+				// never race a liveness check on the same map.
 				for owner, hb := range m.hbs {
 					if hb.Stale(now, timeout) {
+						// Unlock before invoking the callback: onFired may
+						// itself touch the registry (e.g. unregister).
 						m.hbmu.Unlock()
 						if m.logger != nil {
 							m.logger.Error("watchdog fired: heartbeat lost", "owner", owner)
@@ -211,6 +241,8 @@ func (m *Manager) StartWatchdog(interval, timeout time.Duration, onFired func(ow
 						if onFired != nil {
 							onFired(owner)
 						}
+						// A single dead module is a framework-wide problem:
+						// stop watching and let cleanup take over.
 						return
 					}
 				}
@@ -229,12 +261,16 @@ func (m *Manager) StopWatchdog() {
 		return
 	}
 	m.watching = false
+	// Closing stop wakes the goroutine's select so it exits at the next
+	// tick; the wmu lock guarantees this is the only closer.
 	close(m.stopCh)
 }
 
 // RequireRoot returns an error unless the process runs as root/euid 0.
 func RequireRoot() error {
 	if os.Geteuid() != 0 {
+		// Raw sockets and packet injection need CAP_NET_RAW, which sudo root
+		// provides; refuse to run half-working without it.
 		return errors.New("operation requires root (raw sockets / packet injection); re-run with sudo")
 	}
 	return nil
@@ -248,12 +284,15 @@ func EnableIPForward() (restore func() error, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("read ip_forward: %w", err)
 	}
+	// Only write when forwarding is currently off; leaving it enabled would
+	// make the restore function change a value we did not set.
 	if strings.TrimSpace(old) != "1" {
 		if err := writeSysctl(path, "1"); err != nil {
 			return nil, fmt.Errorf("enable ip_forward: %w", err)
 		}
 	}
 	return func() error {
+		// If forwarding was already on, "restoring" means doing nothing.
 		if strings.TrimSpace(old) == "1" {
 			return nil
 		}
@@ -282,6 +321,7 @@ func EnableIP6Forward() (restore func() error, err error) {
 	}, nil
 }
 
+// readSysctl reads a /proc/sys value as a raw string (with trailing newline).
 func readSysctl(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -290,6 +330,8 @@ func readSysctl(path string) (string, error) {
 	return string(data), nil
 }
 
+// writeSysctl writes a value to a /proc/sys file. The mode is ignored by the
+// procfs filesystem but kept for os.WriteFile compatibility.
 func writeSysctl(path string, val string) error {
 	return os.WriteFile(path, []byte(val), 0o644)
 }
@@ -307,11 +349,15 @@ type IPTablesRule struct {
 // AddIPTables installs a rule and registers its removal. Returns the rule
 // fingerprint (table:chain) used to de-duplicate identical rules.
 func (m *Manager) AddIPTables(r IPTablesRule) (string, error) {
+	// The fingerprint is the full append command as a string: it uniquely
+	// identifies a rule so repeated additions collapse to one cleanup entry.
 	fp := strings.Join(append([]string{"-t", r.Table, "-A", r.Chain}, r.Args...), " ")
 	args := append([]string{"-t", r.Table, "-A", r.Chain}, r.Args...)
 	if err := exec.Command("iptables", args...).Run(); err != nil {
 		return "", fmt.Errorf("iptables -A: %w", err)
 	}
+	// Register a paired "-D" (delete) action so shutdown tears the rule out
+	// in reverse order of installation.
 	m.RegisterCleanup("iptables:"+fp, "remove iptables rule", func() error {
 		delArgs := append([]string{"-t", r.Table, "-D", r.Chain}, r.Args...)
 		return exec.Command("iptables", delArgs...).Run()
@@ -321,18 +367,23 @@ func (m *Manager) AddIPTables(r IPTablesRule) (string, error) {
 
 // CAPaths is the resolved location of the framework CA material.
 type CAPaths struct {
+	// CertPath is the CA certificate file path.
 	CertPath string
-	KeyPath  string
+	// KeyPath is the CA private key file path.
+	KeyPath string
 }
 
 // ResolveCAPaths returns the config paths expanded relative to the working
-// directory.
+// directory. Currently a pass-through; kept as a dedicated step so path
+// resolution can change without touching callers.
 func ResolveCAPaths(cert, key string) CAPaths {
 	return CAPaths{CertPath: cert, KeyPath: key}
 }
 
 // ExistingCAPaths returns nil paths when a CA file already exists.
 func ExistingCAPaths(p CAPaths) (CAPaths, bool) {
+	// If the certificate already exists, treat the CA as pre-existing so
+	// nothing generated this session gets deleted at shutdown.
 	if _, err := os.Stat(p.CertPath); err == nil {
 		return p, true
 	}
@@ -343,11 +394,14 @@ func ExistingCAPaths(p CAPaths) (CAPaths, bool) {
 // only if they did not exist before the session.
 func (m *Manager) EnsureCAPaths(p CAPaths) {
 	if p.CertPath == "" {
+		// No CA configured: nothing to clean up.
 		return
 	}
 	m.RegisterCleanup("ca:"+p.CertPath, "remove generated CA", func() error {
 		var errs []error
 		for _, f := range []string{p.CertPath, p.KeyPath} {
+			// os.Remove on a missing file is an error, so tolerate
+			// os.IsNotExist (e.g. only the cert was ever written).
 			if err := os.Remove(filepath.Clean(f)); err != nil && !os.IsNotExist(err) {
 				errs = append(errs, err)
 			}
@@ -380,5 +434,7 @@ func (b *Bool) Get() bool { return b.b.Load() }
 // ParseBool is a helper for command values.
 func ParseBool(s string) bool {
 	v, err := strconv.ParseBool(s)
+	// Any malformed input parses as false rather than erroring, matching
+	// the tolerant CLI handling elsewhere.
 	return err == nil && v
 }

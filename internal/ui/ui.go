@@ -41,7 +41,9 @@ const sectionWidth = 60
 // UI renders styled output to one writer. Colors are enabled only when the
 // writer is a terminal and NO_COLOR is not set.
 type UI struct {
-	w     io.Writer
+	// w is the destination all formatted output is written to.
+	w io.Writer
+	// color toggles ANSI emission; false forces plain text.
 	color bool
 }
 
@@ -49,6 +51,8 @@ type UI struct {
 func New(w io.Writer) *UI {
 	u := &UI{w: w}
 	if os.Getenv("NO_COLOR") == "" {
+		// Honor the NO_COLOR convention (https://no-color.org): when unset,
+		// auto-detect whether the writer is a real terminal.
 		u.color = isTerminal(w)
 	}
 	return u
@@ -66,6 +70,8 @@ func (u *UI) SetColor(on bool) { u.color = on }
 // Enabled reports whether colors are currently active.
 func (u *UI) Enabled() bool { return u.color }
 
+// paint wraps s in code/Reset when colors are active; empty strings stay
+// untouched so padding calculations never see invisible ANSI bytes.
 func (u *UI) paint(s, code string) string {
 	if !u.color || s == "" {
 		return s
@@ -115,13 +121,20 @@ func (u *UI) Black(s string) string { return u.paint(s, "\x1b[30m") }
 func (u *UI) Section(title string) {
 	label := strings.TrimSpace(title)
 	if label == "" {
+		// No title: print a bare rule instead of a malformed section.
 		u.Rule()
 		return
 	}
+	// inner is the dash space available after reserving the title and its
+	// two surrounding spaces.
 	inner := sectionWidth - runeLen(label) - 2
 	if inner < 2 {
+		// Very long titles: keep at least a dash on each side so the rule
+		// still reads as a section boundary.
 		inner = 2
 	}
+	// Split the dash budget so an odd total leaves the extra on the right,
+	// which reads more naturally for LTR text.
 	left := inner / 2
 	right := inner - left
 	line := strings.Repeat("─", left) + " " + label + " " + strings.Repeat("─", right)
@@ -137,6 +150,8 @@ func (u *UI) Rule() {
 // e.g. caplets or eval mode piping to a file).
 func (u *UI) Clear() {
 	if isTerminal(u.w) {
+		// ANSI "erase display then move cursor home"; only meaningful on a
+		// live terminal.
 		fmt.Fprint(u.w, "\x1b[2J\x1b[H")
 	}
 }
@@ -192,6 +207,7 @@ func (u *UI) Glyph(glyph string) string {
 	case "-":
 		return u.paint("[-]", Dim+White)
 	default:
+		// Unknown glyphs are still bracketed so output stays column-aligned.
 		return u.paint("["+glyph+"]", White)
 	}
 }
@@ -202,8 +218,12 @@ func (u *UI) Glyph(glyph string) string {
 func (u *UI) HUD(left, right string) {
 	cols := 80
 	if w := u.TermWidth(); w > 20 {
+		// Use the live terminal width when it is usable; the 20-column floor
+		// guards against degenerate winsize reports.
 		cols = w
 	}
+	// Padding bridges the gap so left and right sections are visually
+	// separated; the -1 accounts for the leading "▮ " block.
 	pad := cols - runeLen(left) - runeLen(right) - 1
 	if pad < 1 {
 		pad = 1
@@ -216,10 +236,12 @@ func (u *UI) HUD(left, right string) {
 func (u *UI) TermWidth() int {
 	f, ok := u.w.(*os.File)
 	if !ok {
+		// Only real files can carry a terminal geometry.
 		return 0
 	}
 	ws, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
 	if err != nil {
+		// Not a tty (or ioctl denied): report zero so callers fall back.
 		return 0
 	}
 	return int(ws.Col)
@@ -234,6 +256,8 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
 	}
+	// Pass 1: compute each column's width as the widest visible cell, which
+	// guarantees alignment even when rows are ragged or contain ANSI codes.
 	widths := make([]int, len(headers))
 	for i, h := range headers {
 		widths[i] = runeLen(h)
@@ -246,6 +270,7 @@ func (u *UI) Table(headers []string, rows [][]string) {
 		}
 	}
 
+	// Header row, printed before any data rows.
 	var b strings.Builder
 	for i, h := range headers {
 		if i > 0 {
@@ -255,6 +280,7 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	}
 	fmt.Fprintln(u.w, b.String())
 
+	// Data rows: missing cells render as empty, keeping columns aligned.
 	for _, r := range rows {
 		var rb strings.Builder
 		for i := 0; i < len(headers); i++ {
@@ -298,6 +324,7 @@ func (u *UI) width(s string) int { return runeLen(s) }
 // first and counting wide (CJK/emoji) characters as two columns.
 func runeLen(s string) int {
 	if strings.Contains(s, "\x1b") {
+		// Painted strings carry ANSI bytes that would corrupt width math.
 		s = stripANSI(s)
 	}
 	n := 0
@@ -312,19 +339,20 @@ func runeLen(s string) int {
 }
 
 // isWide reports whether r occupies two terminal columns (East Asian width).
+// The ranges mirror the Unicode EastAsianWidth property used by wcwidth.
 func isWide(r rune) bool {
 	switch {
 	case r >= 0x1100 && r <= 0x115F, // Hangul Jamo
-		r >= 0x2329 && r <= 0x232A, // angle brackets
-		r >= 0x2E80 && r <= 0xA4CF, // CJK radicals, Kanji, Hangul
-		r >= 0xAC00 && r <= 0xD7A3, // Hangul syllables
-		r >= 0xF900 && r <= 0xFAFF, // CJK compatibility ideographs
-		r >= 0xFE10 && r <= 0xFE19, // vertical forms
-		r >= 0xFE30 && r <= 0xFE6F, // CJK compatibility forms
-		r >= 0xFF00 && r <= 0xFF60, // fullwidth forms
-		r >= 0xFFE0 && r <= 0xFFE6, // fullwidth signs
-		r >= 0x1F300 && r <= 0x1F64F,
-		r >= 0x1F900 && r <= 0x1F9FF:
+		r >= 0x2329 && r <= 0x232A,   // angle brackets
+		r >= 0x2E80 && r <= 0xA4CF,   // CJK radicals, Kanji, Hangul
+		r >= 0xAC00 && r <= 0xD7A3,   // Hangul syllables
+		r >= 0xF900 && r <= 0xFAFF,   // CJK compatibility ideographs
+		r >= 0xFE10 && r <= 0xFE19,   // vertical forms
+		r >= 0xFE30 && r <= 0xFE6F,   // CJK compatibility forms
+		r >= 0xFF00 && r <= 0xFF60,   // fullwidth forms
+		r >= 0xFFE0 && r <= 0xFFE6,   // fullwidth signs
+		r >= 0x1F300 && r <= 0x1F64F, // emoji and pictographs
+		r >= 0x1F900 && r <= 0x1F9FF: // supplemental symbols
 		return true
 	}
 	return false
@@ -335,6 +363,8 @@ func stripANSI(s string) string {
 	var out strings.Builder
 	for i := 0; i < len(s); {
 		if s[i] == '\x1b' {
+			// Consume everything up to and including the terminating 'm',
+			// which ends a CSI SGR sequence like "\x1b[31m".
 			j := i + 1
 			for j < len(s) && s[j] != 'm' {
 				j++
@@ -356,6 +386,8 @@ func stripANSI(s string) string {
 func padTo(s string, n int) string {
 	pad := n - runeLen(s)
 	if pad <= 0 {
+		// Already at or past the target width; adding spaces would break
+		// alignment rather than fix it.
 		return s
 	}
 	return s + strings.Repeat(" ", pad)
@@ -369,20 +401,26 @@ func NewLineWriter(u *UI) io.Writer {
 	return &lineWriter{w: u.w, ui: u}
 }
 
+// lineWriter is the concrete writer that splits input on newlines and
+// colorizes each line's leading "[token]" prefix.
 type lineWriter struct {
-	w  io.Writer
-	ui *UI
+	w  io.Writer // destination for the recolored output
+	ui *UI       // provides palette and the color-enabled flag
 }
 
+// Write recolors the prefix of every line in p, preserving the original
+// byte count so callers (fmt writers) see a correct short-write accounting.
 func (lw *lineWriter) Write(p []byte) (int, error) {
 	lines := bytes.Split(p, []byte{'\n'})
 	for i, line := range lines {
 		if i > 0 {
+			// Re-emit the newline that bytes.Split removed between lines.
 			if _, err := lw.w.Write([]byte{'\n'}); err != nil {
 				return 0, err
 			}
 		}
 		if len(line) == 0 {
+			// Empty lines (including a trailing newline) need no prefix.
 			continue
 		}
 		out := recolorPrefix(line, lw.ui)
@@ -400,6 +438,8 @@ func recolorPrefix(line []byte, u *UI) []byte {
 		return line
 	}
 	end := bytes.IndexByte(line, ']')
+	// Require a sane token length: "[module.id]" style prefixes are short;
+	// a long "token" is unlikely to be a prefix and is left as-is.
 	if end <= 0 || end > 24 {
 		return line
 	}
@@ -426,8 +466,12 @@ func recolorPrefix(line []byte, u *UI) []byte {
 	case "BLK":
 		tok = u.paint("BLK", Amber)
 	default:
+		// Unknown tokens (e.g. module ids) are emphasized bold white, which
+		// visually separates them from plain prose.
 		tok = u.paint(tok, Bold+White)
 	}
+	// Reassemble "[painted-token]" + the rest of the line, sizing the buffer
+	// for the added ANSI bytes to avoid regrowth.
 	out := make([]byte, 0, len(line)+32)
 	out = append(out, '[')
 	out = append(out, tok...)
@@ -446,6 +490,8 @@ func isTerminal(w io.Writer) bool {
 	if err != nil {
 		return false
 	}
+	// /dev/tty, ptys and the console are character devices; regular files and
+	// pipes are not.
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 

@@ -13,10 +13,15 @@ type RiskLevel int
 
 // Risk levels, lowest to highest severity.
 const (
+	// RiskInfo is benign/no-impact activity.
 	RiskInfo RiskLevel = iota
+	// RiskLow is minimally disruptive (mostly passive).
 	RiskLow
+	// RiskMedium adds noise but does not drop traffic.
 	RiskMedium
+	// RiskHigh interrupts connectivity for targeted hosts.
 	RiskHigh
+	// RiskCritical is network-wide and sustained disruption.
 	RiskCritical
 )
 
@@ -44,6 +49,7 @@ func FromString(s string) RiskLevel {
 		return RiskInfo
 	case "low":
 		return RiskLow
+	// "med" and "crit" are accepted as shorthand from the REPL.
 	case "medium", "med":
 		return RiskMedium
 	case "high":
@@ -67,6 +73,8 @@ func IsElevated(riskName string) bool {
 // risk level. It is shown to the user BEFORE confirming a High/Critical
 // module in wizard mode.
 func BlastRadius(riskName string) string {
+	// These strings are deliberately specific about collateral damage so a
+	// wizard user can make an informed consent decision.
 	switch strings.ToLower(riskName) {
 	case "critical":
 		return "may drop all clients from the network/AP for a sustained period and trigger network-wide alarms"

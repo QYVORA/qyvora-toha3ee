@@ -22,6 +22,7 @@ var Default = New()
 // Config carries the timing and randomization knobs shared by every
 // packet-sending module. Zero value disables all stealth behavior.
 type Config struct {
+	// Enabled is the master switch; false disables all stealth behavior.
 	Enabled bool
 
 	// Jitter is the maximum random delay inserted before each probe.
@@ -31,12 +32,14 @@ type Config struct {
 	// Pause is the pause applied after each burst.
 	Pause time.Duration
 
-	RandomizePort bool
-	RandomizeTTL  bool
-	RandomizeID   bool
-	RandomizePad  bool
-	ShuffleOrder  bool
+	RandomizePort bool // vary the source port per probe
+	RandomizeTTL  bool // vary the IP TTL per probe
+	RandomizeID   bool // vary the IP identification field per probe
+	RandomizePad  bool // pad frames with random bytes instead of zeros
+	ShuffleOrder  bool // randomize probe order within a scan
 
+	// rng is the per-Config random source. It is not safe for concurrent
+	// use; callers guard it or pass a shared Pacer.
 	rng *rand.Rand
 }
 
@@ -61,12 +64,17 @@ func New() *Config {
 func FromConfig(c *config.Config, module string) *Config {
 	cfg := New()
 	if c == nil {
+		// No config backend at all: keep the stealth defaults verbatim.
 		return cfg
 	}
 	if !c.GetBool(module, "stealth", true) {
+		// The master knob is off: return a disabled config so the caller can
+		// still use it as a "no stealth" marker without special-casing nil.
 		cfg.Enabled = false
 		return cfg
 	}
+	// Overlay each tunable; GetDuration/GetInt fall back to the current
+	// default when the user has not set that knob.
 	cfg.Jitter = c.GetDuration(module, "stealth_jitter", cfg.Jitter)
 	cfg.Burst = c.GetInt(module, "stealth_burst", cfg.Burst)
 	cfg.Pause = c.GetDuration(module, "stealth_pause", cfg.Pause)
@@ -81,6 +89,8 @@ func FromConfig(c *config.Config, module string) *Config {
 // Feature reports whether a specific stealth behavior is active.
 func (c *Config) Feature(b bool) bool {
 	if c == nil {
+		// A nil Config (callers passing a zeroed *Config) behaves as
+		// stealth-disabled rather than panicking.
 		return false
 	}
 	return c.Enabled && b
@@ -97,6 +107,8 @@ func (c *Config) On() bool {
 // Shuffle randomizes the first n elements of a collection using the provided
 // swap function (the standard sort.Interface contract).
 func (c *Config) Shuffle(n int, swap func(i, j int)) {
+	// Nothing to randomize for fewer than two items; also honors the master
+	// switch and the per-feature ShuffleOrder knob.
 	if !c.Feature(c.ShuffleOrder) || n < 2 {
 		return
 	}
@@ -108,16 +120,22 @@ func (c *Config) JitterSleep() {
 	if !c.Feature(c.Jitter > 0) {
 		return
 	}
+	// Int64N returns [0, Jitter), keeping the delay strictly below the cap
+	// so bursts never line up at the exact same interval.
 	time.Sleep(time.Duration(c.rng.Int64N(int64(c.Jitter))))
 }
 
 // RandomSrcPort returns an ephemeral source port from the Linux dynamic range.
 func (c *Config) RandomSrcPort() uint16 {
+	// Linux defaults to ephemeral ports 32768-60999; the offset keeps
+	// generated ports inside that range so middleboxes do not flag them.
 	return uint16(32768 + c.rng.IntN(28232))
 }
 
 // RandomIPID returns a random IP identification value.
 func (c *Config) RandomIPID() uint16 {
+	// Take the high 16 bits of a 32-bit value so consecutive draws do not
+	// correlate in their low bits.
 	return uint16(c.rng.Uint32() >> 16)
 }
 
@@ -129,11 +147,15 @@ func (c *Config) RandomSeq() uint32 {
 // TTL jitters base by at most delta hops, clamped to valid IPv4 TTL values.
 func (c *Config) TTL(base, delta uint8) uint8 {
 	if delta == 0 {
+		// Default jitter of 8 hops: enough to defeat TTL fingerprinting of
+		// the scanner without overshooting real-world hop counts.
 		delta = 8
 	}
+	// Draw an offset in [-delta, +delta] so the TTL both rises and falls.
 	off := int8(c.rng.IntN(int(delta)*2+1)) - int8(delta)
 	v := int32(base) + int32(off)
 	if v < 1 {
+		// TTL 0 is invalid/discarded by routers; clamp at 1.
 		v = 1
 	}
 	if v > 255 {
@@ -145,12 +167,16 @@ func (c *Config) TTL(base, delta uint8) uint8 {
 // Window picks a TCP window size from common real-stack values so that
 // SYN probes do not all advertise an identical, tool-specific window.
 func (c *Config) Window() uint16 {
+	// These are values actually observed from Windows/macOS/Linux/BSD TCP
+	// stacks; picking one at random blends the scanner into background noise.
 	vals := []uint16{64240, 65535, 65536 >> 1, 16384, 8192, 5840, 29200, 57344}
 	return vals[c.rng.IntN(len(vals))]
 }
 
 // DF drops the IPv4 dont-fragment flag with the given probability (0..1).
 func (c *Config) DF(prob float64) bool {
+	// The DF bit stays set unless the random draw exceeds prob, so prob is
+	// the chance of *clearing* the bit (i.e. dropping the flag).
 	return c.rng.Float64() > prob
 }
 
@@ -160,8 +186,13 @@ func (c *Config) DF(prob float64) bool {
 func (c *Config) Pad(n int) []byte {
 	out := make([]byte, n)
 	if _, err := cryptorand.Read(out); err != nil {
+		// Fallback: a linear congruential generator seeded from the clock.
+		// Not cryptographically secure, but adequate for padding bytes where
+		// unpredictability against a passive observer is the only goal.
 		t := time.Now().UnixNano()
 		for i := range out {
+			// MMIX-style LCG constants: multiplier and increment with good
+			// statistical spread across the full 64-bit state.
 			t = t*6364136223846793005 + 1442695040888963407
 			out[i] = byte(t >> 56)
 		}
@@ -173,8 +204,11 @@ func (c *Config) Pad(n int) []byte {
 // not advertise the framework.
 func (c *Config) UserAgent() string {
 	if !c.On() {
+		// Stealth disabled: identify the tool explicitly instead of hiding.
 		return "Mozilla/5.0 toha3ee/1.0"
 	}
+	// A spread of current Chrome/Safari/Firefox strings; each request picks
+	// one at random so repeated probes do not share a tell-tale agent.
 	uas := []string{
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
@@ -188,8 +222,11 @@ func (c *Config) UserAgent() string {
 // Pacer paces packet emission with burst/jitter cadence. It is safe for
 // concurrent use so a whole scan can share one cadence.
 type Pacer struct {
-	mu   sync.Mutex
-	cfg  *Config
+	// mu serializes Wait/Reset so the shared cadence stays consistent.
+	mu sync.Mutex
+	// cfg is the Config whose burst/jitter settings drive the pacing.
+	cfg *Config
+	// sent counts probes sent since the last burst reset.
 	sent int
 }
 
@@ -200,6 +237,8 @@ func NewPacer(cfg *Config) *Pacer {
 
 // Wait blocks for the next allowed send slot.
 func (p *Pacer) Wait() {
+	// Nil-safe: an unset Pacer or a stealth-disabled Config means "send
+	// immediately", i.e. no pacing at all.
 	if p == nil || p.cfg == nil || !p.cfg.Enabled {
 		return
 	}
@@ -207,6 +246,8 @@ func (p *Pacer) Wait() {
 	defer p.mu.Unlock()
 	p.sent++
 	if p.cfg.Burst > 0 && p.sent >= p.cfg.Burst {
+		// Burst completed: reset the counter and sleep for the pause plus a
+		// jitter so bursts do not recur on a fixed, fingerprintable cadence.
 		p.sent = 0
 		pause := p.cfg.Pause
 		if j := p.cfg.Jitter; j > 0 {
@@ -217,6 +258,8 @@ func (p *Pacer) Wait() {
 		}
 		return
 	}
+	// Inside a burst: sleep a per-probe jitter so probes are not emitted at
+	// machine-exact intervals.
 	if j := p.cfg.Jitter; j > 0 {
 		time.Sleep(time.Duration(p.cfg.rng.Int64N(int64(j))))
 	}
@@ -234,9 +277,13 @@ func (p *Pacer) Reset() {
 
 // newRNG builds a math/rand/v2 source seeded from the OS entropy pool.
 func newRNG() *rand.Rand {
+	// Two independent PCG seeds make the source effectively
+	// non-reproducible across runs, so probes cannot be predicted.
 	return rand.New(rand.NewPCG(seed(), seed()))
 }
 
+// seed returns 64 bits of OS randomness, falling back to the clock when the
+// entropy pool is unavailable (e.g. some containers).
 func seed() uint64 {
 	var b [8]byte
 	if _, err := cryptorand.Read(b[:]); err == nil {

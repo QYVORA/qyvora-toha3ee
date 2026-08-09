@@ -27,10 +27,13 @@ type Host struct {
 	LastSeen  time.Time
 	// Ports maps a TCP port to its grabbed banner.
 	Ports map[uint16]string
-	// Sent and Recv are packet counters maintained by ARP probing.
+	// Sent and Recv are packet counters maintained by ARP probing. They are
+	// atomic so sniffers and the REPL can update/read them from any goroutine.
 	Sent atomic.Uint64
 	Recv atomic.Uint64
 
+	// mu guards Ports; all other fields are written once at creation or by
+	// the single store writer, so they need no locking.
 	mu sync.Mutex // guards Ports
 }
 
@@ -50,9 +53,13 @@ func (h *Host) Copy() *Host {
 		LastSeen:  h.LastSeen,
 		Ports:     make(map[uint16]string, len(h.Ports)),
 	}
+	// Deep-copy the ports map so external callers mutating the snapshot
+	// cannot corrupt the store's live map.
 	for k, v := range h.Ports {
 		c.Ports[k] = v
 	}
+	// atomic.Uint64 must be copied via Load/Store, never by struct
+	// assignment, so the new instance has independent counter storage.
 	c.Sent.Store(h.Sent.Load())
 	c.Recv.Store(h.Recv.Load())
 	return c
@@ -63,6 +70,7 @@ func (h *Host) SetPort(port uint16, banner string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.Ports == nil {
+		// A freshly discovered host may never have had ports set.
 		h.Ports = make(map[uint16]string)
 	}
 	h.Ports[port] = banner
@@ -83,6 +91,7 @@ func (h *Host) OpenPorts() []uint16 {
 	for p := range h.Ports {
 		ports = append(ports, p)
 	}
+	// Sorting gives a deterministic, human-friendly listing for the REPL.
 	sort.Slice(ports, func(i, j int) bool { return ports[i] < ports[j] })
 	return ports
 }
@@ -135,6 +144,7 @@ type Recon struct {
 
 // Store is the process-wide state container.
 type Store struct {
+	// mu guards the creds/sessions/events slices and their id counters.
 	mu         sync.RWMutex
 	hosts      sync.Map // key: string(ip) -> *Host
 	creds      []Cred
@@ -142,7 +152,8 @@ type Store struct {
 	events     []EventRecord
 	nextCredID int
 	nextSessID int
-	capEvents  int
+	// capEvents bounds the in-memory event log.
+	capEvents int
 
 	// Recon holds the accumulated environment evidence.
 	Recon Recon
@@ -151,6 +162,8 @@ type Store struct {
 // New returns an empty Store. capEvents bounds the in-memory event log.
 func New(capEvents int) *Store {
 	if capEvents <= 0 {
+		// Default log size keeps the REPL feed responsive without unbounded
+		// memory growth during long engagements.
 		capEvents = 5000
 	}
 	return &Store{capEvents: capEvents}
@@ -162,6 +175,8 @@ func (s *Store) UpsertHost(h *Host) *Host {
 	now := time.Now()
 	if old, ok := s.hosts.Load(key); ok {
 		oh := old.(*Host)
+		// Known host: refresh liveness and merge any newly-learned fields,
+		// never clobbering existing data with empty updates.
 		oh.LastSeen = now
 		if h.Vendor != "" {
 			oh.Vendor = h.Vendor
@@ -175,6 +190,8 @@ func (s *Store) UpsertHost(h *Host) *Host {
 		if h.TLS {
 			oh.TLS = true
 		}
+		// Ports merge under the host's own lock because a scanner goroutine
+		// may be updating them concurrently.
 		if len(h.Ports) > 0 {
 			oh.mu.Lock()
 			for p, b := range h.Ports {
@@ -187,6 +204,7 @@ func (s *Store) UpsertHost(h *Host) *Host {
 		}
 		return oh
 	}
+	// New host: stamp first/last seen so the inventory has a timeline.
 	h.FirstSeen = now
 	h.LastSeen = now
 	s.hosts.Store(key, h)
@@ -210,6 +228,8 @@ func (s *Store) Host(ip net.IP) *Host {
 // Hosts returns a snapshot of all known hosts.
 func (s *Store) Hosts() []*Host {
 	var out []*Host
+	// sync.Map.Range visits every entry; order is unspecified, so callers
+	// that need ordering must sort the returned slice.
 	s.hosts.Range(func(_, v any) bool {
 		out = append(out, v.(*Host))
 		return true
@@ -231,6 +251,7 @@ func (s *Store) AddCred(c Cred) Cred {
 func (s *Store) Creds() []Cred {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	// Copy so callers cannot mutate the store's backing slice.
 	return append([]Cred(nil), s.creds...)
 }
 
@@ -269,6 +290,8 @@ func (s *Store) LogEvent(topic, msg string) {
 	defer s.mu.Unlock()
 	s.events = append(s.events, EventRecord{Time: time.Now(), Topic: topic, Msg: msg})
 	if len(s.events) > s.capEvents {
+		// Trim the oldest events by slicing from the end, keeping the most
+		// recent capEvents entries.
 		s.events = s.events[len(s.events)-s.capEvents:]
 	}
 }
@@ -284,5 +307,6 @@ func (s *Store) Events() []EventRecord {
 func (s *Store) ClearEvents() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Reuse the backing array instead of allocating a fresh slice.
 	s.events = s.events[:0]
 }
