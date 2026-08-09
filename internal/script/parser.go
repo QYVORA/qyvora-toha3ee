@@ -303,22 +303,29 @@ func (p *parser) parseSleep() (Stmt, error) {
 }
 
 // parseExec captures the rest of the line verbatim as a one-shot REPL command,
-// so scripts can call commands like "net.profile" or "creds.show".
+// so scripts can call commands like "net.profile" or "creds.show". Commas are
+// re-inserted without surrounding spaces so "80,443" survives reconstruction.
 func (p *parser) parseExec() (Stmt, error) {
 	p.next() // exec / run.cmd / command
 	if p.at(tkArrow) || p.at(tkAppend) {
 		p.next()
 	}
-	var parts []string
+	var b strings.Builder
+	needSpace := false
 	for !p.at(tkNewline) && !p.at(tkEOF) {
 		t := p.next()
-		if t.kind == tkString {
-			parts = append(parts, t.text)
+		if t.kind == tkComma {
+			b.WriteByte(',')
+			needSpace = false
 			continue
 		}
-		parts = append(parts, t.text)
+		if needSpace {
+			b.WriteByte(' ')
+		}
+		b.WriteString(t.text)
+		needSpace = true
 	}
-	return ExecStmt{Raw: strings.Join(parts, " ")}, nil
+	return ExecStmt{Raw: b.String()}, nil
 }
 
 func (p *parser) parseEcho() (Stmt, error) {
