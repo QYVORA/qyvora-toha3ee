@@ -14,6 +14,8 @@ import (
 // windows, BSDs) uses the portable x/net/ipv6 helpers.
 func joinGroup(conn *net.UDPConn, iface *net.Interface, group net.IP) error {
 	pc := ipv6.NewPacketConn(conn)
+	// Pin the membership to the specific interface so multicast frames are
+	// received only on the intended link.
 	if err := pc.SetMulticastInterface(iface); err != nil {
 		return fmt.Errorf("set multicast interface: %w", err)
 	}

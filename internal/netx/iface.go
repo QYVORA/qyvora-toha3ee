@@ -13,22 +13,24 @@ import (
 
 // Iface describes a local network interface with its primary addresses.
 type Iface struct {
-	Name  string
-	Index int
-	IP    net.IP
-	Net   *net.IPNet
-	IPv6  net.IP
-	MAC   net.HardwareAddr
-	MTU   int
+	Name  string           // interface name, e.g. "eth0"
+	Index int              // OS interface index, needed for raw sockets and multicast joins
+	IP    net.IP           // primary IPv4 address (the first one discovered)
+	Net   *net.IPNet       // IPv4 subnet (address + mask), used for CIDR math
+	IPv6  net.IP           // first IPv6 address found
+	MAC   net.HardwareAddr // Ethernet hardware address
+	MTU   int              // maximum transmission unit as reported by the kernel
 }
 
 // String returns a compact human-readable description.
 func (i *Iface) String() string {
+	// Compact form is used for logs and --iface diagnostics.
 	return fmt.Sprintf("%s (%s, %s)", i.Name, i.IP, i.MAC)
 }
 
 // CIDR returns the interface's network in CIDR notation, e.g. "192.168.8.0/24".
 func (i *Iface) CIDR() string {
+	// Without a discovered subnet there is nothing meaningful to report.
 	if i.Net == nil {
 		return ""
 	}
@@ -54,16 +56,17 @@ func Interfaces() ([]*Iface, error) {
 	for _, ni := range ifs {
 		addrs, err := ni.Addrs()
 		if err != nil {
-			continue
+			continue // cannot enumerate this interface's addresses; skip it
 		}
 		inf := &Iface{Name: ni.Name, Index: ni.Index, MAC: ni.HardwareAddr, MTU: ni.MTU}
 		for _, a := range addrs {
 			ipn, ok := a.(*net.IPNet)
 			if !ok {
-				continue
+				continue // not a plain IP assignment (e.g. link-local scope)
 			}
 			ip := ipn.IP
 			if ip.To4() != nil {
+				// Keep only the first IPv4 address; interfaces can carry several.
 				if inf.IP == nil {
 					inf.IP = ip.To4()
 					inf.Net = &net.IPNet{IP: ip.To4(), Mask: ipn.Mask}
@@ -85,6 +88,7 @@ func SelectIface(name string) (*Iface, error) {
 	}
 	for _, i := range ifs {
 		if i.Name == name {
+			// Most modules are IPv4-centric and need a source address.
 			if i.IP == nil {
 				return nil, fmt.Errorf("interface %s has no IPv4 address", name)
 			}
@@ -102,9 +106,14 @@ func AutoSelectIface() (*Iface, error) {
 		return nil, err
 	}
 	for _, i := range ifs {
+		// A usable interface needs both a source IPv4 and a real MAC, otherwise
+		// L2 attacks (ARP/NDP) and raw-socket scans cannot be performed.
 		if i.IP == nil || i.MAC == nil {
 			continue
 		}
+		// Skip loopback and the common virtual/bridge interfaces (docker
+		// bridges, VPN bridges, veth pairs), which are never the intended
+		// engagement interface and would confuse L2/L3 targeting.
 		if i.Name == "lo" || strings.HasPrefix(i.Name, "docker") || strings.HasPrefix(i.Name, "br-") || strings.HasPrefix(i.Name, "veth") {
 			continue
 		}
@@ -126,10 +135,11 @@ func (i *Iface) Gateway() (net.IP, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read /proc/net/route: %w", err)
 	}
+	// Drop the header line; every remaining line is one kernel route.
 	for _, line := range strings.Split(string(data), "\n")[1:] {
 		fields := strings.Fields(line)
 		if len(fields) < 4 || fields[0] != i.Name {
-			continue
+			continue // not a route belonging to our interface
 		}
 		if fields[1] != "00000000" { // not the default route
 			continue
@@ -138,6 +148,7 @@ func (i *Iface) Gateway() (net.IP, error) {
 		if err != nil {
 			continue
 		}
+		// A 0.0.0.0 gateway means the link has no router at all.
 		if gw.Equal(net.IPv4zero) {
 			continue
 		}
@@ -152,10 +163,12 @@ func hexToIP(s string) (net.IP, error) {
 	if len(s) != 8 {
 		return nil, errors.New("bad hex ip length")
 	}
+	// The route table stores IPv4 as a single 32-bit little-endian integer.
 	raw, err := strconv.ParseUint(s, 16, 32)
 	if err != nil {
 		return nil, err
 	}
+	// Reassemble the four octets out of that little-endian uint32.
 	return net.IPv4(byte(raw), byte(raw>>8), byte(raw>>16), byte(raw>>24)), nil
 }
 
@@ -166,5 +179,7 @@ func IPToHex(ip net.IP) string {
 	if ip == nil {
 		return "00000000"
 	}
+	// Emit the octets in reverse order so a big-endian net.IP becomes the
+	// little-endian integer the kernel expects in /proc/net/route.
 	return fmt.Sprintf("%02X%02X%02X%02X", ip[3], ip[2], ip[1], ip[0])
 }

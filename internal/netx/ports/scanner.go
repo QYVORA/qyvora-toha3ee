@@ -25,11 +25,11 @@ type State string
 
 // Port states.
 const (
-	Open         State = "open"
-	Closed       State = "closed"
-	Filtered     State = "filtered"
-	Unfiltered   State = "unfiltered"
-	OpenFiltered State = "open|filtered"
+	Open         State = "open"          // a SYN-ACK was received
+	Closed       State = "closed"        // a RST was received
+	Filtered     State = "filtered"      // no response (firewall drops)
+	Unfiltered   State = "unfiltered"    // ACK probe reached the port, RST came back
+	OpenFiltered State = "open|filtered" // no reply, cannot tell apart
 )
 
 // Result describes the outcome of probing one port.
@@ -43,12 +43,14 @@ type Scanner struct {
 	iface           *netx.Iface
 	handle          *pcap.Handle
 	stealth         *stealth.Config
-	decoys          []net.IP
-	fragment        bool
-	zombieProbePort uint16
+	decoys          []net.IP // spoofed source addresses, see SetDecoys
+	fragment        bool     // fragment outgoing probes, see SetFragment
+	zombieProbePort uint16   // port used to read the zombie's IP ID counter
 }
 
-// NewScanner opens a pcap handle on iface for scanning.
+// NewScanner opens a pcap handle on iface for scanning. The snapshot length
+// of 65535 captures whole frames, promiscuous mode lets us see traffic not
+// addressed to this host, and the 500ms timeout bounds blocking reads.
 func NewScanner(iface *netx.Iface) (*Scanner, error) {
 	handle, err := pcap.OpenLive(iface.Name, 65535, true, 500*time.Millisecond)
 	if err != nil {
@@ -86,6 +88,9 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 		return nil, fmt.Errorf("resolve %s: %w", ip, err)
 	}
 
+	// Watch only for the two signals that matter in a SYN scan: SYN-ACK
+	// (open) and RST (closed) coming back from the target. Filtering at the
+	// BPF level keeps the userspace packet loop cheap.
 	if err := s.handle.SetBPFFilter(fmt.Sprintf(
 		"tcp and host %s and (tcp[tcpflags] & (tcp-syn|tcp-rst) != 0)", ip)); err != nil {
 		return nil, fmt.Errorf("set bpf: %w", err)
@@ -94,6 +99,7 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 	var sent atomic.Int64
 	var got sync.Map // port -> State
 	done := make(chan struct{})
+	// Reader goroutine: record replies for the duration of the scan.
 	go func() {
 		ps := gopacket.NewPacketSource(s.handle, layers.LayerTypeEthernet)
 		ps.NoCopy = true
@@ -118,14 +124,19 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 			}
 			tcp := tcpL.(*layers.TCP)
 			ip4 := ipL.(*layers.IPv4)
+			// Ignore anything not sourced from the target itself (e.g. other
+			// hosts answering our spoofed source ports).
 			if !ip4.SrcIP.Equal(ip) {
 				continue
 			}
+			// The scanned port is the TCP source port of the reply.
 			port := uint16(tcp.SrcPort)
 			switch {
 			case tcp.SYN && tcp.ACK:
 				got.Store(port, Open)
 			case tcp.RST:
+				// First verdict wins: a port that already reported open must
+				// not be overwritten by a spurious late RST.
 				if _, exists := got.Load(port); !exists {
 					got.Store(port, Closed)
 				}
@@ -144,6 +155,7 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 		pace.Wait()
 	}
 
+	// Give the target time to answer, then stop the reader.
 	time.Sleep(timeout)
 	close(done)
 
@@ -151,6 +163,7 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 	for _, port := range ports {
 		st, ok := got.Load(port)
 		if !ok {
+			// No SYN-ACK and no RST: the probe was dropped by a firewall.
 			results = append(results, Result{Port: port, State: Filtered})
 			continue
 		}
@@ -163,21 +176,24 @@ func (s *Scanner) Scan(ip net.IP, ports []uint16, timeout time.Duration) ([]Resu
 // ScanMode selects the crafted TCP control-flag pattern for a scan.
 type ScanMode int
 
-// Scan modes. The flag sets follow the classic Nmap taxonomy.
+// Scan modes. The flag sets follow the classic Nmap taxonomy: RFC-793-compliant
+// stacks must RST when a port is closed, regardless of the flags; open ports
+// drop flag-combination probes, which makes the silence meaningful.
 const (
-	ScanSYN ScanMode = iota
-	ScanFIN
-	ScanNULL
-	ScanXMAS
-	ScanACK
+	ScanSYN  ScanMode = iota // SYN (half-open)
+	ScanFIN                  // FIN only
+	ScanNULL                 // no flags at all
+	ScanXMAS                 // FIN|PSH|URG
+	ScanACK                  // ACK only
 )
 
+// flags returns the TCP control-flag set for the scan mode.
 func (m ScanMode) flags() ProbeFlags {
 	switch m {
 	case ScanFIN:
 		return ProbeFlags{FIN: true}
 	case ScanNULL:
-		return ProbeFlags{}
+		return ProbeFlags{} // a packet with an empty flags octet
 	case ScanXMAS:
 		return ProbeFlags{FIN: true, PSH: true, URG: true}
 	case ScanACK:
@@ -259,6 +275,7 @@ func (s *Scanner) ScanFlags(ip net.IP, ports []uint16, timeout time.Duration, mo
 			}
 			tcp := tcpL.(*layers.TCP)
 			ip4 := ipL.(*layers.IPv4)
+			// Only a RST from the target means "closed" for these modes.
 			if !ip4.SrcIP.Equal(ip) || !tcp.RST {
 				continue
 			}
@@ -286,6 +303,8 @@ func (s *Scanner) ScanFlags(ip net.IP, ports []uint16, timeout time.Duration, mo
 		st, ok := got.Load(port)
 		if !ok {
 			// FIN/NULL/XMAS silence means open or filtered; ACK silence means filtered.
+			// An ACK probe is answered by every reached host, so silence proves
+			// a firewall; the other modes only elicit a response on closed ports.
 			if mode == ScanACK {
 				results = append(results, Result{Port: port, State: Filtered})
 			} else {
@@ -294,6 +313,7 @@ func (s *Scanner) ScanFlags(ip net.IP, ports []uint16, timeout time.Duration, mo
 			continue
 		}
 		if mode == ScanACK {
+			// Any RST proves the target is reachable (not firewalled).
 			results = append(results, Result{Port: port, State: Unfiltered})
 			continue
 		}
@@ -304,12 +324,15 @@ func (s *Scanner) ScanFlags(ip net.IP, ports []uint16, timeout time.Duration, mo
 }
 
 // sendProbe writes a crafted TCP probe with the given flag pattern and
-// stealth-randomized IP/TCP fields.
+// stealth-randomized IP/TCP fields. Each field is either randomized (when the
+// stealth profile enables it) or kept at a conservative default.
 func (s *Scanner) sendProbe(dstIP net.IP, dstMAC net.HardwareAddr, port uint16, fl ProbeFlags) error {
 	st := s.stealth
 	sport := port
 	seq := uint32(time.Now().UnixNano() & 0xffffffff)
 	var ack uint32
+	// Fingerprintable defaults: TTL 64, window 64240, IP ID 0 (let the NIC
+	// assign), DF set.
 	ttl, window, id := uint8(64), uint16(64240), uint16(0)
 	df := true
 	if st.Feature(st.RandomizePort) {
@@ -326,6 +349,8 @@ func (s *Scanner) sendProbe(dstIP net.IP, dstMAC net.HardwareAddr, port uint16, 
 		window = st.Window()
 		seq = st.RandomSeq()
 	}
+	// ACK probes carry an acknowledgment number; randomize it so stateful
+	// firewalls cannot tie the probe to a real connection.
 	if fl.ACK {
 		ack = st.RandomSeq()
 	}
@@ -358,6 +383,8 @@ func (s *Scanner) Fingerprint(ip net.IP, port uint16, timeout time.Duration) (*T
 	if err != nil {
 		return nil, fmt.Errorf("resolve %s: %w", ip, err)
 	}
+	// Only SYN-ACKs from the target are interesting; filter everything else
+	// out at the kernel level.
 	if err := s.handle.SetBPFFilter(fmt.Sprintf(
 		"tcp and host %s and tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)", ip)); err != nil {
 		return nil, fmt.Errorf("set bpf: %w", err)
@@ -395,9 +422,12 @@ func (s *Scanner) Fingerprint(ip net.IP, port uint16, timeout time.Duration) (*T
 		}
 		ip4 := ipL.(*layers.IPv4)
 		tcp := tcpL.(*layers.TCP)
+		// Match a SYN-ACK from the target to our exact probe tuple.
 		if !ip4.SrcIP.Equal(ip) || tcp.SrcPort != layers.TCPPort(port) || !tcp.SYN || !tcp.ACK {
 			continue
 		}
+		// The target's own TTL (after its initial decrement), window and DF
+		// bit are the classic OS fingerprinting signals.
 		fp := &TCPFingerprint{
 			TTL:    ip4.TTL,
 			Window: tcp.Window,
@@ -415,17 +445,17 @@ func parseTCPOptions(opts []layers.TCPOption, fp *TCPFingerprint) {
 	var parts []string
 	for _, o := range opts {
 		switch o.OptionType {
-		case 2: // MSS
+		case 2: // MSS: 2-byte big-endian max segment size
 			if len(o.OptionData) == 2 {
 				fp.MSS = uint16(o.OptionData[0])<<8 | uint16(o.OptionData[1])
 			}
 			parts = append(parts, "mss")
-		case 3: // window scale
+		case 3: // window scale: single shift-count byte
 			if len(o.OptionData) == 1 {
 				fp.WS = o.OptionData[0]
 			}
 			parts = append(parts, "ws")
-		case 4: // SACK permitted
+		case 4: // SACK permitted (no payload)
 			fp.SACKOK = true
 			parts = append(parts, "sackok")
 		default:
@@ -435,6 +465,9 @@ func parseTCPOptions(opts []layers.TCPOption, fp *TCPFingerprint) {
 	fp.Options = fmt.Sprintf("ttl:%d win:%d mss:%d ws:%d sackok:%v df:%v [%s]",
 		fp.TTL, fp.Window, fp.MSS, fp.WS, fp.SACKOK, fp.DF, strings.Join(parts, ","))
 }
+
+// resolveMAC finds the MAC address for ip on the local link via ARP, so raw
+// frames can be addressed to the correct destination.
 func (s *Scanner) resolveMAC(ip net.IP, timeout time.Duration) (net.HardwareAddr, error) {
 	raw, err := arp.BuildRequest(s.iface.MAC, s.iface.IP, broadcastMAC, ip)
 	if err != nil {
@@ -455,6 +488,8 @@ func (s *Scanner) resolveMAC(ip net.IP, timeout time.Duration) (net.HardwareAddr
 			continue
 		}
 		a := arpL.(*layers.ARP)
+		// An ARP reply whose sender protocol address matches the target gives
+		// us its MAC in the ethernet source address.
 		if a.Operation == layers.ARPReply && len(a.SourceProtAddress) >= 4 && net.IP(a.SourceProtAddress[:4]).Equal(ip) {
 			return eth.(*layers.Ethernet).SrcMAC, nil
 		}
@@ -462,9 +497,13 @@ func (s *Scanner) resolveMAC(ip net.IP, timeout time.Duration) (net.HardwareAddr
 	return nil, fmt.Errorf("no ARP reply")
 }
 
+// sendSYN writes one half-open SYN probe, applying the configured stealth
+// randomization to the source port, TTL, DF bit, window and IP identification.
 func (s *Scanner) sendSYN(dstIP net.IP, dstMAC net.HardwareAddr, port uint16) error {
 	st := s.stealth
 
+	// Defaults: source port mirrors the scanned port, TTL 64, window 64240,
+	// IP ID 0 and DF set. Stealth features replace them when enabled.
 	sport := port
 	seq := uint32(time.Now().UnixNano() & 0xffffffff)
 	ttl, window, id := uint8(64), uint16(64240), uint16(0)
@@ -474,6 +513,7 @@ func (s *Scanner) sendSYN(dstIP net.IP, dstMAC net.HardwareAddr, port uint16) er
 	}
 	if st.Feature(st.RandomizeTTL) {
 		ttl = st.TTL(64, 8)
+		// Occasionally clear DF so the probes do not share a uniform shape.
 		if st.DF(0.15) {
 			df = false
 		}
@@ -507,7 +547,7 @@ func (s *Scanner) GrabBanners(ip net.IP, ports []uint16, timeout time.Duration) 
 		addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", p))
 		conn, err := net.DialTimeout("tcp", addr, timeout)
 		if err != nil {
-			continue
+			continue // connect refused / filtered: nothing to grab
 		}
 		_ = conn.SetDeadline(time.Now().Add(timeout))
 		buf := make([]byte, 512)
@@ -519,6 +559,8 @@ func (s *Scanner) GrabBanners(ip net.IP, ports []uint16, timeout time.Duration) 
 	return out
 }
 
+// sanitize strips non-printable bytes from a banner so it is safe to store and
+// display, collapsing newlines into " | " and capping at 256 characters.
 func sanitize(s string) string {
 	clean := make([]byte, 0, len(s))
 	for i := 0; i < len(s) && i < 256; i++ {
@@ -605,6 +647,8 @@ func GuessService(port uint16) string {
 	return "unknown"
 }
 
+// isTLS reports whether the port is expected to speak TLS by default, so
+// banner results can be flagged as encrypted.
 func isTLS(port uint16) bool {
 	switch port {
 	case 443, 636, 993, 995, 8443:
@@ -613,4 +657,5 @@ func isTLS(port uint16) bool {
 	return false
 }
 
+// broadcastMAC is the all-ones ethernet destination used for ARP requests.
 var broadcastMAC = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}

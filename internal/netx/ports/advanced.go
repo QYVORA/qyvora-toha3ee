@@ -34,8 +34,10 @@ func (s *Scanner) SetFragment(enabled bool) { s.fragment = enabled }
 func (s *Scanner) DecoyProbes() int { return len(s.decoys) }
 
 // writeRaw sends one raw ethernet frame, optionally fragmenting it and
-// duplicating it for each configured decoy.
+// duplicating it for each configured decoy. The real frame is written first,
+// then one spoofed copy per decoy source address.
 func (s *Scanner) writeRaw(raw []byte) error {
+	// The set of packets to emit: the original frame, or its fragments.
 	pkts := [][]byte{raw}
 	if s.fragment {
 		frags, err := fragmentPacket(raw, 8)
@@ -44,11 +46,14 @@ func (s *Scanner) writeRaw(raw []byte) error {
 		}
 		pkts = frags
 	}
+	// Send the genuine probes from the real source address.
 	for _, p := range pkts {
 		if err := s.handle.WritePacketData(p); err != nil {
 			return err
 		}
 	}
+	// Then a rewritten copy of each packet for every decoy. Replies to the
+	// spoofed addresses never reach us, so they cannot contaminate results.
 	for _, dec := range s.decoys {
 		for _, p := range pkts {
 			d := applySourceIP(p, dec)
@@ -67,15 +72,20 @@ func (s *Scanner) writeRaw(raw []byte) error {
 // ethernet+IPv4 packet, and varies the IP identification so the decoy packet
 // is not byte-identical to the real one.
 func applySourceIP(raw []byte, src net.IP) []byte {
+	// Reject non-ethernet/IPv4 frames: need ethernet header (14) plus a
+	// minimal IPv4 header (20), and the ethertype must be IPv4 (0x0800).
 	if len(raw) < 34 || raw[12] != 0x08 || raw[13] != 0x00 {
 		return nil
 	}
 	ipStart := 14
 	out := make([]byte, len(raw))
 	copy(out, raw)
+	// Fresh per-packet identification: identical fragments with the same ID
+	// would otherwise be de-duplicated/reassembled as the original probe.
 	id := uint16(time.Now().UnixNano() & 0xffff)
-	out[ipStart+4] = byte(id >> 8)
-	out[ipStart+5] = byte(id)
+	out[ipStart+4] = byte(id >> 8) // IP identification high byte
+	out[ipStart+5] = byte(id)      // IP identification low byte
+	// Overwrite the IPv4 source address field (bytes 12..15 of the header).
 	copy(out[ipStart+12:ipStart+16], src.To4())
 	fixChecksum(out, ipStart, 20)
 	return out
@@ -87,25 +97,35 @@ func applySourceIP(raw []byte, src net.IP) []byte {
 // smaller than the TCP header itself (Nmap uses 8 bytes with -f) so the header
 // is split across fragments and middleboxes cannot inspect the full flags.
 func fragmentPacket(raw []byte, fragSize int) ([][]byte, error) {
+	// Not even room for an ethernet + IPv4 header: nothing to fragment.
 	if len(raw) < 14+20 {
 		return [][]byte{raw}, nil
 	}
 	ipStart := 14
+	// IHL (low nibble of the first header byte) is in 32-bit words.
 	ihl := int(raw[ipStart]&0x0f) * 4
+	// IP total-length field (bytes 2..3) covers the header plus payload.
 	total := int(raw[ipStart+2])<<8 | int(raw[ipStart+3])
 	// Trim ethernet padding/FCS: the IP total-length field is authoritative.
+	// Some captures pad short frames to the wire minimum; those tail bytes
+	// are not part of the IP datagram and must not be fragmented.
 	if end := ipStart + total; end <= len(raw) && end >= ipStart+ihl {
 		raw = raw[:end]
 	}
 	payload := raw[ipStart+ihl:]
+	// Single-fragment case: the whole payload fits, keep the frame as-is.
 	if len(payload) <= fragSize {
 		return [][]byte{raw}, nil
 	}
 	rest := raw[ipStart+ihl+fragSize:]
+	// Fragment offset is expressed in 8-byte units; the mask drops the
+	// reserved flag and both control bits (a 13-bit field).
 	off := (fragSize / 8) & 0x1fff
 
+	// Fragment 1 = header + first fragSize payload bytes.
 	f1 := make([]byte, ipStart+ihl+fragSize)
 	copy(f1, raw[:ipStart+ihl+fragSize])
+	// Fragment 2 = header + remaining payload bytes.
 	f2 := make([]byte, ipStart+ihl+len(rest))
 	copy(f2, raw[:ipStart+ihl])
 	copy(f2[ipStart+ihl:], rest)
@@ -113,20 +133,22 @@ func fragmentPacket(raw []byte, fragSize int) ([][]byte, error) {
 	// Fragment 1: more-fragments set, new total length.
 	f1[ipStart+2] = byte((ipStart + ihl + fragSize) >> 8)
 	f1[ipStart+3] = byte(ipStart + ihl + fragSize)
-	f1[ipStart+6] |= 0x20
+	f1[ipStart+6] |= 0x20 // MF flag in the flags/fragment-offset word
 	fixChecksum(f1, ipStart, ihl)
 
 	// Fragment 2: fragment offset set, MF cleared, new total length.
 	f2[ipStart+2] = byte((ipStart + ihl + len(rest)) >> 8)
 	f2[ipStart+3] = byte(ipStart + ihl + len(rest))
-	f2[ipStart+6] = byte(off >> 8)
-	f2[ipStart+7] = byte(off)
+	f2[ipStart+6] = byte(off >> 8) // fragment offset high byte
+	f2[ipStart+7] = byte(off)      // fragment offset low byte
 	fixChecksum(f2, ipStart, ihl)
 
 	return [][]byte{f1, f2}, nil
 }
 
-// fixChecksum zeroes and recomputes the IPv4 header checksum after edits.
+// fixChecksum zeroes and recomputes the IPv4 header checksum after edits. The
+// checksum field is bytes 10..11 of the header; it must be cleared before
+// summing because the field is part of the checksummed range.
 func fixChecksum(pkt []byte, ipStart, ihl int) {
 	pkt[ipStart+10], pkt[ipStart+11] = 0, 0
 	cs := ipChecksum(pkt[ipStart : ipStart+ihl])
@@ -134,18 +156,23 @@ func fixChecksum(pkt []byte, ipStart, ihl int) {
 	pkt[ipStart+11] = byte(cs)
 }
 
+// ipChecksum computes the RFC 1071 ones'-complement Internet checksum over
+// the supplied header bytes.
 func ipChecksum(b []byte) uint16 {
 	var sum uint32
+	// Sum successive 16-bit big-endian words.
 	for i := 0; i+1 < len(b); i += 2 {
 		sum += uint32(b[i])<<8 | uint32(b[i+1])
 	}
+	// Odd trailing byte is padded with a zero high byte.
 	if len(b)%2 == 1 {
 		sum += uint32(b[len(b)-1]) << 8
 	}
+	// Fold carry bits until the sum fits in 16 bits.
 	for sum>>16 != 0 {
 		sum = (sum & 0xffff) + (sum >> 16)
 	}
-	return ^uint16(sum)
+	return ^uint16(sum) // one's complement
 }
 
 // ProtocolSet is the default IP protocol numbers probed by a protocol scan,
@@ -169,6 +196,7 @@ func (s *Scanner) ScanProtocols(ip net.IP, protocols []uint8, timeout time.Durat
 	if err != nil {
 		return nil, fmt.Errorf("resolve %s: %w", ip, err)
 	}
+	// We only care about ICMP unreachable replies coming back from the target.
 	if err := s.handle.SetBPFFilter(fmt.Sprintf("icmp and host %s", ip)); err != nil {
 		return nil, fmt.Errorf("set bpf: %w", err)
 	}
@@ -195,6 +223,8 @@ func (s *Scanner) ScanProtocols(ip net.IP, protocols []uint8, timeout time.Durat
 			}
 			icmp4 := icmpL.(*layers.ICMPv4)
 			ip4 := ipL.(*layers.IPv4)
+			// Only destination-unreachable (type 3) code 2 (protocol
+			// unreachable) from the target itself counts as a "closed" answer.
 			if !ip4.SrcIP.Equal(ip) || icmp4.TypeCode.Type() != 3 || icmp4.TypeCode.Code() != 2 {
 				continue
 			}
@@ -219,6 +249,7 @@ func (s *Scanner) ScanProtocols(ip net.IP, protocols []uint8, timeout time.Durat
 		}
 		pace.Wait()
 	}
+	// Let any ICMP answers arrive before tearing the reader down.
 	time.Sleep(timeout)
 	close(done)
 
@@ -257,6 +288,8 @@ func (s *Scanner) IdleScan(ip, zombie net.IP, ports []uint16, timeout time.Durat
 	if err != nil {
 		return nil, fmt.Errorf("resolve target %s: %w", ip, err)
 	}
+	// The only traffic we need to see is the zombie's SYN-ACK replies to our
+	// probe-port SYNs; their IP identification field carries the counter.
 	if err := s.handle.SetBPFFilter(fmt.Sprintf(
 		"tcp and host %s and tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)", zombie)); err != nil {
 		return nil, fmt.Errorf("set bpf: %w", err)
@@ -266,18 +299,22 @@ func (s *Scanner) IdleScan(ip, zombie net.IP, ports []uint16, timeout time.Durat
 	if zport == 0 {
 		zport = 80
 	}
-	// Confirm the zombie answers SYN on its probe port.
+	// Confirm the zombie answers SYN on its probe port. A zombie that does not
+	// respond cannot be used to measure anything.
 	if _, err := s.zombieProbe(zombie, zbMAC, zport, timeout); err != nil {
 		return nil, fmt.Errorf("zombie %s is not answering SYN on port %d: %w", zombie, zport, err)
 	}
 
 	var results []IdleResult
 	for _, port := range ports {
+		// Baseline counter before the spoofed SYN.
 		id1, err := s.zombieProbe(zombie, zbMAC, zport, timeout)
 		if err != nil {
 			continue
 		}
-		// Spoof a SYN from the zombie to the target port.
+		// Spoof a SYN from the zombie to the target port. Any reply (SYN-ACK
+		// on an open port, RST on a closed one) triggers the zombie to emit an
+		// IP packet, bumping its identification counter by one.
 		seq := uint32(time.Now().UnixNano() & 0xffffffff)
 		raw, err := BuildProbe(zombie, ip, s.iface.MAC, tgtMAC, zport, port, seq, 0,
 			ProbeFlags{SYN: true}, 64, true, 64240, uint16(time.Now().UnixNano()))
@@ -287,11 +324,15 @@ func (s *Scanner) IdleScan(ip, zombie net.IP, ports []uint16, timeout time.Durat
 		if err := s.handle.WritePacketData(raw); err != nil {
 			continue
 		}
+		// Counter after the spoofed SYN.
 		id2, err := s.zombieProbe(zombie, zbMAC, zport, timeout)
 		if err != nil {
 			continue
 		}
 		st := Closed
+		// A one-step counter advance means the zombie sent a probe-induced
+		// packet, i.e. the target port is open. The wrap check handles a
+		// counter rolling over from 0xffff to 0.
 		if id2 == id1+1 || (id1 == 0xffff && id2 == 0) {
 			st = Open
 		}
@@ -331,11 +372,12 @@ func (s *Scanner) zombieProbe(zombie net.IP, zbMAC net.HardwareAddr, port uint16
 		}
 		ip4 := ipL.(*layers.IPv4)
 		tcp := tcpL.(*layers.TCP)
+		// Match the SYN-ACK to this probe's (zombie, port, sport) tuple.
 		if !ip4.SrcIP.Equal(zombie) || tcp.SrcPort != layers.TCPPort(port) || tcp.DstPort != layers.TCPPort(sport) {
 			continue
 		}
 		if tcp.SYN && tcp.ACK {
-			return ip4.Id, nil
+			return ip4.Id, nil // the zombie's current IP identification counter
 		}
 	}
 	return 0, fmt.Errorf("no SYN-ACK from zombie %s", zombie)

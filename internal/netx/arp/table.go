@@ -14,7 +14,7 @@ import (
 type Row struct {
 	IP    net.IP
 	MAC   net.HardwareAddr
-	Iface string
+	Iface string // interface the entry was learned on, used for "ip neigh ... dev"
 }
 
 // SnapshotTable returns the current kernel ARP table for later restoration
@@ -24,6 +24,8 @@ func SnapshotTable() ([]Row, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Copy the parsed rows into the exported Row type so callers do not depend
+	// on the internal arpRow representation.
 	out := make([]Row, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, Row{IP: r.IP, MAC: r.MAC, Iface: r.Iface})
@@ -35,13 +37,17 @@ func SnapshotTable() ([]Row, error) {
 // SnapshotTable, using the iproute2 "ip neigh" command.
 func Restore(rows []Row) error {
 	for _, r := range rows {
+		// Skip malformed rows; a valid MAC is always exactly 6 bytes.
 		if r.IP == nil || r.MAC == nil || len(r.MAC) != 6 {
 			continue
 		}
+		// "nud permanent" pins the entry so the kernel does not expire or
+		// re-probe it after the poisoning stopped.
 		args := []string{"neigh", "replace", r.IP.String(), "lladdr", r.MAC.String(), "nud", "permanent"}
 		if r.Iface != "" {
 			args = append(args, "dev", r.Iface)
 		}
+		// CombinedOutput captures stderr so the error message is actionable.
 		if out, err := exec.Command("ip", args...).CombinedOutput(); err != nil {
 			return fmt.Errorf("arp.Restore(%s): %v: %s", r.IP, err, out)
 		}
@@ -64,7 +70,7 @@ func readARPRows() ([]arpRow, error) {
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
 		if len(fields) < 6 {
-			continue
+			continue // malformed or otherwise incomplete row
 		}
 		ip := net.ParseIP(fields[0])
 		if ip == nil {
@@ -72,8 +78,9 @@ func readARPRows() ([]arpRow, error) {
 		}
 		mac, err := net.ParseMAC(fields[3])
 		if err != nil {
-			continue
+			continue // unresolved entry has no usable hardware address
 		}
+		// The kernel fills unresolved entries with the zero MAC; skip them.
 		if strings.EqualFold(mac.String(), "00:00:00:00:00:00") {
 			continue
 		}

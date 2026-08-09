@@ -5,8 +5,11 @@ import (
 	"sync/atomic"
 )
 
+// resolvConf is the path to the system resolver configuration.
 const resolvConf = "/etc/resolv.conf"
 
+// osReadFile is an indirection over os.ReadFile so tests can inject a stub
+// resolv.conf without touching the real filesystem.
 func osReadFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }

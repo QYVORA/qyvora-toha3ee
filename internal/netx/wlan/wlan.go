@@ -50,7 +50,7 @@ type Scanner struct {
 	handle  *pcap.Handle
 	stopped chan struct{}
 
-	mu      sync.Mutex
+	mu      sync.Mutex // guards the three observation maps
 	aps     map[string]*AP
 	clients map[string]*Client
 	hs      map[string]*Handshake
@@ -81,6 +81,7 @@ func (s *Scanner) Start() {
 	go s.readLoop()
 }
 
+// readLoop pulls frames until stopped, tolerating transient pcap errors.
 func (s *Scanner) readLoop() {
 	for {
 		select {
@@ -101,6 +102,8 @@ func (s *Scanner) readLoop() {
 	}
 }
 
+// process classifies one captured radio-tap frame and updates the counters
+// and observation tables.
 func (s *Scanner) process(data []byte, ci gopacket.CaptureInfo) {
 	packet := gopacket.NewPacket(data, layers.LayerTypeRadioTap, gopacket.NoCopy)
 	dot11Layer := packet.Layer(layers.LayerTypeDot11)
@@ -112,6 +115,7 @@ func (s *Scanner) process(data []byte, ci gopacket.CaptureInfo) {
 		return
 	}
 
+	// Pull the antenna signal strength from the radiotap header if present.
 	rssi := int8(0)
 	if radio := packet.Layer(layers.LayerTypeRadioTap); radio != nil {
 		if rt, ok := radio.(*layers.RadioTap); ok {
@@ -129,10 +133,13 @@ func (s *Scanner) process(data []byte, ci gopacket.CaptureInfo) {
 		s.recordData(dot11, rssi, ci.Timestamp)
 	case dot11.Type == layers.Dot11TypeMgmtDeauthentication,
 		dot11.Type == layers.Dot11TypeMgmtDisassociation:
+		// Deauth/disassoc frames indicate active (or forced) disconnection.
 		s.Deauth.Add(1)
 	}
 }
 
+// recordBeacon upserts an access point from a beacon frame, keyed by BSSID
+// (the transmitter address).
 func (s *Scanner) recordBeacon(packet gopacket.Packet, rssi int8, ts time.Time) {
 	b, ok := packet.Layer(layers.LayerTypeDot11MgmtBeacon).(*layers.Dot11MgmtBeacon)
 	if !ok {
@@ -149,6 +156,7 @@ func (s *Scanner) recordBeacon(packet gopacket.Packet, rssi int8, ts time.Time) 
 		s.aps[key] = ap
 	}
 	ap.BSSID = append(net.HardwareAddr(nil), dot11.Address2...)
+	// Keep the first-seen SSID; hidden beacons may later show a real name.
 	if ap.SSID == "" {
 		ap.SSID = ssid
 	}
@@ -162,6 +170,8 @@ func (s *Scanner) recordBeacon(packet gopacket.Packet, rssi int8, ts time.Time) 
 	s.mu.Unlock()
 }
 
+// recordProbe records a station that sent a probe request. Probe requests
+// carry the station's MAC in Address2 regardless of the request's content.
 func (s *Scanner) recordProbe(dot11 *layers.Dot11, rssi int8, ts time.Time) {
 	s.mu.Lock()
 	c, found := s.clients[string(dot11.Address2)]
@@ -174,6 +184,8 @@ func (s *Scanner) recordProbe(dot11 *layers.Dot11, rssi int8, ts time.Time) {
 	s.mu.Unlock()
 }
 
+// recordData links a station to the BSSID it is exchanging data with. ToDS
+// frames come from the station (Address2); FromDS frames go to it.
 func (s *Scanner) recordData(dot11 *layers.Dot11, rssi int8, ts time.Time) {
 	var sta, bssid net.HardwareAddr
 	if dot11.Flags.ToDS() {
@@ -195,7 +207,8 @@ func (s *Scanner) recordData(dot11 *layers.Dot11, rssi int8, ts time.Time) {
 const privacyCapability uint16 = 0x0010
 
 // parseBeacon extracts the SSID, channel and security mode from a beacon body.
-// The tags live in the beacon payload after the 12-byte fixed header.
+// The tags live in the beacon payload after the 12-byte fixed header; each is
+// <id> <length> <value>.
 func parseBeacon(b *layers.Dot11MgmtBeacon) (ssid string, channel uint8, security string) {
 	security = "open"
 	contents := b.Payload
@@ -203,6 +216,8 @@ func parseBeacon(b *layers.Dot11MgmtBeacon) (ssid string, channel uint8, securit
 	for i+2 <= len(contents) {
 		tag := contents[i]
 		length := int(contents[i+1])
+		// Malformed trailing tag: stop walking rather than reading past the
+		// end of the payload.
 		if i+2+length > len(contents) {
 			break
 		}
@@ -217,18 +232,25 @@ func parseBeacon(b *layers.Dot11MgmtBeacon) (ssid string, channel uint8, securit
 		case 48: // RSN -> WPA2
 			security = "wpa2"
 		case 221: // vendor specific; check for WPA OUI
+			// WPA (TKIP-era) is signalled by a vendor element with the
+			// Microsoft OUI; only promote to "wpa" if nothing stronger
+			// was already declared.
 			if isWPAOUI(value) && security == "open" {
 				security = "wpa"
 			}
 		}
 		i += 2 + length
 	}
+	// The privacy bit in the capability field marks WEP when no RSN/WPA
+	// element is present.
 	if security == "open" && b.Flags&privacyCapability != 0 {
 		security = "wep"
 	}
 	return
 }
 
+// isWPAOUI reports whether a vendor-specific element carries the Microsoft
+// OUI 00:50:f2:01 identifying a WPA information element.
 func isWPAOUI(v []byte) bool {
 	return len(v) >= 4 && v[0] == 0x00 && v[1] == 0x50 && v[2] == 0xf2 && v[3] == 0x01
 }
@@ -243,9 +265,11 @@ func (s *Scanner) CountEAPOL(data []byte, ci gopacket.CaptureInfo) (bssid, sta n
 		return nil, nil, false
 	}
 	dot11, _ := dot11Layer.(*layers.Dot11)
+	// EAPOL rides inside 802.11 data frames only.
 	if dot11 == nil || dot11.Type.MainType() != layers.Dot11TypeData {
 		return nil, nil, false
 	}
+	// The 802.11 payload must be LLC-framed.
 	llcLayer := packet.Layer(layers.LayerTypeLLC)
 	if llcLayer == nil {
 		return nil, nil, false
@@ -253,6 +277,8 @@ func (s *Scanner) CountEAPOL(data []byte, ci gopacket.CaptureInfo) (bssid, sta n
 	if _, ok := llcLayer.(*layers.LLC); !ok {
 		return nil, nil, false
 	}
+	// The SNAP header's ethertype must be 0x888e (EAPOL). Some drivers omit
+	// SNAP entirely, so a missing SNAP layer is tolerated.
 	if snapLayer := packet.Layer(layers.LayerTypeSNAP); snapLayer != nil {
 		snap, ok := snapLayer.(*layers.SNAP)
 		if !ok || snap.Type != 0x888e {
@@ -275,6 +301,8 @@ func (s *Scanner) CountEAPOL(data []byte, ci gopacket.CaptureInfo) (bssid, sta n
 		s.hs[key] = h
 	}
 	h.Messages++
+	// The 4-way handshake is complete once all four key messages (or enough
+	// to reconstruct the PMK) have been observed.
 	if h.Messages >= 4 {
 		h.Complete = true
 	}
@@ -336,6 +364,8 @@ func BuildDeauth(ap, sta net.HardwareAddr, reason layers.Dot11Reason) ([]byte, e
 	dot11 := &layers.Dot11{
 		Type: layers.Dot11TypeMgmtDeauthentication,
 
+		// Address1 = destination (the station being kicked), Address2/3 =
+		// source/BSSID (the access point).
 		Address1: sta,
 		Address2: ap,
 		Address3: ap,
@@ -368,6 +398,7 @@ func NewDeauthSender(iface string) (*DeauthSender, error) {
 func (d *DeauthSender) Flood(ap, sta net.HardwareAddr, count int, reason layers.Dot11Reason) (int, error) {
 	dst := sta
 	if len(dst) == 0 {
+		// Broadcast deauth: kick every station off the AP at once.
 		dst = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	}
 	frame, err := BuildDeauth(ap, dst, reason)
@@ -380,6 +411,8 @@ func (d *DeauthSender) Flood(ap, sta net.HardwareAddr, count int, reason layers.
 			return sent, err
 		}
 		sent++
+		// Brief gap between frames: some drivers drop frames sent back to
+		// back, and clients need the airtime to receive each one.
 		time.Sleep(2 * time.Millisecond)
 	}
 	return sent, nil

@@ -33,7 +33,7 @@ type Rebind struct {
 	Pattern    string
 	AttackerIP net.IP
 	TargetIP   net.IP
-	flip       bool
+	flip       bool // toggled per query to alternate between the two answers
 }
 
 // Server answers DNS queries on port 53, spoofing matching names and
@@ -46,12 +46,12 @@ type Server struct {
 	db       *store.Store
 	log      *slog.Logger
 
-	mu       sync.Mutex
+	mu       sync.Mutex // guards rules, rebinds and the server fields below
 	udpSrv   *dns.Server
 	tcpSrv   *dns.Server
 	stopOnce sync.Once
 
-	Spoofed      atomicBool
+	Spoofed      atomicBool // true once at least one rule is installed
 	Queries      atomicInt64
 	SpoofedCount atomicInt64
 	ReboundCount atomicInt64
@@ -61,6 +61,7 @@ type Server struct {
 // for forwarding.
 func New(upstream string, bus *events.Bus, db *store.Store, log *slog.Logger) *Server {
 	if upstream == "" {
+		// Read the first nameserver from resolv.conf as the forwarding target.
 		if ip := systemResolver(); ip != nil {
 			upstream = ip.String()
 		}
@@ -75,11 +76,13 @@ func New(upstream string, bus *events.Bus, db *store.Store, log *slog.Logger) *S
 
 // AddRule installs a spoof rule. Duplicate patterns are replaced.
 func (s *Server) AddRule(pattern string, target net.IP) {
+	// Names are case-insensitive in DNS; normalize so matches are exact.
 	pattern = strings.ToLower(strings.TrimSpace(pattern))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.rules {
 		if s.rules[i].Pattern == pattern {
+			// Re-registering a pattern updates its target in place.
 			s.rules[i].Target = target
 			return
 		}
@@ -95,6 +98,7 @@ func (s *Server) AddRebind(pattern string, attackerIP, targetIP net.IP) {
 	defer s.mu.Unlock()
 	for i := range s.rebinds {
 		if s.rebinds[i].Pattern == pattern {
+			// Re-registering a pattern replaces both endpoints.
 			s.rebinds[i].AttackerIP = attackerIP
 			s.rebinds[i].TargetIP = targetIP
 			return
@@ -108,6 +112,8 @@ func (s *Server) Start(addrs []string) error {
 	if len(addrs) == 0 {
 		addrs = []string{":53"}
 	}
+	// Report the spoof state so downstream logic (e.g. UI banners) knows the
+	// server is not purely a forwarder.
 	s.Spoofed.Set(len(s.rules) > 0)
 	for _, addr := range addrs {
 		udp := &dns.Server{Addr: addr, Net: "udp", Handler: dns.HandlerFunc(s.handle)}
@@ -130,6 +136,7 @@ func (s *Server) Start(addrs []string) error {
 
 // Stop shuts down both listeners.
 func (s *Server) Stop() {
+	// stopOnce keeps double shutdown (e.g. defer + signal handler) safe.
 	s.stopOnce.Do(func() {
 		s.mu.Lock()
 		udp, tcp := s.udpSrv, s.tcpSrv
@@ -147,9 +154,12 @@ func (s *Server) Stop() {
 func (s *Server) Rules() []Rule {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Copy the slice so callers cannot race the server's own mutation.
 	return append([]Rule(nil), s.rules...)
 }
 
+// handle answers one query: rebind rules first (highest precedence), then
+// plain spoof rules, then upstream forwarding.
 func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	s.Queries.Add(1)
 	m := new(dns.Msg)
@@ -160,10 +170,15 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	q := r.Question[0]
 	name := strings.ToLower(q.Name)
 
+	// Rebind rules win over static rules so a hostname can only be in one
+	// category at a time and the alternation stays predictable.
 	if target, ok := s.rebindMatch(name); ok {
 		s.ReboundCount.Add(1)
 		switch q.Qtype {
 		case dns.TypeA:
+			// Short TTL on the attacker answer forces the client to re-query
+			// quickly; the target answer gets a longer TTL so the poisoned
+			// mapping persists once the client has accepted the origin.
 			ttl := uint32(1)
 			if target.Equal(s.rebindTarget(name)) {
 				ttl = 30
@@ -173,7 +188,7 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 				A:   target.To4(),
 			})
 		default:
-			return
+			return // only A records are rebind-able here
 		}
 		if s.bus != nil {
 			s.bus.Emit(events.TopicLog, fmt.Sprintf("dns.rebind: %s -> %s (alternating)", name, target))
@@ -202,7 +217,7 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 				})
 			}
 		default:
-			return
+			return // no spoof for other record types; drop the query
 		}
 		if s.bus != nil {
 			s.bus.Emit(events.TopicLog, fmt.Sprintf("dns.spoof: %s -> %s", name, target))
@@ -230,6 +245,8 @@ func (s *Server) rebindMatch(name string) (net.IP, bool) {
 	defer s.mu.Unlock()
 	for i := range s.rebinds {
 		if ruleMatches(s.rebinds[i].Pattern, name) {
+			// Flip on each match so consecutive queries alternate between the
+			// attacker IP and the internal target IP.
 			s.rebinds[i].flip = !s.rebinds[i].flip
 			if s.rebinds[i].flip {
 				return s.rebinds[i].AttackerIP, true
@@ -252,6 +269,7 @@ func (s *Server) rebindTarget(name string) net.IP {
 	return nil
 }
 
+// match returns the spoof target for name, or (nil, false) if no rule applies.
 func (s *Server) match(name string) (net.IP, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -274,6 +292,7 @@ func ruleMatches(pattern, name string) bool {
 	}
 	if strings.HasPrefix(pattern, "*.") {
 		base := strings.TrimPrefix(pattern, "*.")
+		// "*.domain" also covers "domain" itself, plus any subdomain.
 		if name == base || strings.HasSuffix(name, "."+base) {
 			return true
 		}
@@ -281,6 +300,8 @@ func ruleMatches(pattern, name string) bool {
 	return false
 }
 
+// forward asks the configured upstream for the answer, falling back to the OS
+// resolver when no upstream is set or the exchange fails.
 func (s *Server) forward(r *dns.Msg) (*dns.Msg, error) {
 	client := &dns.Client{Timeout: 3 * time.Second}
 	r.RecursionDesired = true
@@ -307,6 +328,7 @@ func systemResolver() net.IP {
 	return nil
 }
 
+// readResolv loads /etc/resolv.conf, returning nil when it cannot be read.
 func readResolv() []byte {
 	data, err := osReadFile(resolvConf)
 	if err != nil {
@@ -315,6 +337,8 @@ func readResolv() []byte {
 	return data
 }
 
+// systemExchange resolves through the local stub resolver (systemd-resolved's
+// 127.0.0.53 by default) with a bounded timeout.
 func systemExchange(r *dns.Msg) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

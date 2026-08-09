@@ -13,20 +13,22 @@ import (
 	"time"
 )
 
-// Well-known programs.
+// Well-known programs. RPC program numbers are registered in the IANA rpcbind
+// namespace; each program implements several versions and procedures.
 const (
-	ProgPortmap  = 100000
-	ProgMount    = 100005
-	ProgNFS      = 100003
-	ProgNFSMount = 100005
+	ProgPortmap  = 100000 // rpcbind / portmapper
+	ProgMount    = 100005 // MOUNT protocol (export listing)
+	ProgNFS      = 100003 // NFS file service
+	ProgNFSMount = 100005 // alias of the MOUNT program
 )
 
-// Message types and reply stats.
+// Message types and reply stats. These are the XDR enum values in the RPC
+// reply header: msg_type, then reply_stat/accept_stat.
 const (
-	msgCall        = 0
-	msgReply       = 1
-	replyAccepted  = 0
-	authNone       = 0
+	msgCall        = 0 // message is a call
+	msgReply       = 1 // message is a reply
+	replyAccepted  = 0 // MSG_ACCEPTED: the call was accepted
+	authNone       = 0 // AUTH_NONE: no credentials
 	portmapGetPort = 1 // PMAPPROC_GETPORT
 	mountExport    = 1 // MOUNTPROC_EXPORT
 )
@@ -43,6 +45,10 @@ func Call(addr string, prog, vers, proc uint32, prot int, args []byte, timeout t
 	return callConn(conn, prog, vers, proc, args)
 }
 
+// callConn performs the call/response cycle over an open connection. RPC over
+// TCP is framed with the record-marking protocol: each record is prefixed by
+// a 4-byte big-endian marker whose high bit signals "last fragment" and whose
+// low 31 bits carry the fragment length.
 func callConn(conn net.Conn, prog, vers, proc uint32, args []byte) ([]byte, error) {
 	// RPC record marker: 0x80000000 | len (last fragment).
 	pkt := buildCall(prog, vers, proc, args)
@@ -52,12 +58,16 @@ func callConn(conn net.Conn, prog, vers, proc uint32, args []byte) ([]byte, erro
 		return nil, err
 	}
 
+	// Read the reply's record marker: high bit = last fragment, low 31 bits
+	// = length of the following record bytes.
 	head := make([]byte, 4)
 	if _, err := io.ReadFull(conn, head); err != nil {
 		return nil, err
 	}
 	marker := binary.BigEndian.Uint32(head)
 	blen := int(marker & 0x7fffffff)
+	// Cap the accepted record size so a hostile server cannot make us buffer
+	// an unbounded reply.
 	if blen > 1<<20 {
 		return nil, errors.New("rpc: response too large")
 	}
@@ -66,6 +76,8 @@ func callConn(conn net.Conn, prog, vers, proc uint32, args []byte) ([]byte, erro
 		return nil, err
 	}
 
+	// Reply header: xid(4) + msg_type(4) + reply_stat(4) + verf
+	// {flavor(4), body_len(4)} + accept_stat(4) = 28 bytes.
 	if len(body) < 28 {
 		return nil, errors.New("rpc: truncated reply")
 	}
@@ -84,12 +96,14 @@ func callConn(conn net.Conn, prog, vers, proc uint32, args []byte) ([]byte, erro
 	return rest, nil
 }
 
+// buildCall assembles a record-marked RPC call message in XDR encoding. The
+// argument area after the fixed header is left to the caller's args.
 func buildCall(prog, vers, proc uint32, args []byte) []byte {
 	// xid, msg_type, rpcvers, prog, vers, proc, cred, verf, args
 	var b []byte
-	b = appendU32(b, 0x10000000) // xid (arbitrary)
+	b = appendU32(b, 0x10000000) // xid (arbitrary; not matched by our parser)
 	b = appendU32(b, msgCall)
-	b = appendU32(b, 2) // rpcvers
+	b = appendU32(b, 2) // rpcvers (RPC version 2)
 	b = appendU32(b, prog)
 	b = appendU32(b, vers)
 	b = appendU32(b, proc)
@@ -100,18 +114,23 @@ func buildCall(prog, vers, proc uint32, args []byte) []byte {
 	return append(b, args...)
 }
 
+// appendU32 appends one big-endian XDR uint32.
 func appendU32(b []byte, v uint32) []byte {
 	var t [4]byte
 	binary.BigEndian.PutUint32(t[:], v)
 	return append(b, t[:]...)
 }
 
+// appendStr appends an XDR string: a length-prefix followed by the bytes,
+// padded to a 4-byte boundary.
 func appendStr(b []byte, s string) []byte {
 	b = appendU32(b, uint32(len(s)))
 	b = append(b, []byte(s)...)
 	return pad4(b)
 }
 
+// pad4 appends zero bytes until the buffer length is a multiple of 4 (XDR
+// alignment).
 func pad4(b []byte) []byte {
 	for len(b)%4 != 0 {
 		b = append(b, 0)
@@ -120,7 +139,8 @@ func pad4(b []byte) []byte {
 }
 
 // PortMapGetPort asks rpcbind on host:port for the port of prog/vers on the
-// given protocol (6=tcp, 17=udp).
+// given protocol (6=tcp, 17=udp). The PMAPPROC_GETPORT argument is the XDR
+// mapping {prog, vers, prot, port}; port 0 means "report the registered port".
 func PortMapGetPort(host string, prog, vers uint32, prot int, timeout time.Duration) (uint32, error) {
 	var args []byte
 	args = appendU32(args, prog)
@@ -131,6 +151,7 @@ func PortMapGetPort(host string, prog, vers uint32, prot int, timeout time.Durat
 	if err != nil {
 		return 0, err
 	}
+	// The reply is a single XDR uint32: the transport port for the service.
 	if len(raw) < 4 {
 		return 0, errors.New("rpc: short getport reply")
 	}
@@ -155,6 +176,9 @@ func MountExports(addr string, timeout time.Duration) ([]*MountExport, error) {
 	return parseExportList(raw)
 }
 
+// parseExportList decodes the XDR exportlist returned by MOUNTPROC3_EXPORT:
+// {n_exports, <exportnode>[]} where each node is dirpath string, groups< >,
+// readonly bool, then v3-only fields we skip.
 func parseExportList(raw []byte) ([]*MountExport, error) {
 	// Reply: exportnode {
 	//   dirpath export; groups< >; ... opaque-ish for v3:
@@ -166,6 +190,7 @@ func parseExportList(raw []byte) ([]*MountExport, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Bounds check against a nonsense count from a misbehaving server.
 	if n > 1024 {
 		return nil, errors.New("rpc: implausible export count")
 	}
@@ -191,17 +216,21 @@ func parseExportList(raw []byte) ([]*MountExport, error) {
 }
 
 // NFSNullProbe checks whether an NFS service answers the NULL procedure on
-// addr (usually :2049).
+// addr (usually :2049). Procedure 0 always succeeds on a live RPC endpoint,
+// so any accepted reply proves the service is up.
 func NFSNullProbe(addr string, vers uint32, timeout time.Duration) error {
 	_, err := Call(addr, ProgNFS, vers, 0, 6, nil, timeout)
 	return err
 }
 
+// xdrReader is a cursor over a byte slice enforcing XDR (big-endian) reads
+// with bounds checks on every access.
 type xdrReader struct {
 	buf []byte
 	pos int
 }
 
+// readU32 reads the next big-endian uint32 and advances the cursor.
 func (r *xdrReader) readU32() (uint32, error) {
 	if r.pos+4 > len(r.buf) {
 		return 0, errors.New("xdr: short read")
@@ -211,19 +240,24 @@ func (r *xdrReader) readU32() (uint32, error) {
 	return v, nil
 }
 
+// readBool reads an XDR boolean (0 = false, nonzero = true).
 func (r *xdrReader) readBool() (bool, error) {
 	v, err := r.readU32()
 	return v != 0, err
 }
 
+// readString reads an XDR string: a uint32 length, the bytes, then skipping
+// any padding to the next 4-byte boundary.
 func (r *xdrReader) readString() (string, error) {
 	n, err := r.readU32()
 	if err != nil {
 		return "", err
 	}
+	// Reject absurd lengths before doing arithmetic on them.
 	if n > 1<<20 {
 		return "", errors.New("xdr: string too large")
 	}
+	// Padded XDR size: round n up to a multiple of 4.
 	bytes := n + (4-n%4)%4
 	if r.pos+int(bytes) > len(r.buf) {
 		return "", errors.New("xdr: string overflow")
@@ -233,6 +267,8 @@ func (r *xdrReader) readString() (string, error) {
 	return s, nil
 }
 
+// readStringArray reads an XDR array of strings: a count then that many
+// strings.
 func (r *xdrReader) readStringArray() ([]string, error) {
 	n, err := r.readU32()
 	if err != nil {
@@ -252,6 +288,8 @@ func (r *xdrReader) readStringArray() ([]string, error) {
 	return out, nil
 }
 
+// skip advances the cursor n bytes (used to pass over fields we do not care
+// about, like the v3 filehandle size).
 func (r *xdrReader) skip(n int) error {
 	if r.pos+n > len(r.buf) {
 		return errors.New("xdr: skip overflow")

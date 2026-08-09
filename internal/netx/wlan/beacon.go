@@ -18,32 +18,37 @@ func BuildBeacon(bssid net.HardwareAddr, ssid string, channel uint8, wpa2 bool) 
 	if len(bssid) != 6 {
 		return nil, errors.New("wlan: bssid must be 6 bytes")
 	}
+	// The information elements (tags) appended after the 12-byte fixed beacon
+	// header. Each tag is <id> <length> <value>.
 	var tags []byte
-	tags = append(tags, 0x00, byte(len(ssid))) // SSID
+	tags = append(tags, 0x00, byte(len(ssid))) // tag 0 (SSID)
 	tags = append(tags, []byte(ssid)...)
-	tags = append(tags, 0x01, 0x01, 0x04)    // supported rates
-	tags = append(tags, 0x03, 0x01, channel) // DS parameter set
-	tags = append(tags, 0x2d, 0x01, 0x10)    // HT capabilities (short)
+	tags = append(tags, 0x01, 0x01, 0x04)    // tag 1: supported rates, 1 Mbit/s basic
+	tags = append(tags, 0x03, 0x01, channel) // tag 3: DS parameter set (channel)
+	tags = append(tags, 0x2d, 0x01, 0x10)    // tag 45: HT capabilities (short)
 	if wpa2 {
+		// Tag 48: RSN element advertising WPA2/AES. The 20-byte body is:
+		// version(2) = 1, group cipher = 00:0f:ac:04 (AES/CCMP), one pairwise
+		// cipher 00:0f:ac:04, one AKM 00:0f:ac:02 (PSK), capabilities = 0.
 		tags = append(tags, 0x30, 0x14, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
 			0x01, 0x00, 0x00, 0x0f, 0xac, 0x04, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x02,
 			0x00, 0x00)
 	}
-	tags = append(tags, 0x32, 0x04, 0x0c, 0x12, 0x18, 0x60) // extended rates
+	tags = append(tags, 0x32, 0x04, 0x0c, 0x12, 0x18, 0x60) // tag 50: extended rates
 
 	beacon := &layers.Dot11MgmtBeacon{
-		Timestamp: uint64(time.Now().UnixNano() / 1000),
-		Interval:  100,
-		Flags:     0x0001, // ESS
+		Timestamp: uint64(time.Now().UnixNano() / 1000), // 802.11 TU timestamps are microseconds
+		Interval:  100,                                  // beacon interval in TUs (100ms)
+		Flags:     0x0001,                               // ESS: ad-hoc capable of infrastructure
 	}
 	beacon.Contents = make([]byte, 12) // 8 timestamp + 2 interval + 2 flags
 	beacon.Payload = tags
 
 	dot11 := &layers.Dot11{
 		Type:     layers.Dot11TypeMgmtBeacon,
-		Address1: broadcastMAC,
-		Address2: bssid,
-		Address3: bssid,
+		Address1: broadcastMAC, // beacons are sent to the broadcast address
+		Address2: bssid,        // transmitter address
+		Address3: bssid,        // BSSID
 	}
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{FixLengths: true}
@@ -79,7 +84,7 @@ func BuildProbeResponse(bssid net.HardwareAddr, ssid string, channel uint8, wpa2
 type BroadcastSender struct {
 	iface  string
 	handle *pcap.Handle
-	Sent   int
+	Sent   int // frames written so far
 }
 
 // NewBroadcastSender opens an injection-capable monitor handle.
@@ -117,7 +122,7 @@ type PMKID struct {
 type PMKIDScanner struct {
 	handle  *pcap.Handle
 	stopped chan struct{}
-	mu      sync.Mutex
+	mu      sync.Mutex // guards pmkids
 	pmkids  map[string]*PMKID
 }
 
@@ -137,6 +142,7 @@ func NewPMKIDScanner(iface string) (*PMKIDScanner, error) {
 // Start begins the capture loop.
 func (s *PMKIDScanner) Start() { go s.readLoop() }
 
+// readLoop pulls frames until stopped, tolerating transient pcap errors.
 func (s *PMKIDScanner) readLoop() {
 	for {
 		select {
@@ -157,6 +163,7 @@ func (s *PMKIDScanner) readLoop() {
 	}
 }
 
+// process stores any PMKID found in the frame, keyed by BSSID+STA.
 func (s *PMKIDScanner) process(data []byte, ts time.Time) {
 	bssid, sta, pmkid, ok := ExtractPMKID(data)
 	if !ok {
@@ -198,9 +205,11 @@ func ExtractPMKID(data []byte) (bssid, sta net.HardwareAddr, pmkid []byte, ok bo
 		return nil, nil, nil, false
 	}
 	dot11, _ := dot11Layer.(*layers.Dot11)
+	// PMKIDs only travel in data frames (the EAPOL payload rides inside LLC).
 	if dot11 == nil || dot11.Type.MainType() != layers.Dot11TypeData {
 		return nil, nil, nil, false
 	}
+	// Depending on direction, the BSSID is Address1 (ToDS) or Address2 (FromDS).
 	if dot11.Flags.ToDS() {
 		bssid, sta = dot11.Address1, dot11.Address2
 	} else {
@@ -229,8 +238,12 @@ func ExtractPMKID(data []byte) (bssid, sta net.HardwareAddr, pmkid []byte, ok bo
 	if len(kd) < 95 {
 		return nil, nil, nil, false
 	}
+	// Key data length is the two-byte field at offset 81 (just before the
+	// nonce/IV fields that make up the fixed 95-byte descriptor prefix).
 	keyDataLen := int(kd[81])<<8 | int(kd[82])
 	keyDataStart := 95
+	// Clamp the length to the actual buffer so malformed frames do not slice
+	// past the end.
 	if keyDataStart+keyDataLen > len(kd) {
 		keyDataLen = len(kd) - keyDataStart
 	}
@@ -242,7 +255,9 @@ func ExtractPMKID(data []byte) (bssid, sta net.HardwareAddr, pmkid []byte, ok bo
 }
 
 // findPMKID scans key data for the RSN-PMKID KDE: OUI 00:0f:ac:04 followed by
-// the 16-byte PMKID.
+// the 16-byte PMKID. The KDE is a vendor-specific element (tag 0xdd) whose
+// length is 20 (4-byte OUI + 16-byte PMKID) and whose OUI identifies it as
+// RSN-PMKID.
 func findPMKID(kd []byte) []byte {
 	for i := 0; i+20 <= len(kd); i++ {
 		if kd[i] == 0xdd && kd[i+1] == 20 && kd[i+2] == 0x00 && kd[i+3] == 0x0f && kd[i+4] == 0xac && kd[i+5] == 0x04 {
@@ -252,4 +267,5 @@ func findPMKID(kd []byte) []byte {
 	return nil
 }
 
+// broadcastMAC is the all-ones ethernet/802.11 destination address.
 var broadcastMAC = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}

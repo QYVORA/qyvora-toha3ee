@@ -34,15 +34,17 @@ type Sniffer struct {
 	file   *os.File
 
 	assembly *tcpassembly.Assembler
-	stop     chan struct{}
+	stop     chan struct{} // closed by Stop to end the capture loop
 	wg       sync.WaitGroup
 
-	packets atomic.Uint64
-	bytes   atomic.Uint64
+	packets atomic.Uint64 // packets seen
+	bytes   atomic.Uint64 // bytes captured
 }
 
 // New opens a promiscuous capture handle on iface.
 func New(iface *netx.Iface, bus *events.Bus, db *store.Store, log *slog.Logger) (*Sniffer, error) {
+	// Snapshot length 65535 captures whole frames; promiscuous mode sees
+	// traffic not destined to this host; 100ms read timeout bounds blocking.
 	handle, err := pcap.OpenLive(iface.Name, 65535, true, 100*time.Millisecond)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", iface.Name, err)
@@ -55,6 +57,8 @@ func New(iface *netx.Iface, bus *events.Bus, db *store.Store, log *slog.Logger) 
 		handle: handle,
 		stop:   make(chan struct{}),
 	}
+	// The assembler feeds stream factory methods (s.New) that create one
+	// httpStream per TCP connection direction.
 	s.assembly = tcpassembly.NewAssembler(tcpassembly.NewStreamPool(s))
 	return s, nil
 }
@@ -69,6 +73,8 @@ func (s *Sniffer) Start(outFile string) error {
 		}
 		s.file = f
 		s.writer = pcapgo.NewWriter(f)
+		// A pcap file starts with a 24-byte global header declaring the max
+		// snapshot length and the link-layer type (ethernet).
 		if err := s.writer.WriteFileHeader(65535, layers.LinkTypeEthernet); err != nil {
 			f.Close()
 			return fmt.Errorf("write pcap header: %w", err)
@@ -96,6 +102,8 @@ func (s *Sniffer) Stats() (packets, bytes uint64) {
 	return s.packets.Load(), s.bytes.Load()
 }
 
+// capture is the main capture loop: pull packets until Stop, tolerating
+// transient pcap errors with a short sleep.
 func (s *Sniffer) capture() {
 	defer s.wg.Done()
 	ps := gopacket.NewPacketSource(s.handle, layers.LayerTypeEthernet)
@@ -108,6 +116,7 @@ func (s *Sniffer) capture() {
 		}
 		pkt, err := ps.NextPacket()
 		if err != nil {
+			// pcap read timeouts are normal; only exit on Stop.
 			select {
 			case <-s.stop:
 				return
@@ -120,12 +129,15 @@ func (s *Sniffer) capture() {
 	}
 }
 
+// process handles one captured packet: counter/archiving, recon evidence for
+// notable protocols, TCP reassembly, and UDP dissectors.
 func (s *Sniffer) process(pkt gopacket.Packet) {
 	if pkt == nil || pkt.Metadata() == nil {
 		return
 	}
 	s.packets.Add(1)
 	s.bytes.Add(uint64(pkt.Metadata().CaptureLength))
+	// Archive the raw frame to the pcap file when requested.
 	if s.writer != nil {
 		_ = s.writer.WritePacket(pkt.Metadata().CaptureInfo, pkt.Data())
 	}
@@ -138,7 +150,7 @@ func (s *Sniffer) process(pkt gopacket.Packet) {
 	if tcpL != nil {
 		tcp := tcpL.(*layers.TCP)
 		if tcp.DstPort == 853 || tcp.SrcPort == 853 {
-			s.db.Recon.SeesDoH.Store(true)
+			s.db.Recon.SeesDoH.Store(true) // DNS over TLS
 		}
 		if tcp.DstPort == 80 || tcp.SrcPort == 80 {
 			s.db.Recon.SeesPlainHTTP.Store(true)
@@ -146,6 +158,8 @@ func (s *Sniffer) process(pkt gopacket.Packet) {
 		if tcp.DstPort == 445 || tcp.SrcPort == 445 {
 			s.db.Recon.SeesSMB.Store(true)
 		}
+		// Reassemble the TCP stream so the HTTP dissector can parse requests
+		// spanning multiple segments.
 		if netLayer != nil {
 			s.assembly.AssembleWithTimestamp(netLayer.NetworkFlow(), tcp, pkt.Metadata().Timestamp)
 		}
@@ -154,6 +168,8 @@ func (s *Sniffer) process(pkt gopacket.Packet) {
 
 	if udpL != nil {
 		udp := udpL.(*layers.UDP)
+		// Port 5355 = LLMNR, 5353 = mDNS, 137 = NetBIOS name service,
+		// 53 = DNS, 547 = DHCPv6 server port.
 		switch {
 		case udp.DstPort == 5355 || udp.SrcPort == 5355:
 			s.db.Recon.SeesLLMNR.Store(true)

@@ -22,11 +22,13 @@ var allNodes = net.ParseIP("ff02::1")
 type Sender struct {
 	iface string
 	h     *pcap.Handle
-	Sent  int
+	Sent  int // frames injected, exposed for diagnostics
 }
 
 // NewSender opens a promiscuous handle for frame injection.
 func NewSender(iface string) (*Sender, error) {
+	// Promiscuous mode is not required to send, but is used for consistency
+	// with the rest of the framework and the sweep capture path.
 	h, err := pcap.OpenLive(iface, 65535, true, 100*time.Millisecond)
 	if err != nil {
 		return nil, fmt.Errorf("ndp: open %s: %w", iface, err)
@@ -87,6 +89,7 @@ func (s *Sender) NeighborSolicitation(targetIP net.IP, srcIP net.IP, srcMAC net.
 			{Type: layers.ICMPv6OptSourceAddress, Data: srcMAC},
 		},
 	}
+	// NS goes to the solicited-node multicast group instead of all-nodes.
 	return s.floodTo(srcIP, srcMAC, solicitedNode(targetIP), layers.ICMPv6TypeNeighborSolicitation, ns, count)
 }
 
@@ -94,11 +97,14 @@ func (s *Sender) NeighborSolicitation(targetIP net.IP, srcIP net.IP, srcMAC net.
 // Solicitation and returns the addresses that answered with a Neighbor
 // Advertisement. It is a link-local IPv6 host-discovery sweep.
 func (s *Sender) NeighborSweep(candidates []net.IP, srcIP net.IP, srcMAC net.HardwareAddr, timeout time.Duration) ([]net.IP, error) {
+	// A non-promiscuous capture handle listens for the NAs while the Sender's
+	// own handle injects the NS probes.
 	capH, err := pcap.OpenLive(s.iface, 65535, false, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("ndp: open capture: %w", err)
 	}
 	defer capH.Close()
+	// BPF keeps only neighbor advertisements (ICMPv6 type 136).
 	if err := capH.SetBPFFilter("ip6 and ip6[40] == 136"); err != nil { // NA type
 		return nil, fmt.Errorf("ndp: bpf: %w", err)
 	}
@@ -120,7 +126,7 @@ func (s *Sender) NeighborSweep(candidates []net.IP, srcIP net.IP, srcMAC net.Har
 			}
 			pkt, err := ps.NextPacket()
 			if err != nil {
-				return
+				return // capture closed or read error; sweep times out anyway
 			}
 			icmpL := pkt.Layer(layers.LayerTypeICMPv6NeighborAdvertisement)
 			if icmpL == nil {
@@ -129,7 +135,7 @@ func (s *Sender) NeighborSweep(candidates []net.IP, srcIP net.IP, srcMAC net.Har
 			na := icmpL.(*layers.ICMPv6NeighborAdvertisement)
 			key := na.TargetAddress.String()
 			if _, ok := found[key]; ok {
-				continue
+				continue // already recorded; keep the first sighting
 			}
 			mu.Lock()
 			found[key] = na.TargetAddress
@@ -143,8 +149,10 @@ func (s *Sender) NeighborSweep(candidates []net.IP, srcIP net.IP, srcMAC net.Har
 			wg.Wait()
 			return nil, err
 		}
+		// Small gap between probes so replies are not swamped.
 		time.Sleep(2 * time.Millisecond)
 	}
+	// Leave the window open for stragglers after the last probe.
 	time.Sleep(timeout)
 	close(stop)
 	wg.Wait()
@@ -162,6 +170,7 @@ func solicitedNode(ip net.IP) net.IP {
 	v6 := ip.To16()
 	out := make(net.IP, 16)
 	copy(out, net.ParseIP("ff02::1"))
+	// ff02::1:ff00:0000 with the last 24 bits copied from the target address.
 	out[13] = 0xff
 	out[14] = v6[14]
 	out[15] = v6[15]
@@ -181,7 +190,7 @@ func (s *Sender) floodTo(srcIP net.IP, srcMAC net.HardwareAddr, dstIP net.IP, ty
 	}
 	ipv6 := &layers.IPv6{
 		Version:      6,
-		HopLimit:     255,
+		HopLimit:     255, // NDP mandates hop limit 255; lower values are dropped
 		NextHeader:   layers.IPProtocolICMPv6,
 		TrafficClass: 0x00,
 		FlowLabel:    0,
@@ -199,6 +208,8 @@ func (s *Sender) floodTo(srcIP net.IP, srcMAC net.HardwareAddr, dstIP net.IP, ty
 		return 0, fmt.Errorf("ndp: serialize: %w", err)
 	}
 	raw := buf.Bytes()
+	// Re-sending the same serialized frame is cheap and avoids re-serializing
+	// count times.
 	for i := 0; i < count; i++ {
 		if err := s.h.WritePacketData(raw); err != nil {
 			return s.Sent, fmt.Errorf("ndp: write: %w", err)
@@ -209,7 +220,7 @@ func (s *Sender) floodTo(srcIP net.IP, srcMAC net.HardwareAddr, dstIP net.IP, ty
 }
 
 // multicastMAC returns the 33:33:xx:xx:xx:xx Ethernet address for an IPv6
-// multicast destination.
+// multicast destination (IANA EUI mapping, RFC 2464 §7).
 func multicastMAC(ip net.IP) net.HardwareAddr {
 	v6 := ip.To16()
 	return net.HardwareAddr{0x33, 0x33, v6[12], v6[13], v6[14], v6[15]}

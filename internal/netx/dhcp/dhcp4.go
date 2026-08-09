@@ -12,10 +12,12 @@ import (
 	"time"
 )
 
-// magicCookie identifies a DHCP message inside the BOOTP options field.
+// magicCookie identifies a DHCP message inside the BOOTP options field. The
+// value 0x63825363 must appear at offset 236 in every DHCP packet, or the
+// packet is treated as plain BOOTP.
 const magicCookie = 0x63825363
 
-// Message types.
+// Message types. Stored in DHCP option 53.
 const (
 	TypeDiscover = 1
 	TypeOffer    = 2
@@ -24,26 +26,27 @@ const (
 	TypeAck      = 5
 )
 
-// Op codes.
+// Op codes. First byte of the BOOTP header.
 const (
-	opRequest = 1
-	opReply   = 2
+	opRequest = 1 // client -> server
+	opReply   = 2 // server -> client
 )
 
 // DHCPHeader is the 236-byte BOOTP prefix shared by every DHCP message.
 // Layout per RFC 2131; the last 4 bytes are the magic cookie.
 type DHCPHeader struct {
-	Op      byte
-	Xid     uint32
-	CIAddr  net.IP
-	YIAddr  net.IP
-	SIAddr  net.IP
-	GIAddr  net.IP
-	CHAddr  net.HardwareAddr
-	Magic   uint32
-	Options []byte
+	Op      byte             // 1 = request, 2 = reply
+	Xid     uint32           // transaction ID, matched by the server to a client
+	CIAddr  net.IP           // client IP (only when the client already has one)
+	YIAddr  net.IP           // "your" (client) IP, set by the server in OFFER/ACK
+	SIAddr  net.IP           // next-server IP (TFTP boot server)
+	GIAddr  net.IP           // relay agent IP (non-zero when forwarded by a helper)
+	CHAddr  net.HardwareAddr // client hardware address (MAC)
+	Magic   uint32           // DHCP magic cookie
+	Options []byte           // TLV options after the fixed header
 }
 
+// headerLen is the size of the fixed BOOTP header through the magic cookie.
 const headerLen = 236
 
 // Marshal serializes the header plus magic cookie and options.
@@ -57,13 +60,14 @@ func (h *DHCPHeader) Marshal() ([]byte, error) {
 	buf[2] = 6 // hlen
 	buf[3] = 0 // hops
 	binary.BigEndian.PutUint32(buf[4:8], h.Xid)
-	buf[10], buf[11] = 0x00, 0x00 // secs
-	buf[12], buf[13] = 0x80, 0x00 // flags: broadcast
+	buf[10], buf[11] = 0x00, 0x00 // secs elapsed since client started
+	buf[12], buf[13] = 0x80, 0x00 // flags: broadcast bit set so the client can receive before it has an IP
 	copy4(buf, 16, h.CIAddr)
 	copy4(buf, 20, h.YIAddr)
 	copy4(buf, 24, h.SIAddr)
 	copy4(buf, 28, h.GIAddr)
 	copy(buf[32:48], h.CHAddr)
+	// The magic cookie lands in the final 4 bytes of the 236-byte header.
 	binary.BigEndian.PutUint32(buf[236-4:], magicCookie)
 	out := append(buf, h.Options...)
 	return out, nil
@@ -77,6 +81,7 @@ func Unmarshal(b []byte) (DHCPHeader, error) {
 	}
 	h.Op = b[0]
 	h.Xid = binary.BigEndian.Uint32(b[4:8])
+	// All four address fields are 4 bytes each at fixed offsets.
 	h.CIAddr = net.IP(b[16:20])
 	h.YIAddr = net.IP(b[20:24])
 	h.SIAddr = net.IP(b[24:28])
@@ -91,18 +96,19 @@ func Unmarshal(b []byte) (DHCPHeader, error) {
 
 // Option is a single DHCP option (type + payload).
 type Option struct {
-	Code byte
-	Data []byte
+	Code byte   // option code
+	Data []byte // option payload
 }
 
 // BuildOptions assembles options and appends the END marker.
 func BuildOptions(ts ...Option) []byte {
 	var out []byte
 	for _, o := range ts {
+		// DHCP options are TLV: code, one-byte length, then payload.
 		out = append(out, o.Code, byte(len(o.Data)))
 		out = append(out, o.Data...)
 	}
-	out = append(out, 255)
+	out = append(out, 255) // END-of-options marker
 	return out
 }
 
@@ -122,6 +128,8 @@ func AddrsOpt(code byte, ips []net.IP) Option {
 	return Option{Code: code, Data: data}
 }
 
+// copy4 writes a 4-byte IPv4 address into buf at off, silently skipping nil
+// or non-IPv4 values so zeroed address fields stay zeroed.
 func copy4(b []byte, off int, ip net.IP) {
 	if v := ip.To4(); v != nil {
 		copy(b[off:off+4], v)
@@ -135,6 +143,8 @@ func Discover(mac net.HardwareAddr, xid uint32) ([]byte, error) {
 		Xid:    xid,
 		CHAddr: mac,
 		Options: BuildOptions(
+			// Option 53 announces the message type; option 55 lists the
+			// parameters the client wants (subnet, router, dns, domain, lease).
 			Option{Code: 53, Data: []byte{TypeDiscover}},
 			Option{Code: 55, Data: []byte{1, 3, 6, 15, 51}}, // subnet, router, dns, domain, lease
 		),
@@ -167,11 +177,12 @@ func Offer(xid uint32, clientMAC net.HardwareAddr, offeredIP, serverIP, mask net
 type Starver struct {
 	conn      *net.UDPConn
 	Sent      atomic.Uint64
-	randomMAC func() net.HardwareAddr
+	randomMAC func() net.HardwareAddr // injectable for deterministic tests
 }
 
 // NewStarver binds UDP :68 broadcast for sending DISCOVERs.
 func NewStarver() (*Starver, error) {
+	// DHCP clients send from port 68 to the broadcast address on port 67.
 	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4bcast, Port: 67})
 	if err != nil {
 		return nil, err
@@ -185,6 +196,7 @@ func (s *Starver) SendDiscover() error {
 	if s.randomMAC != nil {
 		mac = s.randomMAC()
 	}
+	// A new xid per probe stops the server deduplicating our requests.
 	raw, err := Discover(mac, uint32(time.Now().UnixNano()))
 	if err != nil {
 		return err
@@ -204,6 +216,8 @@ func (s *Starver) Close() {
 	}
 }
 
+// randomMAC synthesizes a locally administered unicast MAC from the clock so
+// consecutive calls produce distinct, non-colliding identities.
 func randomMAC() net.HardwareAddr {
 	b := make([]byte, 6)
 	now := time.Now()
@@ -213,6 +227,8 @@ func randomMAC() net.HardwareAddr {
 	b[3] = byte(now.UnixNano() >> 24)
 	b[4] = byte(time.Now().Unix())
 	b[5] = byte(now.Unix() >> 8)
+	// Clear the multicast bit (bit 0) and set the locally administered bit
+	// (bit 1) of the first octet: 0x02 => locally administered unicast.
 	b[0] = (b[0] & 0xfe) | 0x02 // locally administered unicast
 	return net.HardwareAddr(b)
 }

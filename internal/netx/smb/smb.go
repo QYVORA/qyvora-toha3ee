@@ -12,20 +12,25 @@ import (
 	"time"
 )
 
-// SMB2 command codes.
+// SMB2 command codes. The command lives at offset 12 of the 64-byte SMB2
+// header. NEGOTIATE is the only command this client needs.
 const (
 	cmdNegotiate = 0x0000
 )
 
-// Security mode flags from the negotiate response.
+// Security mode flags from the negotiate response. These two bits in the
+// SecurityMode field decide whether message signing can be negotiated away.
 const (
-	SecurityModeSigningEnabled  = 0x0001
-	SecurityModeSigningRequired = 0x0002
+	SecurityModeSigningEnabled  = 0x0001 // signatures supported (optional)
+	SecurityModeSigningRequired = 0x0002 // unsigned traffic refused
 )
 
-// Dialect we negotiate: SMB 2.0.2.
+// Dialect we negotiate: SMB 2.0.2. Chosen because it is the most widely
+// supported dialect and is enough to read the signing policy.
 const dialect202 = 0x0202
 
+// protoID is the SMB2 protocol identifier: a 0xFE byte followed by the ASCII
+// bytes "SMB" (also known as the "SMB2" magic, 0xFE 'S' 'M' 'B').
 var protoID = []byte{0xfe, 'S', 'M', 'B'}
 
 // SigningResult is the outcome of an SMB signing probe.
@@ -64,20 +69,21 @@ func Probe(addr string, timeout time.Duration) (*SigningResult, error) {
 }
 
 // buildNegotiate assembles an SMB2 NEGOTIATE request for dialect 2.0.2.
+// Layout: 64-byte SMB2 header followed by the 36-byte NEGOTIATE body.
 func buildNegotiate() []byte {
 	buf := make([]byte, 64+38)
 	copy(buf, protoID)
 	le := binary.LittleEndian
-	le.PutUint16(buf[4:], 64)            // structure size
+	le.PutUint16(buf[4:], 64)            // structure size (header)
 	le.PutUint16(buf[12:], cmdNegotiate) // command
 	le.PutUint16(buf[14:], 1)            // credit request
 	le.PutUint64(buf[24:], 1)            // message id
 
 	body := buf[64:]
-	le.PutUint16(body[0:], 36)          // structure size
+	le.PutUint16(body[0:], 36)          // structure size (body)
 	le.PutUint16(body[2:], 1)           // dialect count
-	le.PutUint16(body[4:], 0)           // security mode
-	le.PutUint16(body[36:], dialect202) // dialect list
+	le.PutUint16(body[4:], 0)           // security mode (no signing offered)
+	le.PutUint16(body[36:], dialect202) // dialect list (one entry)
 	return buf
 }
 
@@ -92,9 +98,12 @@ func readResponse(conn net.Conn) ([]byte, error) {
 	if !bytes.Equal(head[:4], protoID) {
 		return nil, errors.New("smb: not an SMB2 response")
 	}
+	// A NEGOTIATE response must echo the NEGOTIATE command code.
 	if binary.LittleEndian.Uint16(head[12:]) != cmdNegotiate {
 		return nil, fmt.Errorf("smb: unexpected command 0x%04x", binary.LittleEndian.Uint16(head[12:]))
 	}
+	// The next-header structure size (header's own size) doubles as the body
+	// length hint; clamp it so a broken server cannot make us allocate.
 	bodyLen := int(binary.LittleEndian.Uint16(head[4:]))
 	if bodyLen > 4096 {
 		bodyLen = 4096
@@ -116,6 +125,7 @@ func parseNegotiateResponse(pkt []byte) (*SigningResult, error) {
 		return nil, errors.New("smb: bad protocol id")
 	}
 	// Header ends at 64; body[0:2] structure size, body[2:4] security mode.
+	// So SecurityMode sits at 66 and the selected dialect at 68.
 	mode := binary.LittleEndian.Uint16(pkt[66:68])
 	dialect := binary.LittleEndian.Uint16(pkt[68:70])
 	return &SigningResult{

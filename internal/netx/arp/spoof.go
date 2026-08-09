@@ -28,19 +28,22 @@ type Pair struct {
 type Spoofer struct {
 	iface   *netx.Iface
 	handle  *pcap.Handle
-	pairs   []Pair
+	pairs   []Pair // every relationship that must be kept poisoned
 	refresh time.Duration
 
-	stop chan struct{}
+	stop chan struct{} // closed by Stop to halt the poison loop
 	wg   sync.WaitGroup
 
-	sent     atomic.Uint64
-	restored atomic.Uint64
+	sent     atomic.Uint64 // poison replies transmitted
+	restored atomic.Uint64 // restore replies transmitted
 }
 
 // NewSpoofer opens a pcap handle and prepares a spoofing session over the
 // given pairs.
 func NewSpoofer(iface *netx.Iface, pairs []Pair, refresh time.Duration) (*Spoofer, error) {
+	// Promiscuous mode is not strictly needed to send, but keeps the handle
+	// consistent with the rest of the framework and lets future reply-watching
+	// features reuse it.
 	handle, err := pcap.OpenLive(iface.Name, 65535, true, 200*time.Millisecond)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", iface.Name, err)
@@ -61,6 +64,8 @@ func NewSpoofer(iface *netx.Iface, pairs []Pair, refresh time.Duration) (*Spoofe
 // Start begins the periodic poisoning loop. It returns immediately; the loop
 // runs until Stop is called.
 func (s *Spoofer) Start() {
+	// ARP cache entries time out after a few seconds on most OSes, so without
+	// an explicit refresh we re-poison every 2 seconds to stay ahead of expiry.
 	if s.refresh <= 0 {
 		s.refresh = 2 * time.Second
 	}
@@ -75,6 +80,9 @@ func (s *Spoofer) Stop() {
 	s.handle.Close()
 }
 
+// loop re-poisons immediately, then on every refresh tick until stopped. The
+// initial immediate round makes the poison effective without waiting a full
+// tick.
 func (s *Spoofer) loop() {
 	defer s.wg.Done()
 	_ = s.Poison()
@@ -105,6 +113,8 @@ func (s *Spoofer) Poison() error {
 // running.
 func (s *Spoofer) Restore() error {
 	// Broadcast a genuine who-has first so any stale entries are refreshed.
+	// The is-at replies that follow override the poisoned entries with the
+	// real MAC of the spoofed IP.
 	for _, p := range s.pairs {
 		if err := s.sendReply(p.TargetIP, p.TargetMAC, p.SpoofedIP, p.RealMAC); err != nil {
 			return err
@@ -149,6 +159,7 @@ func SnapshotARPTable() (*Snapshot, error) {
 		return nil, err
 	}
 	for _, r := range rows {
+		// Entries without a resolved MAC carry no useful mapping.
 		if r.MAC == nil || r.MAC.String() == "" {
 			continue
 		}
@@ -157,6 +168,7 @@ func SnapshotARPTable() (*Snapshot, error) {
 	return snap, nil
 }
 
+// arpRow is a single parsed /proc/net/arp row.
 type arpRow struct {
 	IP    net.IP
 	MAC   net.HardwareAddr
