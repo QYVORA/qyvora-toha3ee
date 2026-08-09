@@ -11,6 +11,8 @@ import (
 func serviceRules(p *v.Profile) []v.Vector {
 	var out []v.Vector
 
+	// No hosts at all: a full subnet SYN sweep is the correct first move,
+	// before any host-specific suggestion can exist.
 	if len(p.Hosts) == 0 {
 		out = append(out, v.Vector{
 			ModuleID:   "service.synscan",
@@ -24,6 +26,8 @@ func serviceRules(p *v.Profile) []v.Vector {
 
 	scannedAny := false
 	for _, h := range p.Hosts {
+		// Skip hosts with no known ports: there is nothing to fingerprint or
+		// attack at the service layer yet.
 		if len(h.Ports) == 0 {
 			continue
 		}
@@ -35,6 +39,8 @@ func serviceRules(p *v.Profile) []v.Vector {
 			Risk:       "low",
 			Impact:     "grab banners and fingerprint services on " + h.IP.String(),
 		})
+		// Web-accessible devices from router vendors are prime targets for
+		// default-credential testing; other services are not.
 		if hasWeb(h.Ports) && likelyRouter(h) {
 			out = append(out, v.Vector{
 				ModuleID:   "default.creds",
@@ -55,6 +61,8 @@ func serviceRules(p *v.Profile) []v.Vector {
 		}
 	}
 	if !scannedAny {
+		// Hosts exist but none have ports recorded yet: the inventory came
+		// from ARP/DHCP discovery, so a scan is still the next step.
 		out = append(out, v.Vector{
 			ModuleID:   "service.synscan",
 			Target:     "subnet",
@@ -66,6 +74,7 @@ func serviceRules(p *v.Profile) []v.Vector {
 	return out
 }
 
+// hasWeb reports whether the host exposes a common web-management port.
 func hasWeb(ports map[uint16]string) bool {
 	for p := range ports {
 		if p == 80 || p == 443 || p == 8080 || p == 8443 {
@@ -75,6 +84,7 @@ func hasWeb(ports map[uint16]string) bool {
 	return false
 }
 
+// hasSMB reports whether the host listens on the SMB port.
 func hasSMB(ports map[uint16]string) bool {
 	_, ok := ports[445]
 	return ok
@@ -85,6 +95,8 @@ func hasSMB(ports map[uint16]string) bool {
 func likelyRouter(h *v.Host) bool {
 	vendor := h.Vendor
 	name := h.Name
+	// Vendors that ship consumer router/IoT management interfaces; both the
+	// OUI-derived vendor string and the hostname are checked.
 	for _, needle := range []string{"TP-Link", "Netgear", "D-Link", "Asus", "ASUSTek", "Huawei", "ZTE", "Sercomm", "Sagemcom", "Ubiquiti", "MikroTik", "Cisco", "Arcadyan", "PCS"} {
 		if containsFold(vendor, needle) || containsFold(name, needle) {
 			return true
@@ -93,10 +105,12 @@ func likelyRouter(h *v.Host) bool {
 	return false
 }
 
+// containsFold is a case-insensitive substring test.
 func containsFold(haystack, needle string) bool {
 	return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
 }
 
+// init registers the rule family with the engine during package init.
 func init() {
 	v.RegisterRule(serviceRules)
 }

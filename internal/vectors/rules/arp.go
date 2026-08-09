@@ -10,9 +10,13 @@ import (
 // arpRules suggests L2 MITM and passive harvesting attacks.
 func arpRules(p *v.Profile) []v.Vector {
 	var out []v.Vector
+	// ARP attacks all depend on a known gateway to impersonate; without one
+	// there is nothing to spoof toward.
 	if p.Gateway == nil {
 		return out
 	}
+	// If recon proved the segment rejects forged ARP responses, MITM via ARP
+	// cannot work; skip the whole family.
 	if !p.Poisonable {
 		return out
 	}
@@ -27,8 +31,12 @@ func arpRules(p *v.Profile) []v.Vector {
 	})
 
 	// Internal host-to-host spoofing when at least two client hosts exist.
+	// The two-host floor matters: with a single client there is no second
+	// party whose traffic could be redirected.
 	clientCount := 0
 	for _, h := range p.Hosts {
+		// Count only hosts with a MAC: an ARP-spoofable target must be
+		// reachable at L2, and gateway is excluded as the impersonation target.
 		if h.IP != nil && !h.IP.Equal(p.Gateway.IP) && h.MAC != nil {
 			clientCount++
 		}
@@ -43,6 +51,8 @@ func arpRules(p *v.Profile) []v.Vector {
 		})
 	}
 
+	// Plaintext HTTP on the segment makes passive credential harvesting
+	// possible without any injection at all.
 	if p.SeesPlainHTTP {
 		out = append(out, v.Vector{
 			ModuleID:   "http.harvest",
@@ -55,6 +65,7 @@ func arpRules(p *v.Profile) []v.Vector {
 	return out
 }
 
+// init registers the rule family with the engine during package init.
 func init() {
 	v.RegisterRule(arpRules)
 }

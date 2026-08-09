@@ -7,6 +7,8 @@ import (
 // httpRules suggests DNS, HTTP(S) interception and phishing attacks.
 func httpRules(p *v.Profile) []v.Vector {
 	var out []v.Vector
+	// DNS/proxy attacks reroute traffic through the attacker, which requires
+	// both a known gateway and a segment that accepts forged responses.
 	if p.Gateway == nil || !p.Poisonable {
 		return out
 	}
@@ -19,6 +21,8 @@ func httpRules(p *v.Profile) []v.Vector {
 		Impact:     "DNS responses spoofed for targeted domains; all other queries forwarded upstream",
 	})
 
+	// The HTTP-specific tools only make sense where plaintext HTTP actually
+	// flows; offering them on a fully-TLS network would mislead the user.
 	if p.SeesPlainHTTP {
 		out = append(out, v.Vector{
 			ModuleID:   "http.proxy",
@@ -46,6 +50,9 @@ func httpRules(p *v.Profile) []v.Vector {
 		Impact:     "HTTPS MITM requires the framework CA to be trusted on the victim device (cert-pinned apps and Android 7+/iOS user-CA limits apply)",
 	})
 
+	// DoH detection changes the outlook on DNS spoofing: clients that tunnel
+	// DNS over HTTPS bypass a spoofed DNS answer entirely. Emit a low-value,
+	// informational vector so the user understands the limitation.
 	if p.SeesDoH {
 		out = append(out, v.Vector{
 			ModuleID:   "dns.spoof",
@@ -58,6 +65,7 @@ func httpRules(p *v.Profile) []v.Vector {
 	return out
 }
 
+// init registers the rule family with the engine during package init.
 func init() {
 	v.RegisterRule(httpRules)
 }

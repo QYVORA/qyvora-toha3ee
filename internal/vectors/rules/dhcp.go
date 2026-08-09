@@ -7,6 +7,9 @@ import (
 // dhcpRules suggests DHCP/DHCPv6/NDP and ICMP-redirect based attacks.
 func dhcpRules(p *v.Profile) []v.Vector {
 	var out []v.Vector
+	// These attacks redirect or hijack client traffic, so they share the
+	// same prerequisites: a gateway to impersonate and a segment that
+	// accepts forged responses.
 	if p.Gateway == nil || !p.Poisonable {
 		return out
 	}
@@ -27,6 +30,8 @@ func dhcpRules(p *v.Profile) []v.Vector {
 		Impact:     "inject ICMP redirects steering victim traffic through the attacker",
 	})
 
+	// WPAD poisoning is most useful where clients still browse plaintext;
+	// the proxy it points at would then see HTTP credentials.
 	if p.SeesPlainHTTP {
 		out = append(out, v.Vector{
 			ModuleID:   "wpad.poison",
@@ -39,6 +44,7 @@ func dhcpRules(p *v.Profile) []v.Vector {
 	return out
 }
 
+// init registers the rule family with the engine during package init.
 func init() {
 	v.RegisterRule(dhcpRules)
 }

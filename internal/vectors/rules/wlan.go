@@ -8,12 +8,16 @@ import (
 // present.
 func wlanRules(p *v.Profile) []v.Vector {
 	var out []v.Vector
+	// Every wireless attack needs monitor mode; without a capable interface
+	// the whole family is unsuggestable.
 	if !p.MonitorCapable {
 		return out
 	}
 
 	if !p.HasAP {
-		// First step: find access points with a passive scan.
+		// First step: find access points with a passive scan. No AP is known
+		// yet, so nothing attack-shaped can be suggested; return the scan
+		// immediately rather than piling on later-stage vectors.
 		out = append(out, v.Vector{
 			ModuleID:   "wlan.scan",
 			Target:     "monitor",
@@ -40,6 +44,8 @@ func wlanRules(p *v.Profile) []v.Vector {
 		Impact:     "rogue AP impersonating a trusted SSID with a captive-phishing portal",
 	})
 
+	// Deauthentication needs real clients on the AP to kick off; with none
+	// observed there is nothing to disconnect.
 	if p.HasClients {
 		out = append(out, v.Vector{
 			ModuleID:   "wlan.deauth",
@@ -52,6 +58,7 @@ func wlanRules(p *v.Profile) []v.Vector {
 	return out
 }
 
+// init registers the rule family with the engine during package init.
 func init() {
 	v.RegisterRule(wlanRules)
 }

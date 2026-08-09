@@ -8,6 +8,9 @@ import (
 func smbRules(p *v.Profile) []v.Vector {
 	var out []v.Vector
 
+	// Any of the legacy name-resolution protocols on the wire means
+	// poisoning can harvest NTLM hashes; none of them seen means there is
+	// nothing to respond to.
 	poisonable := p.SeesLLMNR || p.SeesNBNS || p.SeesMDNS
 	if poisonable {
 		out = append(out, v.Vector{
@@ -19,6 +22,8 @@ func smbRules(p *v.Profile) []v.Vector {
 		})
 	}
 
+	// SMB traffic is required for both relaying auth and for passively
+	// judging the signing policy, so both suggestions gate on it.
 	if p.SeesSMB {
 		out = append(out, v.Vector{
 			ModuleID:   "ntlm.relay",
@@ -38,6 +43,7 @@ func smbRules(p *v.Profile) []v.Vector {
 	return out
 }
 
+// init registers the rule family with the engine during package init.
 func init() {
 	v.RegisterRule(smbRules)
 }
