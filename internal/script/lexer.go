@@ -331,12 +331,16 @@ func (l *lexer) lexIdent() (token, error) {
 
 // lexRaw reads a bare, unquoted value such as a number, an IP, a duration or
 // a CIDR ("30", "5ms", "10.0.0.5", "192.168.1.0/24"). Values are carried as
-// strings and parsed on demand.
+// strings and parsed on demand. An unexpected character that cannot start a
+// raw value is a lex error rather than being silently dropped.
 func (l *lexer) lexRaw() (token, error) {
 	line := l.line
 	start := l.pos
 	for l.pos < len(l.src) && isRawPart(l.src[l.pos]) {
 		l.pos++
+	}
+	if l.pos == start {
+		return token{}, fmt.Errorf("line %d: unexpected character %q", line, string(l.src[l.pos]))
 	}
 	return token{kind: tkString, text: l.src[start:l.pos], line: line}, nil
 }
