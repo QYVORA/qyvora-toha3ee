@@ -10,8 +10,8 @@ import (
 // Newlines terminate statements; blocks are opened with if/for/repeat/while
 // and closed with `end` (or `else` for the middle of an if).
 type parser struct {
-	toks []token
-	pos  int
+	toks []token // the full token stream, ending in tkEOF
+	pos  int     // index of the next unconsumed token
 }
 
 // Parse parses src into a Program.
@@ -24,10 +24,14 @@ func Parse(src string) (*Program, error) {
 	return p.parseProgram()
 }
 
+// peek returns the next token without consuming it.
 func (p *parser) peek() token { return p.toks[p.pos] }
 
+// at reports whether the next token has the given kind.
 func (p *parser) at(kind tokKind) bool { return p.peek().kind == kind }
 
+// next consumes and returns the next token. It never advances past the final
+// tkEOF token, so a well-formed stream always has a token to return.
 func (p *parser) next() token {
 	t := p.toks[p.pos]
 	if p.pos < len(p.toks)-1 {
@@ -36,6 +40,8 @@ func (p *parser) next() token {
 	return t
 }
 
+// expect consumes the next token, failing with a parseError if its kind does
+// not match. what is the human-readable description shown in the error.
 func (p *parser) expect(kind tokKind, what string) (token, error) {
 	t := p.peek()
 	if t.kind != kind {
@@ -55,6 +61,8 @@ func (p *parser) skipNewlines() {
 func (p *parser) parseProgram() (*Program, error) {
 	prog := &Program{}
 	p.skipNewlines()
+	// Parse statements until the stream is exhausted; a trailing newline
+	// before EOF is fine.
 	for !p.at(tkEOF) {
 		stmt, err := p.parseStmt()
 		if err != nil {
@@ -73,6 +81,7 @@ func (p *parser) parseStmt() (Stmt, error) {
 		return nil, parseError(t, "expected a statement, found %s", t)
 	}
 
+	// Keywords are recognized only when they appear as a plain identifier.
 	if t.kind == tkIdent {
 		switch t.text {
 		case "set":
@@ -85,6 +94,8 @@ func (p *parser) parseStmt() (Stmt, error) {
 			return p.parseStop()
 		case "stop":
 			// `stop` alone halts the script; `stop <module>` stops a module.
+			// Disambiguate by peeking whether another token follows on the
+			// same line.
 			if p.pos+1 < len(p.toks) && p.toks[p.pos+1].kind != tkNewline && p.toks[p.pos+1].kind != tkEOF {
 				return p.parseStop()
 			}
@@ -117,6 +128,8 @@ func (p *parser) parseStmt() (Stmt, error) {
 			p.next()
 			return ContinueStmt{}, nil
 		case "end", "else":
+			// These block terminators are only valid inside a block; seeing
+			// one here means the source structure is wrong.
 			return nil, parseError(t, "unexpected %q", t.text)
 		}
 
@@ -130,6 +143,8 @@ func (p *parser) parseStmt() (Stmt, error) {
 				if err != nil {
 					return nil, err
 				}
+				// Normalize the two assign operators to a canonical spelling
+				// so the engine only has to handle "=" and ">>".
 				op := "="
 				switch opTok.kind {
 				case tkArrow:
@@ -151,6 +166,7 @@ func (p *parser) parseSet() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Both "->" and "=" are accepted here for ergonomic flexibility.
 	if !p.at(tkArrow) && !p.at(tkAssign) {
 		return nil, parseError(p.peek(), "expected '->' or '=', found %s", p.peek())
 	}
@@ -176,6 +192,8 @@ func (p *parser) parseGet() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Only underscore-prefixed names can be assigned to, keeping script
+	// variables clearly distinct from keywords and module ids.
 	if !strings.HasPrefix(v.text, "_") {
 		return nil, parseError(v, "target variable must start with '_'")
 	}
@@ -193,11 +211,14 @@ func (p *parser) parseStart() (Stmt, error) {
 	var opts []Expr
 	for !p.at(tkNewline) && !p.at(tkEOF) {
 		if p.at(tkComma) {
+			// A comma between options is pure punctuation and is skipped.
 			p.next()
 			continue
 		}
 		var e Expr
 		var err error
+		// Alternate between key and value: after an odd number of parsed
+		// tokens we are expecting a value for the preceding key.
 		if len(opts)%2 == 1 { // expecting a value
 			e, err = p.parseOptValue()
 		} else {
@@ -221,6 +242,8 @@ func (p *parser) parseOptValue() (Expr, error) {
 	if !p.at(tkComma) {
 		return first, nil
 	}
+	// There is at least one comma: merge all following pieces into one
+	// StringLit with "," segments between them.
 	segs := optValueSegs(first)
 	for p.at(tkComma) {
 		p.next()
@@ -261,12 +284,16 @@ func (p *parser) parseStop() (Stmt, error) {
 
 func (p *parser) parseWait() (Stmt, error) {
 	p.next() // wait
+	// "wait for <module> [max <secs>]" waits on a module; anything else is
+	// the bare "wait <secs>" sleep form.
 	if p.at(tkIdent) && p.peek().text == "for" {
 		p.next() // for
 		id, err := p.expect(tkIdent, "a module id like net.scan")
 		if err != nil {
 			return nil, err
 		}
+		// Default cap of ten minutes so an unlucky wait can never hang a
+		// script forever.
 		max := 10 * time.Minute
 		if p.at(tkIdent) && p.peek().text == "max" {
 			p.next()
@@ -292,6 +319,7 @@ func (p *parser) parseWait() (Stmt, error) {
 
 func (p *parser) parseSleep() (Stmt, error) {
 	p.next() // sleep
+	// The "->" is optional, so both "sleep -> 2" and "sleep 2" parse.
 	if p.at(tkArrow) {
 		p.next()
 	}
@@ -307,6 +335,7 @@ func (p *parser) parseSleep() (Stmt, error) {
 // re-inserted without surrounding spaces so "80,443" survives reconstruction.
 func (p *parser) parseExec() (Stmt, error) {
 	p.next() // exec / run.cmd / command
+	// Accept an optional arrow for the "exec -> <cmd>" idiom.
 	if p.at(tkArrow) || p.at(tkAppend) {
 		p.next()
 	}
@@ -315,10 +344,13 @@ func (p *parser) parseExec() (Stmt, error) {
 	for !p.at(tkNewline) && !p.at(tkEOF) {
 		t := p.next()
 		if t.kind == tkComma {
+			// Reconstruct commas without spaces: the lexer strips them from
+			// token text, and "80, 443" should come back as "80,443".
 			b.WriteByte(',')
 			needSpace = false
 			continue
 		}
+		// Re-insert the single space that separated tokens in the source.
 		if needSpace {
 			b.WriteByte(' ')
 		}
@@ -330,6 +362,7 @@ func (p *parser) parseExec() (Stmt, error) {
 
 func (p *parser) parseEcho() (Stmt, error) {
 	p.next() // echo / say / print
+	// "->" is optional for symmetry with the other value-taking keywords.
 	if p.at(tkArrow) {
 		p.next()
 	}
@@ -351,6 +384,7 @@ func (p *parser) parseShow() (Stmt, error) {
 
 func (p *parser) parseReport() (Stmt, error) {
 	p.next() // report
+	// Optional arrow so "report -> \"f.md\"" and "report \"f.md\"" both work.
 	if p.at(tkArrow) {
 		p.next()
 	}
@@ -367,6 +401,7 @@ func (p *parser) parseIf() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The condition must end the line; anything after it is a syntax error.
 	if err := p.endOfLine(); err != nil {
 		return nil, err
 	}
@@ -385,6 +420,7 @@ func (p *parser) parseIf() (Stmt, error) {
 			return nil, err
 		}
 		stmt.Else = els
+		// An else block must terminate with 'end', never another 'else'.
 		if term2 != "end" {
 			return nil, parseError(p.peek(), "expected 'end', found %s", p.peek())
 		}
@@ -405,6 +441,7 @@ func (p *parser) parseForEach() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Loop variables must be underscore-prefixed like regular variables.
 	if !strings.HasPrefix(v.text, "_") {
 		return nil, parseError(v, "loop variable must start with '_'")
 	}
@@ -436,6 +473,7 @@ func (p *parser) parseRepeat() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The "times" keyword is mandatory: "repeat 3 times ...".
 	if !(p.at(tkIdent) && p.peek().text == "times") {
 		return nil, parseError(p.peek(), "expected 'times', found %s", p.peek())
 	}
@@ -483,10 +521,13 @@ func (p *parser) parseBlock(stopOnElse bool) ([]Stmt, string, error) {
 		t := p.peek()
 		switch {
 		case t.kind == tkEOF:
+			// Hitting EOF first means the block was never closed.
 			return nil, "", parseError(t, "expected 'end' before end of script")
 		case t.kind == tkIdent && t.text == "end":
 			return stmts, "end", nil
 		case t.kind == tkIdent && t.text == "else" && stopOnElse:
+			// Only the if-statement cares about 'else'; for loops it would be
+			// a plain (and likely invalid) statement.
 			return stmts, "else", nil
 		case t.kind == tkNewline:
 			continue
@@ -510,6 +551,8 @@ func (p *parser) endOfLine() error {
 
 // -- conditions ------------------------------------------------------------
 
+// parseCond parses a full condition: a chain of `||`-joined AND-terms.
+// Precedence is intentionally flat: or (lowest) over and over not.
 func (p *parser) parseCond() (Cond, error) {
 	left, err := p.parseAnd()
 	if err != nil {
@@ -526,6 +569,7 @@ func (p *parser) parseCond() (Cond, error) {
 	return left, nil
 }
 
+// parseAnd parses a chain of `&&`-joined negated terms.
 func (p *parser) parseAnd() (Cond, error) {
 	left, err := p.parseNot()
 	if err != nil {
@@ -542,6 +586,8 @@ func (p *parser) parseAnd() (Cond, error) {
 	return left, nil
 }
 
+// parseNot handles both the `!` operator and the English "not" keyword, and
+// is recursive so "not not X" parses correctly.
 func (p *parser) parseNot() (Cond, error) {
 	t := p.peek()
 	if (t.kind == tkNot) || (t.kind == tkIdent && t.text == "not") {
@@ -559,6 +605,8 @@ func (p *parser) parsePrimaryCond() (Cond, error) {
 	// Bare true/false.
 	if p.at(tkIdent) {
 		if p.peek().text == "true" || p.peek().text == "false" {
+			// A boolean is only a literal when nothing follows that could make
+			// it a comparison operand, e.g. "true == false".
 			next := p.toks[p.pos+1]
 			if !isCondOp(next) {
 				p.next()
@@ -625,6 +673,7 @@ func (p *parser) parsePrimaryCond() (Cond, error) {
 		return ContainsCond{L: left, R: right}, nil
 	case t.kind == tkIdent && t.text == "is":
 		p.next()
+		// "X is not running" is a negated running check.
 		neg := false
 		if p.at(tkIdent) && p.peek().text == "not" {
 			neg = true
@@ -636,6 +685,8 @@ func (p *parser) parsePrimaryCond() (Cond, error) {
 		p.next()
 		return RunningCond{Module: left, Negate: neg}, nil
 	default:
+		// A single bare "true"/"false" that lexed as an identifier (rather
+		// than through the tkIdent branch above) still becomes a BoolCond.
 		if sl, ok := left.(StringLit); ok && len(sl.Segs) == 1 {
 			seg := sl.Segs[0]
 			if seg.Text == "true" {
@@ -674,11 +725,16 @@ func (p *parser) parseExprValue() (Expr, error) {
 		return parseSegments(t.text), nil
 	case tkIdent:
 		p.next()
+		// Underscore-prefixed tokens are variable references; any other bare
+		// word is literal text (so "on arp.spoof" passes "arp.spoof" around
+		// as a string, not an identifier to resolve).
 		if strings.HasPrefix(t.text, "_") {
 			return IdentExpr{Name: t.text}, nil
 		}
 		return StringLit{Segs: []Seg{{Text: t.text}}}, nil
 	case tkDollar:
+		// "$(path)" reads a live session property; the path is a single ident
+		// token terminated by ')'.
 		p.next()
 		path, err := p.expect(tkIdent, "a property path like hosts.count")
 		if err != nil {
@@ -691,6 +747,8 @@ func (p *parser) parseExprValue() (Expr, error) {
 	case tkLBrack:
 		return p.parseList()
 	case tkLParen:
+		// Parentheses group a value expression; the group is transparent and
+		// the inner expression is returned directly.
 		p.next()
 		inner, err := p.parseExprValue()
 		if err != nil {
@@ -716,6 +774,7 @@ func (p *parser) parseList() (Expr, error) {
 		}
 		list.Items = append(list.Items, item)
 		p.skipInline()
+		// Commas between items are optional, so "[a b c]" parses too.
 		if p.at(tkComma) {
 			p.next()
 			p.skipInline()
@@ -744,6 +803,7 @@ func parseSegments(s string) StringLit {
 	for {
 		idx := strings.Index(s, "$(")
 		if idx < 0 {
+			// No more interpolation markers: the remainder (if any) is text.
 			if s != "" {
 				lit.Segs = append(lit.Segs, Seg{Text: s})
 			}
@@ -755,10 +815,14 @@ func parseSegments(s string) StringLit {
 		rest := s[idx+2:]
 		end := strings.IndexByte(rest, ')')
 		if end < 0 {
+			// Unclosed "$(" is treated as literal text rather than an error,
+			// keeping the lexer/parser resilient to odd-but-harmless input.
 			lit.Segs = append(lit.Segs, Seg{Text: s[idx:]})
 			break
 		}
 		path := rest[:end]
+		// Underscore paths are script variables; everything else is a live
+		// session property read.
 		if strings.HasPrefix(path, "_") {
 			lit.Segs = append(lit.Segs, Seg{Var: path})
 		} else {
@@ -766,6 +830,8 @@ func parseSegments(s string) StringLit {
 		}
 		s = rest[end+1:]
 	}
+	// An empty string (e.g. "") must still produce exactly one empty text
+	// segment so it interpolates to "" rather than nothing.
 	if len(lit.Segs) == 0 {
 		lit.Segs = []Seg{{Text: ""}}
 	}
@@ -778,6 +844,9 @@ func numOf(e Expr) (float64, bool) {
 	var s string
 	switch v := e.(type) {
 	case StringLit:
+		// Only a pure text segment (no Var/Prop) can be a number; any
+		// interpolation means the value is dynamic and must be resolved at
+		// runtime instead.
 		if len(v.Segs) != 1 || v.Segs[0].Var != "" || v.Segs[0].Prop != "" {
 			return 0, false
 		}
@@ -785,6 +854,7 @@ func numOf(e Expr) (float64, bool) {
 	case NumLit:
 		s = v.Value
 	case IdentExpr:
+		// Variable references cannot be resolved at parse time.
 		return 0, false
 	default:
 		return 0, false

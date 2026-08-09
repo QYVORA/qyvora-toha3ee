@@ -7,12 +7,14 @@ import (
 
 // Stmt is a single executable statement in a script.
 type Stmt interface {
+	// stmt is a sealed-trait marker: it returns a tag so the engine can
+	// type-switch on the concrete statement without a dummy value.
 	stmt() string
 }
 
 // Program is the root of a parsed script.
 type Program struct {
-	Stmts []Stmt
+	Stmts []Stmt // the top-level statements, in source order
 }
 
 // -- expressions -----------------------------------------------------------
@@ -22,13 +24,13 @@ type Expr interface{ expr() string }
 
 // StringLit is a string that may carry $(...) interpolation segments.
 type StringLit struct {
-	Segs []Seg
+	Segs []Seg // literal text / $(_var) / $(prop) pieces, concatenated in order
 }
 
 // Seg is one piece of a StringLit: either literal text, a variable reference
 // or a live session property read.
 type Seg struct {
-	Text string
+	Text string // literal text (used when Var and Prop are both empty)
 	Var  string // non-empty: "$(_name)" reference
 	Prop string // non-empty: "$(path)" session property
 }
@@ -45,6 +47,8 @@ type ListExpr struct{ Items []Expr }
 // PropExpr is a bare $(path) session property read.
 type PropExpr struct{ Path string }
 
+// expr() marker methods give the parser and engine a stable tag for each
+// concrete expression type (used by Describe and the dry-run renderer).
 func (StringLit) expr() string { return "string" }
 func (NumLit) expr() string    { return "number" }
 func (IdentExpr) expr() string { return "variable" }
@@ -72,7 +76,7 @@ type ContainsCond struct{ L, R Expr }
 // RunningCond tests whether a module is (not) running.
 type RunningCond struct {
 	Module Expr
-	Negate bool
+	Negate bool // true for "is not running"
 }
 
 // NotCond negates a condition.
@@ -84,6 +88,7 @@ type AndCond struct{ L, R Cond }
 // OrCond combines two conditions with logical OR.
 type OrCond struct{ L, R Cond }
 
+// cond() marker methods tag each concrete condition for the dry-run renderer.
 func (BoolCond) cond() string     { return "bool" }
 func (CmpCond) cond() string      { return "comparison" }
 func (ContainsCond) cond() string { return "contains" }
@@ -116,7 +121,7 @@ type GetStmt struct {
 // StartStmt starts a module, optionally with inline "key value" options.
 type StartStmt struct {
 	ID   string
-	Opts []Expr
+	Opts []Expr // flattened "key value key value" option tokens
 }
 
 // StopStmt stops a running module.
@@ -147,19 +152,19 @@ type ExecStmt struct{ Raw string }
 type IfStmt struct {
 	Cond Cond
 	Then []Stmt
-	Else []Stmt
+	Else []Stmt // may be empty when there is no else clause
 }
 
 // ForEachStmt iterates a list.
 type ForEachStmt struct {
-	Var  string
+	Var  string // loop variable name (must start with '_')
 	List Expr
 	Body []Stmt
 }
 
 // RepeatStmt repeats a block N times.
 type RepeatStmt struct {
-	N    Expr
+	N    Expr // number of iterations (a numeric expression)
 	Body []Stmt
 }
 
@@ -178,6 +183,8 @@ type ContinueStmt struct{}
 // HaltStmt stops the whole script.
 type HaltStmt struct{}
 
+// stmt() marker methods tag each concrete statement for the engine switch and
+// the dry-run renderer.
 func (AssignStmt) stmt() string   { return "assign" }
 func (SetStmt) stmt() string      { return "set" }
 func (GetStmt) stmt() string      { return "get" }
@@ -199,5 +206,7 @@ func (HaltStmt) stmt() string     { return "halt" }
 
 // parseError reports a syntax error at a line.
 func parseError(tok token, format string, args ...any) error {
+	// Format is expanded eagerly so the caller's variadic args are consumed
+	// exactly once even when wrapped by fmt.Errorf later.
 	return fmt.Errorf("script: line %d: %s", tok.line, fmt.Sprintf(format, args...))
 }

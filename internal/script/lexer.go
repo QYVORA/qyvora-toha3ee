@@ -36,6 +36,8 @@ import (
 // tokKind identifies a single lexical token.
 type tokKind int
 
+// Token kinds. The iota block is an ordered enum; new kinds must be appended,
+// never inserted, to keep any persisted or test expectations stable.
 const (
 	tkEOF tokKind = iota
 	tkNewline
@@ -86,8 +88,8 @@ func (t token) String() string {
 // every statement lives on one line and blocks are closed with `end`.
 type lexer struct {
 	src  string
-	pos  int
-	line int
+	pos  int // current byte offset into src
+	line int // 1-based line of the current position
 	toks []token
 }
 
@@ -109,17 +111,22 @@ func lex(src string) ([]token, error) {
 
 // next produces the next token.
 func (l *lexer) next() (token, error) {
+	// The loop skips whitespace and comments before returning the next real
+	// token; the explicit returns below exit as soon as one is found.
 	for l.pos < len(l.src) {
 		c := l.src[l.pos]
 
 		switch {
 		case c == '\n':
+			// Newlines are real tokens: they terminate statements, so the
+			// line number is captured before it increments.
 			l.pos++
 			line := l.line
 			l.line++
 			return token{kind: tkNewline, line: line}, nil
 
 		case c == ' ' || c == '\t' || c == '\r':
+			// Horizontal whitespace is insignificant between tokens.
 			l.pos++
 			continue
 
@@ -128,6 +135,8 @@ func (l *lexer) next() (token, error) {
 			continue
 
 		case c == '/':
+			// '//' is a comment; a lone '/' falls through to lexRaw (e.g. a
+			// filesystem path or CIDR-adjacent text).
 			if l.pos+1 < len(l.src) && l.src[l.pos+1] == '/' {
 				l.skipComment()
 				continue
@@ -190,6 +199,8 @@ func (l *lexer) next() (token, error) {
 				l.pos += 2
 				return tok, nil
 			}
+			// A lone '&' is not valid in scripts; it falls through to the
+			// unexpected-character error below.
 
 		case c == '|':
 			if l.pos+1 < len(l.src) && l.src[l.pos+1] == '|' {
@@ -219,6 +230,7 @@ func (l *lexer) next() (token, error) {
 			return token{kind: tkRParen, line: l.line}, nil
 
 		case c == '$':
+			// '$(' starts an interpolation; a bare '$' is a lex error.
 			if l.pos+1 < len(l.src) && l.src[l.pos+1] == '(' {
 				tok := token{kind: tkDollar, text: "$(", line: l.line}
 				l.pos += 2
@@ -235,6 +247,8 @@ func (l *lexer) next() (token, error) {
 			return l.lexIdent()
 
 		default:
+			// Anything else (e.g. '*', '~') must begin a raw value or be an
+			// error; lexRaw decides which.
 			return l.lexRaw()
 		}
 
@@ -244,6 +258,8 @@ func (l *lexer) next() (token, error) {
 }
 
 func (l *lexer) skipComment() {
+	// Consume up to but not including the newline, which the main loop will
+	// emit as its own token.
 	for l.pos < len(l.src) && l.src[l.pos] != '\n' {
 		l.pos++
 	}
@@ -263,6 +279,8 @@ func (l *lexer) lexQuoted() (token, error) {
 			l.pos++
 			return token{kind: tkString, text: b.String(), line: line}, nil
 		case '\n':
+			// Strings are single-line by design; a newline means the user
+			// forgot the closing quote.
 			return token{}, fmt.Errorf("line %d: unterminated string", line)
 		case '\\':
 			if l.pos+1 >= len(l.src) {
@@ -270,6 +288,9 @@ func (l *lexer) lexQuoted() (token, error) {
 			}
 			esc := l.src[l.pos+1]
 			switch esc {
+			// Recognized escapes map to their control/quote equivalents; any
+			// unknown escape (e.g. "\d") is kept verbatim so Windows paths and
+			// regexes survive unchanged.
 			case 'n':
 				b.WriteByte('\n')
 			case 't':
@@ -296,7 +317,8 @@ func (l *lexer) lexQuoted() (token, error) {
 }
 
 // lexSingleQuoted reads a single-quoted literal string (no escapes, no
-// interpolation).
+// interpolation). It is the escape hatch when a value contains "$(...)" or
+// backslashes that must stay literal.
 func (l *lexer) lexSingleQuoted() (token, error) {
 	line := l.line
 	l.pos++
@@ -340,15 +362,21 @@ func (l *lexer) lexRaw() (token, error) {
 		l.pos++
 	}
 	if l.pos == start {
+		// No consumable characters: the character that led us here cannot
+		// begin any valid token, so report it explicitly.
 		return token{}, fmt.Errorf("line %d: unexpected character %q", line, string(l.src[l.pos]))
 	}
+	// Raw values lex as tkString so the parser treats them like literals.
 	return token{kind: tkString, text: l.src[start:l.pos], line: line}, nil
 }
 
+// isIdentStart reports whether c can begin an identifier: underscore or letter.
 func isIdentStart(c byte) bool {
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
+// isIdentPart reports whether c may continue an identifier, including the '.'
+// that separates dotted module keys ("arp.spoof").
 func isIdentPart(c byte) bool {
 	return isIdentStart(c) || (c >= '0' && c <= '9') || c == '.'
 }

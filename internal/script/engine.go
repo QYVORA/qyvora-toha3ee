@@ -51,7 +51,7 @@ const maxLoop = 1000000
 // Engine evaluates a parsed Program against a Runner.
 type Engine struct {
 	Runner Runner
-	vars   map[string]value
+	vars   map[string]value // script variables, keyed by name ("_hosts", ...)
 }
 
 // NewEngine returns an engine that drives r.
@@ -63,9 +63,10 @@ func NewEngine(r Runner) *Engine {
 type value struct {
 	s      string
 	list   []string
-	isList bool
+	isList bool // when true, the list field is authoritative
 }
 
+// str renders a value as a single string: lists join with ", ".
 func (v value) str() string {
 	if v.isList {
 		return strings.Join(v.list, ", ")
@@ -95,9 +96,12 @@ func (e *Engine) RunFile(path string) error {
 func (e *Engine) RunProgram(prog *Program) error {
 	for _, stmt := range prog.Stmts {
 		if err := e.evalStmt(stmt); err != nil {
+			// Halt is the script's own "stop now" signal and is a clean exit.
 			if errors.Is(err, errStop) {
 				return nil
 			}
+			// break/continue escaping the top level are authoring mistakes;
+			// surface them as errors instead of silently swallowing them.
 			if errors.Is(err, errBreak) || errors.Is(err, errContinue) {
 				return fmt.Errorf("script: %w outside of a loop", err)
 			}
@@ -113,6 +117,8 @@ func (e *Engine) evalStmt(s Stmt) error {
 		return e.assign(st)
 
 	case SetStmt:
+		// Evaluate the value expression first so variables and $(...) props
+		// are interpolated before writing to the config store.
 		val := e.evalExpr(st.Value)
 		if err := e.Runner.SetConfig(st.Key, val.str()); err != nil {
 			return fmt.Errorf("script: set %s: %w", st.Key, err)
@@ -120,10 +126,12 @@ func (e *Engine) evalStmt(s Stmt) error {
 		return nil
 
 	case GetStmt:
+		// A config read always lands as a scalar string variable.
 		e.vars[st.Var] = value{s: e.Runner.GetConfig(st.Key)}
 		return nil
 
 	case StartStmt:
+		// Inline "key value" tokens are flattened into a real options map.
 		opts, err := evalOpts(e, st.Opts)
 		if err != nil {
 			return err
@@ -147,6 +155,8 @@ func (e *Engine) evalStmt(s Stmt) error {
 		if !ok {
 			return fmt.Errorf("script: sleep needs a number of seconds")
 		}
+		// Convert the float seconds to a Duration by scaling against the
+		// time.Second constant.
 		time.Sleep(time.Duration(secs * float64(time.Second)))
 		return nil
 
@@ -161,6 +171,7 @@ func (e *Engine) evalStmt(s Stmt) error {
 		return nil
 
 	case ExecStmt:
+		// A verbatim REPL line; any failure propagates and aborts the script.
 		if err := e.Runner.Cmd(st.Raw); err != nil {
 			return fmt.Errorf("script: %s: %w", st.Raw, err)
 		}
@@ -186,6 +197,8 @@ func (e *Engine) evalStmt(s Stmt) error {
 		if !ok {
 			return fmt.Errorf("script: repeat needs a number")
 		}
+		// Break exits the whole loop; continue moves to the next iteration;
+		// anything else is a real error that stops the script.
 		for i := 0; i < int(n); i++ {
 			if err := e.evalBody(st.Body); err != nil {
 				if errors.Is(err, errBreak) {
@@ -201,6 +214,7 @@ func (e *Engine) evalStmt(s Stmt) error {
 
 	case WhileStmt:
 		iterations := 0
+		// The maxLoop guard protects against an always-true condition.
 		for e.evalCond(st.Cond) {
 			iterations++
 			if iterations > maxLoop {
@@ -244,6 +258,8 @@ func (e *Engine) assign(st AssignStmt) error {
 	val := e.evalExpr(st.Value)
 	switch st.Op {
 	case ">>":
+		// Append: promote to a list on first use, then extend the existing
+		// list in place.
 		cur, ok := e.vars[st.Var]
 		if !ok || !cur.isList {
 			e.vars[st.Var] = value{isList: true, list: []string{val.str()}}
@@ -253,12 +269,15 @@ func (e *Engine) assign(st AssignStmt) error {
 		e.vars[st.Var] = cur
 		return nil
 	default:
+		// "=" and "->" both overwrite the variable with the new value.
 		e.vars[st.Var] = val
 		return nil
 	}
 }
 
 func (e *Engine) wait(st WaitStmt) error {
+	// Poll IsRunning at a coarse interval so a short wait does not spin the
+	// CPU; the caller-supplied Max bounds how long we wait.
 	deadline := time.Now().Add(st.Max)
 	for {
 		if !e.Runner.IsRunning(st.Module) {
@@ -277,6 +296,8 @@ func (e *Engine) forEach(st ForEachStmt) error {
 	if v.isList {
 		items = v.list
 	} else {
+		// A scalar source is split on commas so "a,b,c" iterates too; empty
+		// pieces from trailing/leading commas are dropped.
 		for _, part := range strings.Split(v.s, ",") {
 			part = strings.TrimSpace(part)
 			if part != "" {
@@ -305,8 +326,12 @@ func (e *Engine) evalExpr(x Expr) value {
 	case StringLit:
 		return value{s: e.interpolate(ex)}
 	case NumLit:
+		// Numbers stay textual; they are parsed to float only when compared
+		// or used as a repeat/sleep count.
 		return value{s: ex.Value}
 	case IdentExpr:
+		// An unknown variable reads as the empty string instead of an error,
+		// which keeps conditions like "if $(_missing) == ''" working.
 		if v, ok := e.vars[ex.Name]; ok {
 			return v
 		}
@@ -347,6 +372,7 @@ func (e *Engine) varValue(name string) value {
 			if v.isList {
 				return value{s: strconv.Itoa(len(v.list))}
 			}
+			// A scalar's ".size" reports its character count.
 			return value{s: strconv.Itoa(len(v.s))}
 		}
 	}
@@ -367,6 +393,7 @@ func (e *Engine) resolveProp(path string) value {
 			return value{s: s}
 		}
 	}
+	// Unknown session properties read as empty, mirroring unknown variables.
 	return value{}
 }
 
@@ -379,6 +406,7 @@ func (e *Engine) evalCond(c Cond) bool {
 		return cmpValues(cond.Op, e.evalExpr(cond.L), e.evalExpr(cond.R))
 	case ContainsCond:
 		l, r := e.evalExpr(cond.L), e.evalExpr(cond.R)
+		// A list on the left means membership; a scalar means substring.
 		if l.isList {
 			for _, item := range l.list {
 				if item == r.str() {
@@ -390,6 +418,7 @@ func (e *Engine) evalCond(c Cond) bool {
 		return strings.Contains(l.str(), r.str())
 	case RunningCond:
 		mod := e.evalExpr(cond.Module).str()
+		// Without a Runner (headless harness) nothing can be running.
 		running := e.Runner != nil && e.Runner.IsRunning(mod)
 		if cond.Negate {
 			return !running
@@ -398,6 +427,7 @@ func (e *Engine) evalCond(c Cond) bool {
 	case NotCond:
 		return !e.evalCond(cond.C)
 	case AndCond:
+		// Short-circuit evaluation: the right side only runs when needed.
 		return e.evalCond(cond.L) && e.evalCond(cond.R)
 	case OrCond:
 		return e.evalCond(cond.L) || e.evalCond(cond.R)
@@ -408,6 +438,8 @@ func (e *Engine) evalCond(c Cond) bool {
 // cmpValues compares two values; numeric when both parse as numbers.
 func cmpValues(op string, l, r value) bool {
 	ls, rs := l.str(), r.str()
+	// If both sides parse as floats the comparison is numeric ("10" > "9");
+	// otherwise fall through to a plain string comparison.
 	if ln, lok := strconv.ParseFloat(ls, 64); lok == nil {
 		if rn, rok := strconv.ParseFloat(rs, 64); rok == nil {
 			return cmpNums(op, ln, rn)
@@ -459,6 +491,7 @@ func evalOpts(e *Engine, exprs []Expr) (map[string]string, error) {
 		}
 		opts[key] = val
 	}
+	// A trailing lone token means the user forgot a value.
 	if len(exprs)%2 != 0 {
 		return nil, fmt.Errorf("script: module options must come in key/value pairs")
 	}
@@ -469,6 +502,8 @@ func evalOpts(e *Engine, exprs []Expr) (map[string]string, error) {
 // `toha3ee build <file>` dry-run so users can review a script before running.
 func Describe(prog *Program) []string {
 	var out []string
+	// walk recursively descends nested blocks, indenting by depth so the plan
+	// reads like the source layout it came from.
 	var walk func(stmts []Stmt, depth int)
 	indent := func(depth int) string { return strings.Repeat("  ", depth) }
 	walk = func(stmts []Stmt, depth int) {
@@ -499,6 +534,7 @@ func Describe(prog *Program) []string {
 			case IfStmt:
 				out = append(out, fmt.Sprintf("%sif %s", indent(depth), condText(st.Cond)))
 				walk(st.Then, depth+1)
+				// The else clause is only shown when the script actually has one.
 				if len(st.Else) > 0 {
 					out = append(out, indent(depth)+"else")
 					walk(st.Else, depth+1)
@@ -529,6 +565,7 @@ func Describe(prog *Program) []string {
 	return out
 }
 
+// exprText renders an expression back to readable source for the dry-run.
 func exprText(e Expr) string {
 	switch v := e.(type) {
 	case StringLit:
@@ -549,6 +586,8 @@ func exprText(e Expr) string {
 	return "?"
 }
 
+// strText rebuilds the original string form of a StringLit, re-quoting it so
+// interpolation markers survive the round trip.
 func (s StringLit) strText() string {
 	var b strings.Builder
 	for _, seg := range s.Segs {
@@ -564,6 +603,7 @@ func (s StringLit) strText() string {
 	return strconv.Quote(b.String())
 }
 
+// condText renders a condition back to readable source for the dry-run.
 func condText(c Cond) string {
 	switch v := c.(type) {
 	case BoolCond:
@@ -590,6 +630,8 @@ func condText(c Cond) string {
 
 // numFromValue extracts a number from a runtime value.
 func numFromValue(v value) (float64, bool) {
+	// Lists are never numeric; a non-numeric scalar reports not-ok so the
+	// caller can raise a descriptive error.
 	if v.isList {
 		return 0, false
 	}
