@@ -66,6 +66,7 @@ type token struct {
 	kind tokKind
 	text string
 	line int
+	raw  bool // true: single-quoted literal, no interpolation
 }
 
 func (t token) is(s string) bool { return t.text == s }
@@ -302,7 +303,7 @@ func (l *lexer) lexSingleQuoted() (token, error) {
 		switch c {
 		case '\'':
 			l.pos++
-			return token{kind: tkString, text: b.String(), line: line}, nil
+			return token{kind: tkString, text: b.String(), line: line, raw: true}, nil
 		case '\n':
 			return token{}, fmt.Errorf("line %d: unterminated string", line)
 		default:

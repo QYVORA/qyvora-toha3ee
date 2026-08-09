@@ -640,6 +640,10 @@ func (p *parser) parseExprValue() (Expr, error) {
 	switch t.kind {
 	case tkString:
 		p.next()
+		if t.raw {
+			// Single-quoted strings are literal: no escapes, no $(...) interpolation.
+			return StringLit{Segs: []Seg{{Text: t.text}}}, nil
+		}
 		return parseSegments(t.text), nil
 	case tkIdent:
 		p.next()
