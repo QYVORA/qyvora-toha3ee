@@ -33,7 +33,7 @@ Configuration:
 .RS
 set arp.spoof.targets 10.0.0.5,10.0.0.6
 .br
-get arp.spoof.targets
+get arp.spoof.targets -> _targets
 .RE
 Progress and output:
 .RS
@@ -51,7 +51,7 @@ else
 .br
 \	exec -> net.ping
 .br
-fi
+end
 .RE
 .PP
 .B Module state conditions
@@ -65,7 +65,7 @@ if "10.0.0.5" contains "10.0.0"
 .PP
 .B Compound conditions
 .RS
-and / or, e.g. "hosts.count >= 3 and dns.spoof is not running"
+and / or, e.g. "hosts.count >= 3 && dns.spoof is not running"
 .RE
 .SH WAITING
 .PP
@@ -79,17 +79,27 @@ wait for net.scan max 60
 echo -> "scan finished"
 .RE
 .SH VARIABLES
-Assign with
-.RS
-name -> value
-.RE
+.PP
+Variables start with an underscore; assign with
+.IR -> ,
+.IR = ,
+or
+.IR >> ,
 and interpolate with
-.BR {name} :
+.BR "$(name)" :
 .RS
-target -> 10.0.0.1
+_target -> 10.0.0.1
 .br
-echo -> "scanning {target}"
+echo -> "scanning $(_target)"
 .RE
+.SH STRINGS
+.PP
+Double-quoted strings interpolate
+.BR "$(...)" ;
+single-quoted strings are literal (no escapes, no interpolation). Unquoted
+values such as IPs, CIDRs and command flags like
+.B -sS
+are taken verbatim.
 .SH SEE ALSO
 .BR toha3ee (1),
 .BR security (7)
