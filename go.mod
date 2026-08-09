@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/chzyer/readline v1.5.1
-	github.com/elazarl/goproxy v1.8.5
+	github.com/elazarl/goproxy v1.8.6
 	github.com/google/gopacket v1.1.19
 	github.com/miekg/dns v1.1.72
 	github.com/spf13/cobra v1.10.2
