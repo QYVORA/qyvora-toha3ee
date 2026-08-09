@@ -39,11 +39,6 @@ type Fields struct {
 	ButtonText    string
 	Action        string // form action URL
 	Orig          string // original login URL to redirect back to after capture
-	ShowEmail     bool
-	EmailLabel    string
-	LogoColor     string
-	LogoText      string
-	ButtonColor   string
 	Subtitle      string
 }
 

