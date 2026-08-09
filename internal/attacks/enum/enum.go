@@ -14,6 +14,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/safety"
 )
 
+// init self-registers every enumeration module into the global registry.
 func init() {
 	attacks.Register(&SMTPEnum{})
 	attacks.Register(&SNMPEnum{})
@@ -24,6 +25,8 @@ func init() {
 }
 
 // requireRoot adds the raw-socket capability check to a preflight report.
+// Enumeration modules that must craft packets (like the IPv6 ND sweep) need
+// root; this centralises the check so every module reports the same way.
 func requireRoot(rep *attacks.PreflightReport) error {
 	if err := safety.RequireRoot(); err != nil {
 		rep.AddBlocked("root", err.Error())
@@ -34,6 +37,8 @@ func requireRoot(rep *attacks.PreflightReport) error {
 }
 
 // hostsReport summarizes the store host population for a preflight report.
+// It is a shared helper so every enum module reports the identical "run
+// net.scan first" guidance when the inventory is empty.
 func hostsReport(ctx *attacks.AttackCtx, rep *attacks.PreflightReport) {
 	if len(ctx.Store.Hosts()) == 0 {
 		rep.AddFixable("targets", "no hosts discovered; run net.scan first")
@@ -47,7 +52,9 @@ func emit(ctx *attacks.AttackCtx, topic, msg string) {
 	ctx.Emit(events.TopicLog, msg, nil)
 }
 
-// openHosts returns hosts that have at least one known open port.
+// openHosts returns hosts that have at least one known open port. Enumeration
+// modules iterate this so a host with zero discovered services is skipped
+// without each module duplicating the filter.
 func openHosts(ctx *attacks.AttackCtx) []*HostRef {
 	var out []*HostRef
 	for _, h := range ctx.Store.Hosts() {

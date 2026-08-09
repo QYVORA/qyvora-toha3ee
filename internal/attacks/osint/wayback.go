@@ -27,6 +27,7 @@ func (*WaybackEnum) Meta() attacks.ModuleMeta {
 	}
 }
 
+// waybackResult bundles the queried target with the unique archived URLs found.
 type waybackResult struct {
 	Target string
 	Count  int
@@ -52,10 +53,15 @@ func (*WaybackEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		t = o
 	}
 	timeout := ctx.Conf.GetDuration("osint.wayback", "timeout", 30*time.Second)
+	// A 30s default gives the archive time to answer the often-slow CDX index.
 	limit := ctx.Conf.Get("osint.wayback", "limit")
 	if limit == "" {
 		limit = "2000"
 	}
+	// The CDX API returns JSON when output=json. The "url" matcher uses the
+	// archive's glob syntax: `*.`domain`/*` expands to every subdomain path.
+	// collapse=urlkey dedupes by canonical URL key, and filter restricts rows
+	// to captures that returned HTTP 200.
 	params := url.Values{}
 	params.Set("url", "*.`"+t+"`/*")
 	params.Set("output", "json")
@@ -69,6 +75,8 @@ func (*WaybackEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("osint.wayback: %w", err)
 	}
+	// The JSON output is an array of rows, each an array of the requested
+	// fields (here just "original", so every row is a one-element array).
 	var rows [][]string
 	if err := json.Unmarshal(raw, &rows); err != nil {
 		return fmt.Errorf("osint.wayback: %w", err)
@@ -80,6 +88,8 @@ func (*WaybackEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			continue
 		}
 		u := r[0]
+		// The archive can return the same URL multiple times (different
+		// captures); only the first occurrence is kept.
 		if seen[u] {
 			continue
 		}
@@ -100,6 +110,9 @@ func (*WaybackEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	}
 	res, _ := v.(waybackResult)
 	imp := &attacks.Impact{Summary: fmt.Sprintf("%d archived URL(s) for %s", res.Count, res.Target)}
+	// Flag URLs whose path hints at sensitive surface (admin panels, API docs,
+	// env/backup/config files) so the report surfaces the highest-value hits
+	// rather than every archived page.
 	for _, u := range res.URLs {
 		lu := strings.ToLower(u)
 		if strings.Contains(lu, "admin") || strings.Contains(lu, "api") || strings.Contains(lu, ".env") ||

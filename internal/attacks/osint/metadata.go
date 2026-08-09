@@ -31,6 +31,10 @@ func (*Metadata) Meta() attacks.ModuleMeta {
 	}
 }
 
+// docMeta holds the authorship/tooling fields worth surfacing from a document.
+// File is the source path; the rest mirror the document's metadata properties
+// (Title, Author, Creator, Producer are PDF/OOXML terms; Created is the raw
+// creation timestamp string; Software identifies the producing application).
 type docMeta struct {
 	File     string
 	Title    string
@@ -41,6 +45,7 @@ type docMeta struct {
 	Software string
 }
 
+// metadataResult aggregates the per-document metadata over the whole scan.
 type metadataResult struct {
 	Files []docMeta
 	Total int
@@ -76,6 +81,9 @@ func (*Metadata) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		return fmt.Errorf("osint.metadata: %w", err)
 	}
 	if fi.IsDir() {
+		// Recurse through the directory and keep only supported documents; walk
+		// errors on individual entries are ignored so one unreadable file does
+		// not abort the scan of the rest.
 		_ = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() && isSupported(path) {
 				files = append(files, path)
@@ -83,6 +91,7 @@ func (*Metadata) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			return nil
 		})
 	} else {
+		// A single file target is used as-is.
 		files = []string{p}
 	}
 
@@ -98,6 +107,8 @@ func (*Metadata) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return nil
 }
 
+// isSupported reports whether the file extension is one of the formats whose
+// metadata we can parse without external tooling.
 func isSupported(p string) bool {
 	switch strings.ToLower(filepath.Ext(p)) {
 	case ".pdf", ".docx", ".xlsx", ".pptx":
@@ -106,6 +117,9 @@ func isSupported(p string) bool {
 	return false
 }
 
+// parseDocMeta reads the whole file into memory and dispatches to the right
+// format parser. The boolean result is true only when at least one useful
+// field was recovered, so empty documents don't clutter the findings.
 func parseDocMeta(path string) (docMeta, bool) {
 	m := docMeta{File: path}
 	data, err := os.ReadFile(path)
@@ -121,12 +135,19 @@ func parseDocMeta(path string) (docMeta, bool) {
 	return m, m.Author != "" || m.Creator != "" || m.Producer != "" || m.Title != ""
 }
 
+// parsePDFMeta extracts the PDF document-information dictionary. PDFs keep
+// their metadata in a /Info dictionary whose contents are a parenthesized
+// literal string, e.g. "/Author (John Doe)". No external PDF library is used;
+// the bytes are scanned with targeted regexes instead.
 func parsePDFMeta(data []byte, m *docMeta) {
+	// Find the /Info << ... >> dictionary. The (?s) flag lets . match newlines
+	// in case the dictionary spans multiple lines.
 	info := regexp.MustCompile(`(?s)/Info\s*<<(.*?)>>`).FindSubmatch(data)
 	if info == nil {
 		return
 	}
 	str := string(info[1])
+	// pick returns the parenthesized value of a dictionary key, or "".
 	pick := func(key string) string {
 		re := regexp.MustCompile(`/` + key + `\s*\(([^)]*)\)`)
 		if mm := re.FindStringSubmatch(str); mm != nil {
@@ -149,6 +170,8 @@ func parsePDFMeta(data []byte, m *docMeta) {
 	m.Software = m.Producer
 }
 
+// coreProps mirrors docProps/core.xml in an OOXML package (DOCX/XLSX/PPTX are
+// ZIP archives; the Dublin-Core style fields live in this fixed entry).
 type coreProps struct {
 	XMLName xml.Name `xml:"core-properties"`
 	Title   string   `xml:"title"`
@@ -157,6 +180,9 @@ type coreProps struct {
 	LastMod string   `xml:"modified"`
 }
 
+// parseOOXMLMeta unwraps the OOXML ZIP container and reads the two metadata
+// entries: docProps/core.xml holds the Dublin-Core fields (title, creator,
+// created), while docProps/app.xml carries the producing application name.
 func parseOOXMLMeta(data []byte, m *docMeta) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -176,6 +202,8 @@ func parseOOXMLMeta(data []byte, m *docMeta) {
 			continue
 		}
 		if f.Name == "docProps/core.xml" {
+			// Prefer the typed struct unmarshal; the Creator doubles as the
+			// author unless a more specific author was already recovered.
 			var cp coreProps
 			if xml.Unmarshal(content, &cp) == nil {
 				m.Title = cp.Title
@@ -187,6 +215,8 @@ func parseOOXMLMeta(data []byte, m *docMeta) {
 			}
 		}
 		if f.Name == "docProps/app.xml" {
+			// app.xml has no fixed schema element we need, so a targeted regex
+			// pulls the <Application> value out of the XML.
 			if x := regexp.MustCompile(`<Application>([^<]+)`).FindSubmatch(content); x != nil {
 				m.Software = string(x[1])
 				m.Producer = m.Software

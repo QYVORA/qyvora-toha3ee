@@ -16,13 +16,15 @@ import (
 // reveals open ports, only the firewall topology in front of them.
 type ACKScan struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*ACKScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "service.ack",
-		Category:    "recon",
-		Risk:        attacks.RiskLow,
-		Targets:     []string{"host"},
+		ID:       "service.ack",
+		Category: "recon",
+		Risk:     attacks.RiskLow,
+		Targets:  []string{"host"},
+		// ACK probes are raw packets; the scanner needs a raw socket to send
+		// them and to sniff the RST replies.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "ACK scan: map firewall rule sets by distinguishing filtered from unfiltered ports via RST replies",
 		Limitations: "ACK scans report firewall state, not open ports; pair with service.synscan for actual service discovery",
@@ -70,6 +72,8 @@ func (*ACKScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		if err != nil {
 			continue
 		}
+		// Unfiltered ports reply with a RST to the ACK (because no connection
+		// exists); everything else is dropped by a stateful firewall.
 		for _, r := range res {
 			if r.State == ports.Unfiltered {
 				unfiltered++
@@ -97,7 +101,8 @@ func (*ACKScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
-// Cleanup is a no-op.
+// Cleanup is a no-op (the scanner is closed inside Run).
 func (*ACKScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that ACKScan implements attacks.Module.
 var _ attacks.Module = (*ACKScan)(nil)

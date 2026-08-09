@@ -17,13 +17,15 @@ import (
 // counter react to SYN packets spoofed from the zombie.
 type IdleScan struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*IdleScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "service.idle",
-		Category:    "recon",
-		Risk:        attacks.RiskLow,
-		Targets:     []string{"host"},
+		ID:       "service.idle",
+		Category: "recon",
+		Risk:     attacks.RiskLow,
+		Targets:  []string{"host"},
+		// Spoofing SYN packets from the zombie and sniffing its replies needs
+		// raw sockets.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "idle/zombie TCP scan: map open ports through an idle third host, hiding the scanner's address",
 		Limitations: "needs a usable idle zombie with an open TCP port and predictable IP IDs (e.g. an idle printer); modern hosts with randomized IP IDs cannot be zombies",
@@ -73,6 +75,9 @@ func (*IdleScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			return nil
 		default:
 		}
+		// The scanner implements the full zombie probe cycle: sample the
+		// zombie's IP ID, spoof a SYN to the target from the zombie, then
+		// re-sample — a +1/+2 bump in the ID reveals the target's SYN-ACK.
 		res, err := scanner.IdleScan(h.IP, parseSingleIP(zombie), portsToScan, timeout)
 		if err != nil {
 			ctx.Printf("[!] service.idle: %s: %v\n", h.IP, err)
@@ -109,4 +114,5 @@ func (*IdleScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*IdleScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that IdleScan implements attacks.Module.
 var _ attacks.Module = (*IdleScan)(nil)

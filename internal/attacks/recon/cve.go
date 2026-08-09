@@ -16,17 +16,18 @@ import (
 	"github.com/qyvora/toha3ee/internal/store"
 )
 
+// init registers the CVE suggestion module.
 func init() {
 	attacks.Register(&CVESuggest{})
 }
 
 // CVE is a single suggested vulnerability.
 type CVE struct {
-	ID       string
-	Severity string
-	Service  string
-	Host     string
-	Reason   string
+	ID       string // e.g. "CVE-2021-41773"
+	Severity string // critical/high/medium, either from the rule table or CVSS
+	Service  string // service (or port) the finding applies to, or "os"
+	Host     string // the affected host's IP
+	Reason   string // human-readable explanation of the match
 }
 
 // CVESuggest cross-references the store's service banners and OS guesses
@@ -42,7 +43,7 @@ func (*CVESuggest) Meta() attacks.ModuleMeta {
 		Category:    "recon",
 		Risk:        attacks.RiskInfo,
 		Targets:     []string{"host"},
-		Passive:     true,
+		Passive:     true, // matches local data only; never probes the target
 		Description: "map captured service banners to known CVEs from an embedded table, or look up CVE IDs / keywords live via the NVD and cve.org APIs",
 		Limitations: "embedded mode matches the local rule table only; live mode needs outbound HTTPS to services.nvd.nist.gov / cveawg.mitre.org and is rate-limited",
 	}
@@ -55,6 +56,8 @@ func (*CVESuggest) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 		rep.AddFixable("hosts", "no hosts in the store; run net.scan + service.synscan + service.fingerprint first")
 		return rep, nil
 	}
+	// Count the total number of captured banners across all hosts; without any
+	// banners there is nothing for the embedded rules to match against.
 	banners := 0
 	for _, h := range ctx.Store.Hosts() {
 		banners += len(h.Ports)
@@ -77,6 +80,7 @@ func (*CVESuggest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if mode == "live" {
 		return cveRunLive(ctx)
 	}
+	// Embedded mode: match every captured banner and OS guess offline.
 	var out []CVE
 	for _, h := range ctx.Store.Hosts() {
 		out = append(out, suggestForHost(h)...)
@@ -103,6 +107,8 @@ func cveRunLive(ctx *attacks.AttackCtx) error {
 	limit := ctx.Conf.GetInt("cve.suggest", "limit", 8)
 
 	var out []CVE
+	// Disambiguate the lookup: a "CVE-" prefix routes to the single-record
+	// cve.org endpoint, anything else to the NVD keyword search.
 	if strings.HasPrefix(strings.ToUpper(lookup), "CVE-") {
 		c, err := cveByID(lookup, timeout)
 		if err != nil {
@@ -131,6 +137,8 @@ func cveRunLive(ctx *attacks.AttackCtx) error {
 
 // cveByKeyword searches the NVD keyword endpoint.
 func cveByKeyword(keyword string, limit int, timeout time.Duration) ([]CVE, error) {
+	// NVD 2.0 keyword search: query the REST API and cap the page size with
+	// resultsPerPage so a vague keyword does not return thousands of records.
 	u := "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=" +
 		url.QueryEscape(keyword) + "&resultsPerPage=" + url.QueryEscape(fmt.Sprint(limit))
 	body, err := httpGetCVE(u, timeout)
@@ -149,6 +157,8 @@ type nvdRecord struct {
 				Lang  string `json:"lang"`
 				Value string `json:"value"`
 			} `json:"descriptions"`
+			// CVSS metrics are versioned; we try V3.1, then V3.0, then V2 to
+			// find any available base severity.
 			Metrics struct {
 				CvssMetricV31 []struct {
 					CvssData struct {
@@ -158,7 +168,7 @@ type nvdRecord struct {
 				CvssMetricV30 []struct {
 					CvssData struct {
 						BaseSeverity string `json:"baseSeverity"`
-					} `json:"cvssMetricV30"`
+					} `json:"cvssData"`
 				} `json:"cvssMetricV30"`
 				CvssMetricV2 []struct {
 					BaseSeverity string `json:"baseSeverity"`
@@ -176,6 +186,8 @@ func parseNVD(body []byte) ([]CVE, error) {
 	}
 	var out []CVE
 	for _, v := range resp.Vulnerabilities {
+		// Prefer the newest CVSS vector's severity, falling back through older
+		// versions until one is found.
 		sev := ""
 		if len(v.CVE.Metrics.CvssMetricV31) > 0 {
 			sev = v.CVE.Metrics.CvssMetricV31[0].CvssData.BaseSeverity
@@ -187,6 +199,7 @@ func parseNVD(body []byte) ([]CVE, error) {
 			sev = v.CVE.Metrics.CvssMetricV2[0].BaseSeverity
 		}
 		desc := firstEnglish(v.CVE.Descriptions)
+		// Cap descriptions so the reason text stays readable on one line.
 		if len(desc) > 140 {
 			desc = desc[:137] + "..."
 		}
@@ -197,6 +210,7 @@ func parseNVD(body []byte) ([]CVE, error) {
 
 // cveByID looks a single CVE up via the cve.org API.
 func cveByID(id string, timeout time.Duration) (*CVE, error) {
+	// The cve.org API keys records by uppercase CVE id in the URL path.
 	body, err := httpGetCVE("https://cveawg.mitre.org/api/cve/"+strings.ToUpper(id), timeout)
 	if err != nil {
 		return nil, err
@@ -214,6 +228,8 @@ type cveorgRecord struct {
 				Value string `json:"value"`
 			} `json:"descriptions"`
 			Metrics []struct {
+				// Multiple CVSS vectors may be present; pick the first with a
+				// severity, in V3.1 -> V3.0 -> V2 order.
 				CvssV31 struct {
 					BaseSeverity string `json:"baseSeverity"`
 				} `json:"cvssV3_1"`
@@ -236,6 +252,8 @@ func parseCVEOrg(body []byte, id string) (*CVE, error) {
 	}
 	sev := ""
 	for _, m := range resp.Containers.CNA.Metrics {
+		// Take the first metric entry that exposes a severity, breaking out of
+		// the loop so we do not overwrite a newer vector with an older one.
 		if m.CvssV31.BaseSeverity != "" {
 			sev = m.CvssV31.BaseSeverity
 			break
@@ -251,6 +269,7 @@ func parseCVEOrg(body []byte, id string) (*CVE, error) {
 	}
 	desc := ""
 	for _, d := range resp.Containers.CNA.Descriptions {
+		// Prefer the English description for the reason text.
 		if d.Lang == "en" {
 			desc = d.Value
 			break
@@ -259,6 +278,7 @@ func parseCVEOrg(body []byte, id string) (*CVE, error) {
 	if len(desc) > 140 {
 		desc = desc[:137] + "..."
 	}
+	// Trust the record's own id, falling back to the one we requested.
 	cid := resp.CveID
 	if cid == "" {
 		cid = id
@@ -273,6 +293,8 @@ func httpGetCVE(u string, timeout time.Duration) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Identify the client; some CVE APIs rate-limit or reject unidentifiable
+	// agents.
 	req.Header.Set("User-Agent", "toha3ee/1.0 (authorized assessment)")
 	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
@@ -283,9 +305,12 @@ func httpGetCVE(u string, timeout time.Duration) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("CVE API returned HTTP %d", resp.StatusCode)
 	}
+	// Cap the response at 4 MiB to bound memory on oversized result sets.
 	return io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 }
 
+// firstEnglish returns the first description that is English (or has no
+// declared language) from an NVD description list.
 func firstEnglish(ds []struct {
 	Lang  string `json:"lang"`
 	Value string `json:"value"`
@@ -307,6 +332,8 @@ func (*CVESuggest) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	cves := v.([]CVE)
 	imp := &attacks.Impact{Summary: fmt.Sprintf("suggested %d CVE candidate(s)", len(cves))}
 	imp.Add("cve_candidates", fmt.Sprintf("%d", len(cves)))
+	// Bucket the suggestions by severity so the impact report reads like a
+	// triage list.
 	sev := map[string]int{}
 	for _, c := range cves {
 		sev[c.Severity]++
@@ -322,6 +349,8 @@ func (*CVESuggest) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*CVESuggest) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// suggestForHost runs every open port's banner and the OS guess through the
+// rule tables, returning the matched CVEs sorted by severity.
 func suggestForHost(h *store.Host) []CVE {
 	var out []CVE
 	ports := h.OpenPorts()
@@ -342,6 +371,7 @@ func suggestForHost(h *store.Host) []CVE {
 			Reason:   matched.reason,
 		})
 	}
+	// Also match the OS fingerprint if a service-level rule did not fire.
 	if h.OSGuess != "" {
 		if c := matchOS(h.OSGuess); c != nil {
 			out = append(out, CVE{
@@ -353,15 +383,21 @@ func suggestForHost(h *store.Host) []CVE {
 			})
 		}
 	}
+	// Present the most dangerous findings first.
 	sort.Slice(out, func(i, j int) bool { return sevRank(out[i].Severity) > sevRank(out[j].Severity) })
 	return out
 }
 
+// cveRule is one banner/OS match rule: a regex to match against the captured
+// text plus the CVE metadata and a human-readable reason.
 type cveRule struct {
 	id, severity, service, reason string
 	re                            *regexp.Regexp
 }
 
+// rules is the embedded banner-signature table. Each entry ties a small,
+// version-specific regex to a known CVE; the regexes are intentionally narrow
+// so we only flag a CVE when the banner is specific enough to be confident.
 var rules = []cveRule{
 	{id: "CVE-2023-48795", severity: "high", service: "ssh", re: regexp.MustCompile(`(?i)OpenSSH_[89]\.[0-4]`), reason: "Terrapin prefix-injection: OpenSSH < 9.6 affected by channel-prefix truncation"},
 	{id: "CVE-2016-6210", severity: "high", service: "ssh", re: regexp.MustCompile(`(?i)OpenSSH_[67]\.\d`), reason: "user enumeration via timing on password auth"},
@@ -380,6 +416,7 @@ var rules = []cveRule{
 	{id: "CVE-2019-11510", severity: "critical", service: "pulse", re: regexp.MustCompile(`(?i)Pulse\s+Secure|PulseConnectSecure`), reason: "SSL-VPN arbitrary file read"},
 }
 
+// osRules maps OS fingerprints to OS-level CVEs.
 var osRules = []cveRule{
 	{id: "CVE-2020-1472", severity: "critical", service: "os", re: regexp.MustCompile(`(?i)windows\s+server\s+20(08|12|16|19)`), reason: "Zerologon: unauthenticated DC takeover on vulnerable Windows"},
 	{id: "CVE-2021-42278", severity: "critical", service: "os", re: regexp.MustCompile(`(?i)windows\s+server\s+2019`), reason: "noPac: AD user/MachineAccount confusion to DC compromise"},
@@ -407,6 +444,7 @@ func matchBanner(banner string, port uint16) *cveRule {
 	return nil
 }
 
+// matchOS returns the first OS rule matching the fingerprint text.
 func matchOS(os string) *cveRule {
 	for i := range osRules {
 		if osRules[i].re.MatchString(os) {
@@ -416,6 +454,8 @@ func matchOS(os string) *cveRule {
 	return nil
 }
 
+// sevRank maps a severity string to a numeric rank for sorting; unknown
+// severities sort lowest.
 func sevRank(s string) int {
 	switch strings.ToLower(s) {
 	case "critical":

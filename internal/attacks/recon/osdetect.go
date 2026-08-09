@@ -41,7 +41,8 @@ func (*NetOSDetect) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport,
 	return rep, nil
 }
 
-// osSignature is one fingerprint rule; Score returns 0 for no match.
+// osSignature is one fingerprint rule; the Variant list narrows TTL/window
+// pairs observed for a given stack, and Score returns 0 for no match.
 type osSignature struct {
 	OS      string
 	Family  string
@@ -54,12 +55,15 @@ type osSignature struct {
 	Variant []osVariant
 }
 
+// osVariant is an alternative TTL/window pair for a single OS.
 type osVariant struct {
 	TTL    uint8
 	Window uint16
 }
 
 // osSignatures is a small, honest signature set covering the dominant stacks.
+// The values mirror well-known nmap-style fingerprints: Linux 64/1460/WS7,
+// Windows 128/1460/WS8, and so on.
 var osSignatures = []osSignature{
 	{OS: "Linux (2.6+/3.x/4.x/5.x)", Family: "linux", TTL: 64, MSS: 1460, WS: 7, SACKOK: true, DF: true,
 		Variant: []osVariant{{TTL: 64, Window: 64240}, {TTL: 64, Window: 65160}, {TTL: 64, Window: 29200}}},
@@ -112,6 +116,8 @@ func (*NetOSDetect) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		}
 		p := uint16(port)
 		if p == 0 {
+			// No fixed port configured: pick one of the host's open ports so
+			// the stack must answer with a genuine SYN-ACK.
 			p = pickFingerprintPort(h)
 		}
 		if p == 0 {
@@ -149,7 +155,9 @@ func pickFingerprintPort(h interface {
 	return 0
 }
 
-// matchOS scores each signature against the observed fingerprint.
+// matchOS scores each signature against the observed fingerprint. TTL/window
+// pairs match a signature's Variant list (worth up to +3), while MSS, window
+// scale, SACK and DF each add smaller bonuses; the highest total wins.
 func matchOSFingerprint(fp *ports.TCPFingerprint) (string, int) {
 	best, bestScore := "unknown (no signature match)", 0
 	for _, s := range osSignatures {
@@ -169,6 +177,7 @@ func matchOSFingerprint(fp *ports.TCPFingerprint) (string, int) {
 		if s.TTL == fp.TTL {
 			ttlMatch = true
 		}
+		// A missing TTL match disqualifies the signature entirely.
 		if !ttlMatch {
 			continue
 		}
@@ -191,7 +200,9 @@ func matchOSFingerprint(fp *ports.TCPFingerprint) (string, int) {
 	return best, bestScore
 }
 
-// hopEstimate converts an observed TTL into a hop-distance estimate.
+// hopEstimate converts an observed TTL into a hop-distance estimate. The
+// observed TTL is the sender's initial TTL minus router decrements, so the
+// estimate picks the closest common initial value (64, 128 or 255).
 func hopEstimate(observed uint8) int {
 	base := []uint8{64, 128, 255}
 	best := 0

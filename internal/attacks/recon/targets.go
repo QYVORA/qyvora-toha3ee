@@ -87,6 +87,8 @@ func hostsInNet(ipnet *net.IPNet) ([]net.IP, error) {
 	return out, nil
 }
 
+// incIP increments an IPv4 address in place, carrying the overflow upward so
+// the caller can walk a whole subnet range.
 func incIP(ip net.IP) {
 	for j := len(ip) - 1; j >= 0; j-- {
 		ip[j]++

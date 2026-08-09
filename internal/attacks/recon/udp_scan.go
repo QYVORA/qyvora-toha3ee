@@ -33,7 +33,8 @@ func (*UDPScan) Meta() attacks.ModuleMeta {
 	}
 }
 
-// UDPCommonPorts is the default UDP service set.
+// UDPCommonPorts is the default UDP service set (DNS, DHCP, NTP, SNMP, mDNS,
+// CoAP, memcached, MongoDB, etc.).
 var UDPCommonPorts = []uint16{
 	53, 67, 68, 69, 123, 137, 138, 161, 162, 389, 500, 514, 520,
 	1900, 2222, 3478, 4500, 5353, 5683, 11211, 27017,
@@ -60,6 +61,8 @@ func (*UDPScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	workers := ctx.Conf.GetInt("service.udpscan", "workers", 8)
 	st := stealth.FromConfig(ctx.Conf, "service.udpscan")
 
+	// Counters are shared across the worker goroutines, so they are guarded
+	// by the mutex; the worker semaphore caps concurrent in-flight probes.
 	var mu sync.Mutex
 	open := 0
 	closed := 0
@@ -104,6 +107,8 @@ func (*UDPScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 				mu.Lock()
 				open++
 				mu.Unlock()
+				// A non-empty reply is a live service; an empty one still
+				// proves the port is reachable.
 				if n > 0 {
 					setHostPort(ctx, ip, port, "udp/"+svc)
 					ctx.Emit(events.TopicLog, fmt.Sprintf("service.udpscan: %s:%d/udp answered (%s)", ip, port, svc), nil)

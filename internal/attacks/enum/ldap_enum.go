@@ -12,6 +12,11 @@ import (
 
 // LDAPEnum tests directory servers for unauthenticated/anonymous binds and
 // lists naming contexts and interesting objects.
+//
+// LDAP allows a "bind" with empty credentials on many directories; when it
+// succeeds the anonymous session can often read the root DSE (naming
+// contexts) and, on misconfigured servers, enumerate user objects. This is
+// the classic unauthenticated LDAP dump.
 type LDAPEnum struct{}
 
 // Meta implements attacks.Module.
@@ -26,6 +31,7 @@ func (*LDAPEnum) Meta() attacks.ModuleMeta {
 	}
 }
 
+// ldapResult summarises one server's anonymous-bind findings.
 type ldapResult struct {
 	Host    string
 	Bind    string // anonymous | simple | rejected
@@ -58,10 +64,13 @@ func (*LDAPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 
 	var out []ldapResult
 	for _, h := range openHosts(ctx) {
+		// When probing the default port, only touch hosts that actually serve
+		// LDAP; a forced port skips this gate.
 		if port == "389" && !hasPort(h, 389) && !hasPort(h, 636) {
 			continue
 		}
 		addr := net.JoinHostPort(h.IP.String(), port)
+		// Assume rejection until proven otherwise.
 		res := ldapResult{Host: h.IP.String(), Bind: "rejected"}
 		c, err := ldap.Dial(addr, "", "", timeout)
 		if err != nil {
@@ -71,12 +80,16 @@ func (*LDAPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		entries, err := c.Search("", ldap.ScopeBase, "", timeout)
 		if err == nil {
 			for _, e := range entries {
+				// namingContexts is the root DSE attribute that lists the
+				// directory's base DNs; the first one is the top of the tree.
 				if dns := e.Attributes["namingContexts"]; len(dns) > 0 && res.RootDN == "" {
 					res.RootDN = dns[0]
 				}
 			}
 		}
-		// Anonymous bind attempt.
+		// Anonymous bind attempt: a fresh connection that dials and closes
+		// without credentials. Dial succeeding already proves the server
+		// accepted the (empty) bind — that IS the anonymous bind.
 		c2, err := ldap.Dial(addr, "", "", timeout)
 		if err == nil {
 			c2.Close()
@@ -84,12 +97,16 @@ func (*LDAPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		} else {
 			emit(ctx, "log", fmt.Sprintf("ldap.enum: %s:%s anonymous bind rejected", h.IP, port))
 		}
-		// One-level search under the first naming context.
+		// One-level search under the first naming context. This enumerates
+		// what sits directly below the root — usually users, groups and
+		// computers.
 		if res.RootDN != "" {
 			entries, err := c.Search(res.RootDN, ldap.ScopeOneLevel, "", timeout)
 			if err == nil {
 				res.Objects = len(entries)
 				for _, e := range entries {
+					// sAMAccountName is the Windows user login name; any
+					// object exposing it is a user account.
 					if n := e.Attributes["sAMAccountName"]; len(n) > 0 {
 						emit(ctx, "finding", fmt.Sprintf("ldap.enum: %s user=%q", h.IP, n[0]))
 					}
@@ -123,4 +140,5 @@ func (*LDAPEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*LDAPEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that LDAPEnum satisfies the Module contract.
 var _ attacks.Module = (*LDAPEnum)(nil)

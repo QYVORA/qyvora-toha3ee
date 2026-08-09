@@ -31,6 +31,7 @@ func (*ServiceTLS) Meta() attacks.ModuleMeta {
 	}
 }
 
+// tlsFinding is the summary of one successful TLS handshake probe.
 type tlsFinding struct {
 	Host    string
 	Port    uint16
@@ -119,12 +120,14 @@ func probeTLS(ip net.IP, port uint16, timeout time.Duration) (tlsFinding, error)
 	f.Cipher = tls.CipherSuiteName(state.CipherSuite)
 	f.ALPN = state.NegotiatedProtocol
 
+	// Flag weak configuration for the vector engine.
 	if state.Version < tls.VersionTLS12 {
 		f.Issues = append(f.Issues, "legacy-tls")
 	}
 	if strings.HasPrefix(f.Cipher, "TLS_RSA_WITH_") {
 		f.Issues = append(f.Issues, "weak-cipher")
 	}
+	// Summarize the first non-empty certificate in the presented chain.
 	for _, cert := range state.PeerCertificates {
 		if cert == nil || cert.Subject.CommonName == "" && len(cert.DNSNames) == 0 {
 			continue
@@ -142,6 +145,7 @@ func probeTLS(ip net.IP, port uint16, timeout time.Duration) (tlsFinding, error)
 	return f, nil
 }
 
+// ipNames formats the IP SANs of a certificate as strings.
 func ipNames(ips []net.IP) []string {
 	out := make([]string, 0, len(ips))
 	for _, ip := range ips {

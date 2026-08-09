@@ -14,6 +14,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/stealth"
 )
 
+// init registers every recon module with the attacks registry at startup.
 func init() {
 	attacks.Register(&NetScan{})
 	attacks.Register(&ServiceScan{})
@@ -47,6 +48,7 @@ func (*NetScan) Meta() attacks.ModuleMeta {
 	}
 }
 
+// netScanState is the live state carried between Run, Verify and Cleanup.
 type netScanState struct {
 	sc    *arp.Scanner
 	start time.Time
@@ -81,6 +83,8 @@ func (*NetScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ctx.SetState("net.scan", &netScanState{sc: sc, start: time.Now()})
 	ctx.Printf("[*] net.scan sweeping %s... press Ctrl-C or 'net.scan off' to stop.\n", ctx.Iface.CIDR())
 
+	// The module runs until stopped: register a heartbeat so the safety
+	// watchdog does not kill it as unresponsive.
 	hb := safety.NewHeartbeat()
 	ctx.Heartbeat = hb.Beat
 	ctx.Safety.RegisterHeartbeat("net.scan", hb)
@@ -115,6 +119,8 @@ func (*NetScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		}
 	}()
 
+	// Block the main module goroutine: a beat every 2s keeps the watchdog
+	// happy while the sweep goroutine above does the actual work.
 	for {
 		select {
 		case <-ctx.Done:

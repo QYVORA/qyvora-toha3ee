@@ -16,13 +16,15 @@ import (
 // port with RST and stay silent on open ports, so silence means open|filtered.
 type FlagScan struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*FlagScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "service.finxmas",
-		Category:    "recon",
-		Risk:        attacks.RiskLow,
-		Targets:     []string{"host"},
+		ID:       "service.finxmas",
+		Category: "recon",
+		Risk:     attacks.RiskLow,
+		Targets:  []string{"host"},
+		// Crafting unusual-flag probes and sniffing replies requires raw
+		// sockets.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "FIN/NULL/XMAS scan: unusual-flag probes that bypass stateless firewalls and map stateful ones",
 		Limitations: "most modern stacks and middleboxes reply with RST to all flag sets, so silence-based verdicts lose precision; use service.synscan for reliable open ports",
@@ -45,6 +47,7 @@ func (*FlagScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 
 // Run scans each host with the configured flag mode.
 func (*FlagScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+	// The flag mode comes from config, overridable per-run via opts.
 	mode := ports.ParseScanMode(ctx.Conf.Get("service.finxmas", "mode"))
 	if m, ok := opts["mode"]; ok && m != "" {
 		mode = ports.ParseScanMode(m)
@@ -73,6 +76,8 @@ func (*FlagScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		if err != nil {
 			continue
 		}
+		// With FIN/NULL/XMAS a RST reply proves the port is closed; silence
+		// means the probe was accepted (open) or dropped (filtered).
 		for _, r := range res {
 			if r.State == ports.Closed {
 				results++
@@ -106,4 +111,5 @@ func (*FlagScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*FlagScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that FlagScan implements attacks.Module.
 var _ attacks.Module = (*FlagScan)(nil)

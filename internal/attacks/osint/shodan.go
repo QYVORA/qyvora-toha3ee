@@ -25,6 +25,11 @@ func (*Shodan) Meta() attacks.ModuleMeta {
 	}
 }
 
+// shodanHost mirrors the JSON returned by the Shodan host API endpoint. Only a
+// handful of the many fields are unmarshaled: identity (ip_str, hostnames),
+// fingerprint (os), the flat ports/CVE lists, and per-service banners under
+// "data" (product/version are extracted for findings; the raw banner in Data
+// is kept for future triage).
 type shodanHost struct {
 	IP        string   `json:"ip_str"`
 	Hostnames []string `json:"hostnames"`
@@ -39,6 +44,7 @@ type shodanHost struct {
 	} `json:"data"`
 }
 
+// shodanResult is the reduced view stored in module state for Verify.
 type shodanResult struct {
 	IP    string
 	OS    string
@@ -65,6 +71,8 @@ func (*Shodan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, erro
 
 // Run queries the Shodan host API for each configured target.
 func (*Shodan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+	// Shodan requires an API key on every request; bail early with a clear
+	// message rather than fail the HTTP call itself.
 	key := ctx.Conf.Get("osint.shodan", "key")
 	if key == "" {
 		return fmt.Errorf("osint.shodan: set osint.shodan.key first")
@@ -75,6 +83,8 @@ func (*Shodan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 	timeout := ctx.Conf.GetDuration("osint.shodan", "timeout", 20*time.Second)
 
+	// Host endpoint: /shodan/host/<ip>?key=<api>. No packets are sent to the
+	// target — everything comes from Shodan's pre-indexed scan corpus.
 	raw, err := httpGet(fmt.Sprintf("https://api.shodan.io/shodan/host/%s?key=%s", t, key), timeout)
 	if err != nil {
 		return fmt.Errorf("osint.shodan: %w", err)
@@ -86,10 +96,13 @@ func (*Shodan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	res := shodanResult{IP: h.IP, OS: h.OS, Ports: h.Ports, Vulns: h.Vulns}
 	for _, s := range h.Services {
 		if s.Product != "" {
+			// Report each fingerprinted service with its product/version as a
+			// finding; banner-only matches (no product) are skipped as noise.
 			emit(ctx, "finding", fmt.Sprintf("osint.shodan: %s:%d %s %s", h.IP, s.Port, s.Product, s.Version))
 		}
 	}
 	for _, v := range h.Vulns {
+		// Vulns are CVE identifiers from Shodan's vulnerability correlation.
 		emit(ctx, "finding", fmt.Sprintf("osint.shodan: %s CVE %s", h.IP, v))
 	}
 	ctx.SetState("osint.shodan", res)

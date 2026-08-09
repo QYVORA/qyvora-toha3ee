@@ -18,6 +18,8 @@ import (
 )
 
 func init() {
+	// Register every passive OSINT module so the framework can discover them
+	// by ID (osint.asn, osint.ct, ...) without a central list to maintain.
 	attacks.Register(&DNSEnum{})
 	attacks.Register(&WHOIS{})
 	attacks.Register(&CTLogs{})
@@ -33,19 +35,25 @@ func init() {
 }
 
 // httpGet fetches a URL with a short timeout and a realistic browser agent so
-// passive lookups are not fingerprinted as tool traffic.
+// passive lookups are not fingerprinted as tool traffic. It enforces HTTP 200
+// and caps the response body at 8 MiB — the public APIs queried here never
+// legitimately exceed that, and the cap protects against runaway downloads.
 func httpGet(url string, timeout time.Duration) ([]byte, error) {
 	client := &http.Client{Timeout: timeout}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
+	// The shared stealth profile supplies a plausible browser UA, keeping
+	// third-party OSINT endpoints (RIPE, crt.sh, HIBP, ...) from blocking us.
 	req.Header.Set("User-Agent", stealth.Default.UserAgent())
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// Any non-200 (rate-limit 429, auth 401/403, server 5xx) is surfaced as an
+	// error rather than being parsed as an empty result set.
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s returned HTTP %d", url, resp.StatusCode)
 	}
@@ -56,7 +64,9 @@ func httpGet(url string, timeout time.Duration) ([]byte, error) {
 	return body, nil
 }
 
-// target returns the configured query target for a module namespace.
+// target returns the configured query target for a module namespace. It is the
+// common preflight helper: a missing value yields a fixable, self-explanatory
+// error that names the exact config key to set.
 func target(ctx *attacks.AttackCtx, ns, key string) (string, error) {
 	t := ctx.Conf.Get(ns, key)
 	if t == "" {
@@ -70,7 +80,8 @@ func isIP(s string) bool {
 	return net.ParseIP(s) != nil
 }
 
-// readAllLimit reads up to n bytes from a reader.
+// readAllLimit reads up to n bytes from a reader, used to bound response-body
+// reads on endpoints that have no Content-Length guarantee.
 func readAllLimit(r io.Reader, n int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(r, n))
 }

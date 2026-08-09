@@ -18,13 +18,15 @@ import (
 // without root, at the cost of being the noisiest scan mode.
 type TCPConnectScan struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*TCPConnectScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "service.tcpconnect",
-		Category:    "recon",
-		Risk:        attacks.RiskLow,
-		Targets:     []string{"host"},
+		ID:       "service.tcpconnect",
+		Category: "recon",
+		Risk:     attacks.RiskLow,
+		Targets:  []string{"host"},
+		// No Requires: net.Dial completes real connections through the kernel
+		// stack, so no root or raw sockets are needed.
 		Description: "full TCP connect scan (three-way handshake) of well-known ports; no root needed, noisier than SYN",
 		Limitations: "completes connections, so it is the most detectable scan mode and leaves connection logs",
 	}
@@ -51,6 +53,8 @@ func (*TCPConnectScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 	workers := ctx.Conf.GetInt("service.tcpconnect", "workers", 16)
 	st := stealth.FromConfig(ctx.Conf, "service.tcpconnect")
 
+	// The worker pool is bounded by a semaphore so we never open more than
+	// `workers` simultaneous connections; the mutex guards the shared counter.
 	var mu sync.Mutex
 	open := 0
 	sem := make(chan struct{}, workers)
@@ -60,6 +64,8 @@ func (*TCPConnectScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 		for _, p := range portsToScan {
 			select {
 			case <-ctx.Done:
+				// Cancel: wait for in-flight probes to finish so the shared
+				// counter and host store are not mutated while being torn down.
 				wg.Wait()
 				return nil
 			default:
@@ -69,10 +75,14 @@ func (*TCPConnectScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 			sem <- struct{}{}
 			go func(ip net.IP, port uint16) {
 				defer wg.Done()
-				defer func() { <-sem }()
+				defer func() { <-sem }() // release the worker slot
 				addr := net.JoinHostPort(ip.String(), strconv.Itoa(int(port)))
+				// A successful Dial means the full SYN -> SYN-ACK -> ACK
+				// handshake completed, i.e. the port is open.
 				conn, err := net.DialTimeout("tcp", addr, timeout)
 				if err != nil {
+					// Dial errors (RST/refused, timeout) mean closed or
+					// filtered; either way not an open port.
 					return
 				}
 				conn.Close()
@@ -111,4 +121,5 @@ func (*TCPConnectScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*TCPConnectScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that TCPConnectScan implements attacks.Module.
 var _ attacks.Module = (*TCPConnectScan)(nil)

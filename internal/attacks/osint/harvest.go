@@ -27,14 +27,22 @@ func (*Harvest) Meta() attacks.ModuleMeta {
 	}
 }
 
+// emailRe is a pragmatic email pattern: a local part of word chars and common
+// punctuation, an @, a domain of labels, and a TLD of two or more letters. It
+// intentionally does not enforce RFC-5322 grammar — a few false positives beat
+// missing real addresses that appear in unusual formats on crawled pages.
 var emailRe = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 
+// harvestResult bundles the domain with the unique addresses found for it.
 type harvestResult struct {
 	Domain string
 	Emails []string
 	Count  int
 }
 
+// harvestQueries are the search-engine queries tried, in order of usefulness.
+// They mix a plain @domain grep with site: operators to confine hits to the
+// org's own properties and -site: to also catch third-party mentions.
 var harvestQueries = []func(string) string{
 	func(d string) string { return "@" + d },
 	func(d string) string { return "email @" + d + " site:" + d },
@@ -67,11 +75,17 @@ func (*Harvest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		q := makeQ(d)
 		results, err := ddgResults(q, timeout)
 		if err != nil {
+			// A throttled/failed search should not abort the harvest; move to
+			// the next query variant.
 			continue
 		}
 		for _, r := range results {
+			// The result URL/snippet may embed several addresses; scan all of
+			// them with the email pattern.
 			for _, m := range emailRe.FindAllString(r, -1) {
 				addr := strings.ToLower(m)
+				// Only keep addresses inside the target domain — a search can
+				// surface third-party mail that merely mentions the org.
 				if !strings.HasSuffix(addr, "@"+strings.ToLower(d)) {
 					continue
 				}

@@ -41,7 +41,10 @@ func (*CTLogs) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, erro
 	return rep, nil
 }
 
-// certEntry is one crt.sh JSON record.
+// certEntry is one crt.sh JSON record. The "output=json" variant of the crt.sh
+// query returns an array of such objects; issuer_name is carried along in case
+// later triage wants to correlate certificate chains, though only name_value
+// feeds the subdomain extraction.
 type certEntry struct {
 	NameValue string `json:"name_value"`
 	Issuer    string `json:"issuer_name"`
@@ -53,10 +56,14 @@ func (*CTLogs) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if err != nil {
 		return err
 	}
+	// Normalize: lower-case, strip surrounding whitespace and any trailing dot
+	// so "Example.COM." behaves like "example.com".
 	domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
 	timeout := ctx.Conf.GetDuration("osint.ct", "timeout", 20*time.Second)
 
-	// crt.sh accepts "%.domain" to match any subdomain.
+	// crt.sh accepts "%.domain" to match any subdomain: the query searches the
+	// common name / SAN fields of all logged certs. The JSON output format
+	// avoids scraping the HTML result table.
 	body, err := httpGet(fmt.Sprintf("https://crt.sh/?q=%s&output=json", "%."+domain), timeout)
 	if err != nil {
 		return fmt.Errorf("osint.ct: crt.sh: %w", err)
@@ -66,14 +73,20 @@ func (*CTLogs) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		return fmt.Errorf("osint.ct: parse crt.sh response: %w", err)
 	}
 
+	// A single cert can carry several names (SANs joined by newlines), so the
+	// extraction splits on newlines and dedupes across all entries.
 	seen := map[string]bool{}
 	var names []string
 	for _, e := range entries {
 		for _, n := range strings.Split(e.NameValue, "\n") {
+			// Trim "*.domain" wildcards — a wildcard cert says nothing about a
+			// concrete host, and we want bare names for the final report.
 			n = strings.ToLower(strings.TrimSpace(strings.Trim(n, "*.")))
 			if n == "" || seen[n] {
 				continue
 			}
+			// Reject names outside the target's zone (unrelated certs that
+			// happened to share the % wildcard match) but accept the apex.
 			if n != domain && !strings.HasSuffix(n, "."+domain) {
 				continue
 			}
@@ -81,9 +94,11 @@ func (*CTLogs) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			names = append(names, n)
 		}
 	}
+	// Deterministic ordering for stable reports and diffs across runs.
 	sort.Strings(names)
 
 	for _, n := range names {
+		// Stream each name onto the log topic as it is confirmed.
 		ctx.Emit(events.TopicLog, fmt.Sprintf("osint.ct: subdomain %s", n), nil)
 	}
 	ctx.SetState("osint.ct", names)
@@ -100,6 +115,8 @@ func (*CTLogs) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	names, _ := v.([]string)
 	imp := &attacks.Impact{Summary: fmt.Sprintf("found %d subdomain(s) via certificate transparency", len(names))}
 	imp.Add("subdomains", strconv.Itoa(len(names)))
+	// Cap the individual names in the report at 50 to keep impact output
+	// readable; the full list is already persisted in state.
 	for i, n := range names {
 		if i >= 50 {
 			break

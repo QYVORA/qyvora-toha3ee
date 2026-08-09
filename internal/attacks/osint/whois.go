@@ -46,13 +46,19 @@ type whoisLine struct {
 	text   string
 }
 
-// whoisQuery talks the WHOIS protocol (TCP 43) to a server.
+// whoisQuery talks the WHOIS protocol (TCP 43) to a server: it opens a
+// connection, writes the query as a CRLF-terminated line, and reads the
+// server's reply. A single 64 KiB read is used because WHOIS responses for
+// single objects fit comfortably under that; anything larger would simply be
+// truncated after the first chunk.
 func whoisQuery(server, query string, timeout time.Duration) (string, error) {
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(server, "43"), timeout)
 	if err != nil {
 		return "", err
 	}
 	defer conn.Close()
+	// Bound the whole exchange (dial + write + read) with one deadline so a
+	// hung registry server cannot stall the module.
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 	if _, err := fmt.Fprintf(conn, "%s\r\n", query); err != nil {
 		return "", err
@@ -70,6 +76,9 @@ func (*WHOIS) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 	query = strings.TrimSpace(query)
 	timeout := ctx.Conf.GetDuration("osint.whois", "timeout", 8*time.Second)
+	// An explicit "server" config short-circuits the referral chain: the query
+	// goes straight to the configured WHOIS host. The timeout is doubled here
+	// because authoritative servers are often slow on the first connection.
 	if s := ctx.Conf.Get("osint.whois", "server"); s != "" {
 		timeout *= 2
 		raw, err := whoisQuery(s, query, timeout)
@@ -81,7 +90,8 @@ func (*WHOIS) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	}
 
 	// IANA referral: for domains it names the registry WHOIS server; for IPs
-	// it names the responsible RIR.
+	// it names the responsible RIR. whois.iana.org is the fixed entry point
+	// that tells us which registry actually holds the record.
 	ref, err := whoisQuery("whois.iana.org", query, timeout)
 	if err != nil {
 		return fmt.Errorf("osint.whois: iana referral: %w", err)
@@ -91,11 +101,14 @@ func (*WHOIS) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		emitWhois(ctx, whoisLine{server: "whois.iana.org", text: ref})
 		return nil
 	}
+	// The referral answer itself is useful (it names the registry), so it is
+	// emitted before the authoritative record overwrites nothing.
 	emitWhois(ctx, whoisLine{server: "whois.iana.org", text: ref})
 	authoritative := referralServer(ref)
 	if authoritative == "" {
 		return fmt.Errorf("osint.whois: no authoritative WHOIS server found in IANA referral")
 	}
+	// Second hop: query the registry/RIR server the referral named.
 	raw, err := whoisQuery(authoritative, query, timeout)
 	if err != nil {
 		return fmt.Errorf("osint.whois: %s: %w", authoritative, err)
@@ -104,6 +117,10 @@ func (*WHOIS) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return nil
 }
 
+// referRe matches the "refer:" line in an IANA domain referral; whoisRe
+// matches the "whois:" line in an IANA IP/RIR referral. keyRe matches any
+// "Field: value" line in a WHOIS record, tolerating spaces and hyphens in the
+// field name — it is the workhorse of the extraction loop.
 var (
 	referRe = regexp.MustCompile(`(?m)^refer:\s*(\S+)`)
 	whoisRe = regexp.MustCompile(`(?m)^whois:\s*(\S+)`)
@@ -111,6 +128,7 @@ var (
 )
 
 // referralServer extracts the authoritative WHOIS server from an IANA answer.
+// Domains use "refer:"; IPs use "whois:" — try both, return the first hit.
 func referralServer(s string) string {
 	for _, re := range []*regexp.Regexp{referRe, whoisRe} {
 		if m := re.FindStringSubmatch(s); len(m) == 2 {
@@ -120,7 +138,9 @@ func referralServer(s string) string {
 	return ""
 }
 
-// knownFields are the ownership fields surfaced in the report.
+// knownFields maps the many label spellings registries use onto a canonical
+// report key: "creation date"/"registration date" both become "created", etc.
+// Unlisted fields are simply not surfaced in the report.
 var knownFields = map[string]string{
 	"registrar": "registrar", "registration date": "created", "creation date": "created",
 	"updated date": "updated", "expiration date": "expires", "name server": "nameservers",
@@ -128,8 +148,12 @@ var knownFields = map[string]string{
 	"inetnum": "inetnum", "country": "country", "status": "status",
 }
 
-// emitWhois extracts and emits the record's key fields.
+// emitWhois extracts and emits the record's key fields. It parses every
+// "Field: value" line, folds matched labels into their canonical key, and
+// pushes one log line per canonical field plus the whole set into state.
 func emitWhois(ctx *attacks.AttackCtx, wl whoisLine) {
+	// Multiple registrars/registrants with the same field are collected so a
+	// record with several name servers lists all of them on one line.
 	extracted := map[string][]string{}
 	var lines []string
 	for _, m := range keyRe.FindAllStringSubmatch(wl.text, -1) {
@@ -139,6 +163,8 @@ func emitWhois(ctx *attacks.AttackCtx, wl whoisLine) {
 			extracted[canon] = append(extracted[canon], v)
 		}
 	}
+	// Collect the canonical keys into a slice; iteration order follows map
+	// iteration order, which is fine for a report-style log output.
 	keys := make([]string, 0, len(extracted))
 	for k := range extracted {
 		keys = append(keys, k)

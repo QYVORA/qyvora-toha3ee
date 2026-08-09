@@ -15,10 +15,12 @@ import (
 )
 
 // Risk classifies how disruptive an attack is. The ordering matters and is
-// shared with safety.RiskLevel.
+// shared with safety.RiskLevel. It drives UI colouring, the confirmation
+// prompts before a launch, and how the watchdog weighs a module.
 type Risk int
 
-// Risk levels from least to most disruptive.
+// Risk levels from least to most disruptive. The iota order must never change:
+// code elsewhere relies on RiskInfo < RiskLow < ... < RiskCritical.
 const (
 	RiskInfo Risk = iota
 	RiskLow
@@ -44,7 +46,9 @@ func (r Risk) String() string {
 	return "unknown"
 }
 
-// ParseRisk converts a name to a Risk. Defaults to RiskInfo.
+// ParseRisk converts a name to a Risk. Defaults to RiskInfo. Unknown or empty
+// input deliberately maps to the least disruptive level so a typo in config
+// cannot silently raise a module's danger rating.
 func ParseRisk(s string) Risk {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "low":
@@ -83,6 +87,8 @@ type ModuleMeta struct {
 }
 
 // SupportsTarget reports whether the module can act on the given target kind.
+// The "*" wildcard matches any kind (used by modules that operate on whatever
+// the user selects).
 func (m ModuleMeta) SupportsTarget(t string) bool {
 	for _, tt := range m.Targets {
 		if tt == t || tt == "*" {
@@ -98,7 +104,8 @@ type PreflightReport = safety.PreflightReport
 // Check is a single preflight check.
 type Check = safety.Check
 
-// Impact quantifies the result of a module after verification.
+// Impact quantifies the result of a module after verification. It is what the
+// REPL, the wizard and the report generator consume to show "what happened".
 type Impact struct {
 	// Summary is a human-readable verdict, e.g. "3 credentials captured".
 	Summary string
@@ -106,7 +113,8 @@ type Impact struct {
 	Metrics map[string]string
 }
 
-// Add records a quantified metric.
+// Add records a quantified metric, allocating the map lazily so an Impact
+// with only a Summary stays allocation-free.
 func (i *Impact) Add(key, value string) {
 	if i.Metrics == nil {
 		i.Metrics = make(map[string]string)
@@ -114,12 +122,15 @@ func (i *Impact) Add(key, value string) {
 	i.Metrics[key] = value
 }
 
-// Module is the lifecycle contract every attack must satisfy.
+// Module is the lifecycle contract every attack must satisfy. The framework
+// core drives the four phases in order and guarantees Cleanup runs even when
+// Run returns an error or the session is torn down.
 type Module interface {
 	// Meta returns the module's static metadata.
 	Meta() ModuleMeta
 	// Preflight validates the environment and may auto-fix issues. It must
 	// return a report with no blocked checks for Run to be permitted.
+	// Fixable checks may still block if the module itself decides so.
 	Preflight(ctx *AttackCtx) (*PreflightReport, error)
 	// Run performs the attack. For long-running attacks it must block until
 	// ctx.Done is closed or return an error.
@@ -131,6 +142,8 @@ type Module interface {
 }
 
 // Registry is the global module registry. Modules self-register via init().
+// It is intentionally a plain map: registration happens once, before any
+// goroutine can read it, so no locking is required.
 var Registry = map[string]Module{}
 
 // Register adds a module to the global registry. Duplicate IDs panic so that
@@ -140,6 +153,8 @@ func Register(m Module) {
 	if meta.ID == "" {
 		panic("attacks: module registered with empty ID")
 	}
+	// Failing loudly beats silently overwriting: two modules sharing an ID
+	// would make the REPL ambiguous and the wizard unreliable.
 	if _, dup := Registry[meta.ID]; dup {
 		panic(fmt.Sprintf("attacks: duplicate module ID %q", meta.ID))
 	}
@@ -152,7 +167,8 @@ func Get(id string) (Module, bool) {
 	return m, ok
 }
 
-// List returns all registered modules sorted by ID.
+// List returns all registered modules sorted by ID. Sorting gives the REPL
+// stable completion ordering and makes help output deterministic.
 func List() []Module {
 	ids := make([]string, 0, len(Registry))
 	for id := range Registry {

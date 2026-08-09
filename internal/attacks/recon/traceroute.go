@@ -82,6 +82,8 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	}
 	defer ic.Close()
 
+	// The UDP socket carries the probes; we vary the per-probe TTL via
+	// PacketConn so the kernel stamps the outgoing IP header for us.
 	udp, err := net.ListenPacket("udp4", "")
 	if err != nil {
 		return fmt.Errorf("net.traceroute: open udp socket: %w", err)
@@ -123,6 +125,8 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 			}
 			if src, ok := peer.(*net.IPAddr); ok {
 				replies[port] = src.IP.String()
+				// Destination unreachable means the target itself answered:
+				// it refused our UDP datagram on the chosen (unused) port.
 				if rm.Type == ipv4.ICMPTypeDestinationUnreachable {
 					done[port] = true
 				}
@@ -145,6 +149,8 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 		reached := false
 		for i := 0; i < probes; i++ {
 			st.JitterSleep()
+			// Each probe gets a fresh destination port so the collector can
+			// correlate the ICMP quote back to this hop iteration.
 			port := basePort + progress
 			progress++
 			start := time.Now()
@@ -206,6 +212,8 @@ func quotedUDPPort(rm *icmp.Message) int {
 	if data[0]>>4 != 4 { // quoted packet must be IPv4
 		return 0
 	}
+	// The quoted header's version/IHL byte tells us where the UDP header
+	// begins; the destination port is its first two bytes.
 	ihl := int(data[0]&0x0f) * 4
 	if len(data) < ihl+4 {
 		return 0

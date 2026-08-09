@@ -12,6 +12,11 @@ import (
 
 // NFSEnum lists NFS exports and checks for readable mounts and service
 // presence via the rpcbind/MOUNT protocol.
+//
+// NFSv3 locates the mount daemon through rpcbind (port 111): a GETPORT call
+// asks "which port runs the MOUNT program?" and a MOUNTPROC_EXPORT then lists
+// the exported directories with their access groups. NFSv4 instead listens
+// directly on 2049.
 type NFSEnum struct{}
 
 // Meta implements attacks.Module.
@@ -26,6 +31,7 @@ func (*NFSEnum) Meta() attacks.ModuleMeta {
 	}
 }
 
+// nfsResult captures one host's NFS posture.
 type nfsResult struct {
 	Host    string
 	NFSv4   bool
@@ -59,17 +65,23 @@ func (*NFSEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		}
 		res := nfsResult{Host: h.IP.String()}
 		if hasNFS {
+			// A NULL RPC program call on 2049 answers even without mounting,
+			// proving an NFSv4 server is present.
 			if err := rpc.NFSNullProbe(net.JoinHostPort(h.IP.String(), "2049"), 4, timeout); err == nil {
 				res.NFSv4 = true
 			}
 		}
 		if hasRPC {
+			// rpcbind GETPORT for the MOUNT program (100005), version 3, over
+			// TCP — the port mountd actually listens on.
 			mountPort, err := rpc.PortMapGetPort(h.IP.String(), rpc.ProgMount, 3, 6, timeout)
 			if err == nil && mountPort > 0 {
 				exports, err := rpc.MountExports(net.JoinHostPort(h.IP.String(), strconv.Itoa(int(mountPort))), timeout)
 				if err == nil {
 					res.Exports = exports
 					for _, ex := range exports {
+						// Read-only exports are still interesting but less
+						// critical than writable ones.
 						ro := ""
 						if ex.Readonly {
 							ro = " [read-only]"
@@ -104,4 +116,5 @@ func (*NFSEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*NFSEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that NFSEnum satisfies the Module contract.
 var _ attacks.Module = (*NFSEnum)(nil)

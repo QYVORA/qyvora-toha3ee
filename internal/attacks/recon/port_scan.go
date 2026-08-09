@@ -87,6 +87,7 @@ func (*ServiceScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 				continue
 			}
 			open++
+			// Guess the service by port number and record it on the host.
 			svc := ports.GuessService(r.Port)
 			h.SetPort(r.Port, svc)
 			ctx.Store.LogEvent(events.TopicLog,
@@ -120,6 +121,8 @@ func (*ServiceScan) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// parsePorts parses a list of port strings into uint16 ports, skipping junk
+// and out-of-range values; an empty result falls back to the common ports.
 func parsePorts(in []string) []uint16 {
 	var out []uint16
 	for _, s := range in {
@@ -183,6 +186,8 @@ func (*ServiceFingerprint) Run(ctx *attacks.AttackCtx, opts map[string]string) e
 		}
 		for _, p := range h.OpenPorts() {
 			svc := ports.GuessService(p)
+			// HTTP-family ports get a real GET so we can read the Server
+			// header; everything else falls back to a raw banner grab.
 			if svc == "http" || svc == "http-proxy" || svc == "https" || svc == "https-alt" {
 				if title := httpTitle(client, h.IP, p, st); title != "" {
 					h.SetPort(p, svc+"/"+title)
@@ -204,6 +209,9 @@ func (*ServiceFingerprint) Run(ctx *attacks.AttackCtx, opts map[string]string) e
 	return nil
 }
 
+// httpTitle does an HTTP(S) GET against a service and returns its Server
+// header, which is a reliable product indicator (e.g. "nginx/1.24.0"). The
+// body is drained up to 1 MiB so the connection can be reused.
 func httpTitle(client *http.Client, ip net.IP, port uint16, st *stealth.Config) string {
 	scheme := "http"
 	if port == 443 || port == 8443 {

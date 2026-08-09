@@ -24,13 +24,14 @@ import (
 // subnet.
 type NetPing struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*NetPing) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "net.ping",
-		Category:    "recon",
-		Risk:        attacks.RiskLow,
-		Targets:     []string{"subnet"},
+		ID:       "net.ping",
+		Category: "recon",
+		Risk:     attacks.RiskLow,
+		Targets:  []string{"subnet"},
+		// ICMP sweeps and the alternate TCP/UDP ping modes need raw sockets.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "host discovery sweep (ICMP echo/timestamp/address-mask, TCP SYN ping, UDP ping)",
 		Limitations: "hosts that block the chosen probe type are not detected; combine modes to cover hardened targets",
@@ -51,12 +52,14 @@ func (*NetPing) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 	return rep, nil
 }
 
-// icmpType maps the configured probe mode to request/reply ICMP types.
+// icmpMode maps the configured probe mode to request/reply ICMP types.
 type icmpMode struct {
-	req byte
-	rep byte
+	req byte // ICMP type of the probe we send
+	rep byte // ICMP type of the reply that proves the host is up
 }
 
+// icmpModes is the supported probe-mode table. The type numbers are from the
+// ICMPv4 spec: 8/0 echo request/reply, 13/14 timestamp, 17/18 address-mask.
 var icmpModes = map[string]icmpMode{
 	"echo":        {req: 8, rep: 0},
 	"timestamp":   {req: 13, rep: 14},
@@ -77,12 +80,14 @@ func (*NetPing) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	case "udp":
 		return runUDPPing(ctx, opts)
 	}
+	// Unknown modes default to a plain echo sweep.
 	if _, ok := icmpModes[mode]; !ok {
 		mode = "echo"
 	}
 	return runICMPPing(ctx, mode)
 }
 
+// runICMPPing performs an ICMP sweep with the chosen probe type.
 func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 	mode := icmpModes[mname]
 	timeout := ctx.Conf.GetDuration("net.ping", "timeout", 1200*time.Millisecond)
@@ -92,6 +97,7 @@ func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 	if err != nil {
 		return err
 	}
+	// Shuffle the sweep order so the probe cadence is not a predictable scan.
 	st.Shuffle(len(targets), func(i, j int) { targets[i], targets[j] = targets[j], targets[i] })
 
 	conn, err := icmp.ListenPacket("ip4:icmp", ctx.Iface.IP.String())
@@ -100,6 +106,8 @@ func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 	}
 	defer conn.Close()
 
+	// A random 16-bit identifier distinguishes our probes from other ICMP
+	// traffic on the wire.
 	id := uint16(rand.IntN(0xffff))
 	alive := make([]net.IP, 0, len(targets))
 	sent := 0
@@ -110,6 +118,8 @@ func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 		default:
 		}
 		st.JitterSleep()
+		// Build the probe body: echo carries an ID/Seq/Data, while timestamp
+		// and address-mask carry only fixed-size zeroed payloads.
 		var msg icmp.Message
 		switch mode.req {
 		case 13:
@@ -128,7 +138,8 @@ func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 		}
 	}
 
-	// Collect answers for the sweep window.
+	// Collect answers for the sweep window: we read until the deadline, count
+	// each distinct source that replied with the matching ICMP reply type.
 	deadline := time.Now().Add(timeout)
 	got := map[string]bool{}
 	buf := make([]byte, 1500)
@@ -138,7 +149,7 @@ func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 		if err != nil {
 			continue
 		}
-		rm, err := icmp.ParseMessage(1, buf[:n])
+		rm, err := icmp.ParseMessage(1, buf[:n]) // 1 = IPv4 protocol number
 		if err != nil {
 			continue
 		}
@@ -159,6 +170,7 @@ func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 	return nil
 }
 
+// modeName reverses the icmpModes table to pretty-print a request type.
 func modeName(req byte) string {
 	for k, m := range icmpModes {
 		if m.req == req {
@@ -200,6 +212,7 @@ func (*NetPing) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*NetPing) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that NetPing implements attacks.Module.
 var _ attacks.Module = (*NetPing)(nil)
 
 // tcpPingPorts are the service ports probed by a TCP SYN ping.
@@ -237,6 +250,7 @@ func runTCPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
 		if err != nil {
 			continue
 		}
+		// Any non-filtered verdict (open or closed) proves the host answered.
 		up := false
 		for _, r := range res {
 			if r.State != ports.Filtered {
@@ -283,6 +297,8 @@ func runUDPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
 		default:
 		}
 		st.JitterSleep()
+		// Dial a connected UDP socket so the kernel routes the datagram and,
+		// crucially, can surface a port-unreachable reply as an ICMP quote.
 		conn, err := net.DialTimeout("udp", net.JoinHostPort(ip.String(), fmt.Sprint(port)), timeout)
 		if err != nil {
 			continue
@@ -307,6 +323,8 @@ func runUDPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
 		if err != nil {
 			continue
 		}
+		// Type 3 code 3 = destination unreachable / port unreachable: the host
+		// received our UDP datagram and has no service on that port.
 		if rm.Type != ipv4.ICMPType(3) || rm.Code != 3 {
 			continue
 		}

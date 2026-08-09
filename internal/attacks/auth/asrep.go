@@ -11,6 +11,11 @@ import (
 // requested without any password and cracked offline. This module only finds
 // likely Kerberos KDCs in the host inventory and reports whether the technique
 // applies; it never sends Kerberos traffic itself.
+//
+// AS-REP roasting works because pre-authentication disabled accounts respond
+// to an unauthenticated AS-REQ with an AS-REP whose ticket is encrypted with
+// a key derived from the account's password — exactly what offline cracking
+// wants.
 type ASREP struct{}
 
 // Meta implements attacks.Module.
@@ -26,6 +31,7 @@ func (*ASREP) Meta() attacks.ModuleMeta {
 	}
 }
 
+// asrepCandidate is a host that answered on the Kerberos port.
 type asrepCandidate struct {
 	ip    string
 	ports []uint16
@@ -34,6 +40,8 @@ type asrepCandidate struct {
 // Preflight needs hosts.
 func (*ASREP) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
+	// Without an inventory there is nothing to scan; the scan modules are
+	// required first and this is surfaced as a fixable step.
 	if len(ctx.Store.Hosts()) == 0 {
 		rep.AddFixable("hosts", "no hosts in the store; run net.scan + service.synscan first")
 		return rep, nil
@@ -46,6 +54,8 @@ func (*ASREP) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error
 func (*ASREP) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	var kdcs []asrepCandidate
 	for _, h := range ctx.Store.Hosts() {
+		// Port 88 (TCP/UDP) is Kerberos. A host listening there is a KDC
+		// candidate — typically a domain controller.
 		ports := h.OpenPorts()
 		if containsPort(ports, 88) {
 			kdcs = append(kdcs, asrepCandidate{ip: h.IP.String(), ports: ports})
@@ -81,4 +91,5 @@ func (*ASREP) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*ASREP) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that ASREP satisfies the Module contract.
 var _ attacks.Module = (*ASREP)(nil)

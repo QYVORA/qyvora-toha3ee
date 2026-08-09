@@ -78,6 +78,8 @@ func (*ProtocolScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			ctx.Emit(events.TopicLog,
 				fmt.Sprintf("service.protoscan: %s accepts IP protocol %d (%s)", h.IP, r.Protocol, protoName(r.Protocol)), nil)
 			if ph := ctx.Store.Host(h.IP); ph != nil {
+				// Protocol evidence can refine the OS guess before the TCP
+				// fingerprint runs.
 				ph.OSGuess = maybeProtocolOS(ph.OSGuess, r.Protocol)
 			}
 		}
@@ -87,6 +89,8 @@ func (*ProtocolScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return nil
 }
 
+// parseProtocols parses protocol numbers from a config list, falling back to
+// the full known set on an empty or invalid result.
 func parseProtocols(in []string) []uint8 {
 	var out []uint8
 	for _, s := range in {
@@ -100,6 +104,7 @@ func parseProtocols(in []string) []uint8 {
 	return out
 }
 
+// protoName maps a protocol number to its IANA name for readable output.
 func protoName(p uint8) string {
 	switch p {
 	case 0:

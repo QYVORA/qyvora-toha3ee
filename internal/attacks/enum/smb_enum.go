@@ -11,6 +11,11 @@ import (
 
 // SMBEnum checks SMB services for signing policy and anonymous/null-session
 // behaviour.
+//
+// Signing posture comes straight out of the SMB2 NEGOTIATE response: the
+// SecurityMode field says whether signing is enabled and whether the server
+// requires it. A server that does not require signing is a prime NTLM relay
+// target, and its dialect informs downgrade possibilities.
 type SMBEnum struct{}
 
 // Meta implements attacks.Module.
@@ -25,6 +30,7 @@ func (*SMBEnum) Meta() attacks.ModuleMeta {
 	}
 }
 
+// smbResult records one server's negotiated posture.
 type smbResult struct {
 	Host       string
 	Dialect    uint16
@@ -54,6 +60,8 @@ func (*SMBEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	for _, h := range openHosts(ctx) {
 		port := 445
 		if !hasPort(h, 445) {
+			// 445 is SMB-over-TCP (SMB2 native). If it is closed but 139
+			// (NetBIOS session service carrying SMB1) is open, fall back to it.
 			if !hasPort(h, 139) {
 				continue
 			}
@@ -93,4 +101,5 @@ func (*SMBEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*SMBEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that SMBEnum satisfies the Module contract.
 var _ attacks.Module = (*SMBEnum)(nil)

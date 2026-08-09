@@ -12,6 +12,11 @@ import (
 
 // SMTPEnum probes SMTP servers for user enumeration via VRFY/EXPN/RCPT TO.
 // It also reports open-relay behaviour and the greeting banner.
+//
+// SMTP reply codes do the enumeration: VRFY <user> answers 250 when the
+// mailbox exists and 550 when it does not; RCPT TO is accepted (250) for
+// existing users and refused (550) otherwise. An open relay additionally
+// accepts MAIL/RCPT for completely foreign domains.
 type SMTPEnum struct{}
 
 // Meta implements attacks.Module.
@@ -26,6 +31,7 @@ func (*SMTPEnum) Meta() attacks.ModuleMeta {
 	}
 }
 
+// smtpResult captures one server's enumeration results.
 type smtpResult struct {
 	Host   string
 	Users  []string
@@ -75,23 +81,31 @@ func (*SMTPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return nil
 }
 
+// smtpProbe drives a full SMTP conversation against one host: banner grab,
+// EHLO, VRFY/EXPN per user, RCPT TO fallback and the open-relay test.
 func smtpProbe(host string, users []string, timeout time.Duration) (*smtpResult, error) {
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, "25"), timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
+	// A hard deadline bounds the whole conversation so a chatty or hung
+	// server cannot stall the module forever.
 	conn.SetDeadline(time.Now().Add(timeout))
 	rd := bufio.NewReader(conn)
 
 	res := &smtpResult{Host: host}
+	// The greeting is the first line the server sends on connect; it usually
+	// discloses the MTA product and version.
 	banner, _ := rd.ReadString('\n')
 	res.Banner = strings.TrimSpace(banner)
 
+	// cmd sends one SMTP command and reads the (possibly multi-line) reply.
 	cmd := func(line string) string {
 		conn.Write([]byte(line + "\r\n"))
 		reply, _ := rd.ReadString('\n')
-		// Multi-line replies end with " " after 3-digit code.
+		// Multi-line replies end with " " after 3-digit code: "250-..." lines
+		// continue, a "250 ..." line terminates. Position 3 holds the dash.
 		for len(reply) >= 4 && reply[3] == '-' {
 			next, _ := rd.ReadString('\n')
 			reply += next
@@ -111,7 +125,10 @@ func smtpProbe(host string, users []string, timeout time.Duration) (*smtpResult,
 			}
 		}
 	}
-	// RCPT TO: 250 => accepted (enumerable), 550 => not.
+	// RCPT TO: 250 => accepted (enumerable), 550 => not. This is the fallback
+	// for servers with VRFY/EXPN disabled — the address is probed by starting
+	// a mail transaction and watching the recipient verdict, then RSET clears
+	// the envelope.
 	for _, u := range users {
 		if seen[u] {
 			continue
@@ -124,7 +141,8 @@ func smtpProbe(host string, users []string, timeout time.Duration) (*smtpResult,
 			res.Users = append(res.Users, u)
 		}
 	}
-	// Open-relay test: relay through an unrelated destination.
+	// Open-relay test: relay through an unrelated destination. A legit server
+	// rejects the foreign recipient; accepting it proves relaying.
 	r := cmd("MAIL FROM:<relaytest@example.net>")
 	if strings.HasPrefix(r, "250") {
 		r = cmd("RCPT TO:<relaytest@example.com>")
@@ -151,6 +169,7 @@ func (*SMTPEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*SMTPEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// hasPort reports whether a HostRef has the given port open.
 func hasPort(h *HostRef, want uint16) bool {
 	for _, p := range h.Ports {
 		if p == want {
@@ -160,6 +179,8 @@ func hasPort(h *HostRef, want uint16) bool {
 	return false
 }
 
+// splitUsers turns a comma/space/newline separated username string into a
+// cleaned list. Invocation options take precedence over the configured value.
 func splitUsers(opt, cfg string) []string {
 	src := opt
 	if src == "" {
@@ -175,4 +196,5 @@ func splitUsers(opt, cfg string) []string {
 	return out
 }
 
+// Compile-time assertion that SMTPEnum satisfies the Module contract.
 var _ attacks.Module = (*SMTPEnum)(nil)

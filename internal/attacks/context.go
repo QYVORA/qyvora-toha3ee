@@ -14,7 +14,9 @@ import (
 )
 
 // AttackCtx carries everything a module needs to run, verify and clean up.
-// It is created by the session and handed unchanged to every lifecycle method.
+// It is created by the session and handed unchanged to every lifecycle method,
+// which lets modules talk to the outside world (bus, store, interface) without
+// reaching into framework internals.
 type AttackCtx struct {
 	// ID is the module instance identifier (normally the module ID).
 	ID string
@@ -35,13 +37,18 @@ type AttackCtx struct {
 	// Targets is the resolved target host list.
 	Targets []*store.Host
 	// Done is closed when the session is shutting down or the module was told
-	// to stop ("module off"). Long-running modules must select on it.
+	// to stop ("module off"). Long-running modules must select on it; the
+	// channel is closed (not signalled) so a receive always unblocks and
+	// there is no buffering or lost-wakeup race.
 	Done <-chan struct{}
 	// Heartbeat must be called periodically by long-running modules so the
-	// watchdog can detect a dead poison loop.
+	// watchdog can detect a dead poison loop. Assigning it replaces the
+	// session-default beat with the module's own.
 	Heartbeat func()
 	// State is a per-instance key/value bag modules use to carry runtime
-	// objects between Run, Verify and Cleanup.
+	// objects between Run, Verify and Cleanup. It is a sync.Map because
+	// capture callbacks may write to it from other goroutines while Run is
+	// blocking on ctx.Done.
 	State *sync.Map
 }
 
@@ -55,6 +62,8 @@ func (c *AttackCtx) GetState(key string) (any, bool) {
 
 // SetState stores a module runtime value by key.
 func (c *AttackCtx) SetState(key string, v any) {
+	// Lazily allocate the bag on first use so modules that never touch state
+	// do not force a heap allocation at session setup.
 	if c.State == nil {
 		c.State = &sync.Map{}
 	}
@@ -68,7 +77,10 @@ func (c *AttackCtx) Printf(format string, args ...any) {
 	}
 }
 
-// Emit publishes an event and logs it through the store.
+// Emit publishes an event and logs it through the store. The payload travels
+// on the bus for subscribers; the topic+message also lands in the store's
+// event log and in the structured logger so a finding is never lost even if
+// no subscriber is attached.
 func (c *AttackCtx) Emit(topic, msg string, payload any) {
 	if c.Bus != nil {
 		c.Bus.Emit(topic, payload)
@@ -81,7 +93,9 @@ func (c *AttackCtx) Emit(topic, msg string, payload any) {
 	}
 }
 
-// RunOpts normalizes module invocation options with defaults.
+// RunOpts normalizes module invocation options with defaults. It guarantees
+// every requested key exists (with an empty value when the caller did not
+// supply it) so modules can read opts without a nil-map or missing-key check.
 func RunOpts(opts map[string]string, keys ...string) map[string]string {
 	if opts == nil {
 		opts = map[string]string{}
@@ -101,6 +115,8 @@ func RunOpts(opts map[string]string, keys ...string) map[string]string {
 type ModuleRuntime struct {
 	// Stop closes to halt the module's background loop.
 	Stop func()
-	// Restored is set by Verify.
+	// Restored is set by Verify to record whether Cleanup already brought the
+	// network back to its prior state (e.g. whether a poisoned ARP cache was
+	// flushed or an interface was put back into managed mode).
 	Restored bool
 }

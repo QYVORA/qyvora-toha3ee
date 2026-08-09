@@ -25,6 +25,7 @@ func (*HIBP) Meta() attacks.ModuleMeta {
 	}
 }
 
+// hibpResult carries just the count of exposed candidate passwords.
 type hibpResult struct {
 	Count int
 }
@@ -43,9 +44,11 @@ func (*HIBP) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error)
 // Run checks each candidate password against the range API.
 func (*HIBP) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	timeout := ctx.Conf.GetDuration("osint.hibp", "timeout", 15*time.Second)
+	// Whitespace-separated list of literal candidate passwords from config.
 	passwords := strings.Fields(ctx.Conf.Get("osint.hibp", "password"))
 	email := ctx.Conf.Get("osint.hibp", "email")
 	if email != "" {
+		// An email alone can still seed the check with derived candidates.
 		passwords = append(passwords, candidatePasswords(email)...)
 	}
 	if len(passwords) == 0 {
@@ -55,6 +58,8 @@ func (*HIBP) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	for _, pw := range passwords {
 		count, err := pwnedCount(pw, timeout)
 		if err != nil {
+			// A single failed range lookup (network hiccup, rate limit) is
+			// skipped; the other candidates still get checked.
 			continue
 		}
 		if count > 0 {
@@ -67,33 +72,46 @@ func (*HIBP) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return nil
 }
 
+// pwnedCount returns how many times pw appears in breach data, using HIBP's
+// k-anonymity range API: only the first 5 hex chars of the SHA-1 sum are ever
+// sent, and the full suffix is matched against the returned list client-side.
 func pwnedCount(pw string, timeout time.Duration) (int, error) {
 	sum := sha1Hex(pw)
+	// The range endpoint is keyed on the 5-character prefix; the remainder is
+	// the suffix we must match locally — the plaintext never leaves this host.
 	prefix, suffix := sum[:5], sum[5:]
 	raw, err := httpGet("https://api.pwnedpasswords.com/range/"+prefix, timeout)
 	if err != nil {
 		return 0, err
 	}
 	want := strings.ToUpper(suffix)
+	// The response is one "<SUFFIX>:<count>" per line; compare case-insensitively
+	// since the API uppercases while our hex digest is lowercase.
 	for _, line := range strings.Split(string(raw), "\r\n") {
 		line = strings.TrimSpace(line)
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 && strings.EqualFold(parts[0], want) {
 			n := 0
+			// The count field is a plain integer; Sscanf tolerates stray
+			// whitespace around it. A count of 0 means "seen but unused".
 			fmt.Sscanf(parts[1], "%d", &n)
 			return n, nil
 		}
 	}
+	// Suffix not present in the returned range: never seen in a breach.
 	return 0, nil
 }
 
 // candidatePasswords derives typical guess-password candidates from an email
 // (name + company + year patterns) so an email address can seed the check.
 func candidatePasswords(email string) []string {
+	// The local part of the address is the most likely personal seed.
 	user := email
 	if i := strings.Index(email, "@"); i > 0 {
 		user = email[:i]
 	}
+	// The org's SLD (e.g. "acme" from user@acme.example.com) seeds company
+	// variants; the TLD and subdomains are dropped as noise.
 	domain := ""
 	if i := strings.Index(email, "@"); i >= 0 {
 		domain = email[i+1:]
@@ -101,6 +119,7 @@ func candidatePasswords(email string) []string {
 			domain = domain[:j]
 		}
 	}
+	// Common weak-password scaffolding: bare name, name+suffix, year suffixes.
 	seeds := []string{user, domain, user + "123", user + "2024", user + "2025", user + "2026"}
 	if domain != "" {
 		seeds = append(seeds, domain+"123", user+"@"+domain)

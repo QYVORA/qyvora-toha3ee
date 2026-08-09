@@ -25,6 +25,9 @@ func (*GitHubDork) Meta() attacks.ModuleMeta {
 	}
 }
 
+// ghItem is one code-search hit: which repository and file matched, a link to
+// the blob, and a (sanitized) snippet of the matching fragment. The Source
+// field is populated from the "text_matches" array returned by the API.
 type ghItem struct {
 	Repo    string `json:"repository"`
 	Path    string `json:"path"`
@@ -32,12 +35,17 @@ type ghItem struct {
 	Source  string `json:"text_matches"`
 }
 
+// ghResult groups the items found by one named dork query.
 type ghResult struct {
 	Query string
 	Count int
 	Items []ghItem
 }
 
+// ghQueries is the fixed set of GitHub code-search dorks. Each query is later
+// suffixed with the org target so only code mentioning the org is surfaced.
+// The "name" is used as the finding label; "q" is the GitHub search syntax
+// (OR-ed terms, filename: filters) as documented by the code-search API.
 var ghQueries = []struct {
 	name string
 	q    string
@@ -69,6 +77,8 @@ func (*GitHubDork) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 
 // Run executes the dork queries.
 func (*GitHubDork) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+	// Code search is only available to authenticated users, so a token is
+	// mandatory here rather than a per-query enhancement.
 	token := ctx.Conf.Get("osint.github", "token")
 	if token == "" {
 		return fmt.Errorf("osint.github: set osint.github.token first")
@@ -82,9 +92,12 @@ func (*GitHubDork) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	var all []ghResult
 	total := 0
 	for _, dq := range ghQueries {
+		// Combine the dork with the org target: "password <org>".
 		q := dq.q + " " + t
 		items, err := ghSearch(token, q, timeout)
 		if err != nil {
+			// One failed query (e.g. rate limit, bad syntax) must not sink the
+			// rest; log and move to the next dork.
 			ctx.Printf("[!] osint.github: query %q failed: %v\n", q, err)
 			continue
 		}
@@ -99,12 +112,17 @@ func (*GitHubDork) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return nil
 }
 
+// ghSearch runs one code-search query against the GitHub API. The endpoint is
+// the search/code JSON API; "q" carries the URL-encoded query and "per_page=50"
+// is the maximum page size, so a single request returns up to 50 matches.
 func ghSearch(token, query string, timeout time.Duration) ([]ghItem, error) {
 	client := newAuthClient(token, timeout)
 	raw, err := client.get("https://api.github.com/search/code?q=" + urlQuery(query) + "&per_page=50")
 	if err != nil {
 		return nil, err
 	}
+	// Unmarshal only the fields code search actually returns: the item's path,
+	// html_url, repository.full_name and the text_matches fragment list.
 	var resp struct {
 		Items []struct {
 			Name       string `json:"name"`
@@ -124,6 +142,8 @@ func ghSearch(token, query string, timeout time.Duration) ([]ghItem, error) {
 	var out []ghItem
 	for _, it := range resp.Items {
 		item := ghItem{Repo: it.Repository.FullName, Path: it.Path, HTMLURL: it.HTMLURL}
+		// text_matches are only present with the text-match media type (which
+		// the shared client requests); use the first fragment as the snippet.
 		if len(it.Matches) > 0 {
 			item.Source = sanitize(it.Matches[0].Fragment)
 		}
@@ -157,6 +177,7 @@ func (*GitHubDork) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
+// totalItems sums the item counts across all query results for the summary.
 func totalItems(res []ghResult) int {
 	n := 0
 	for _, r := range res {
