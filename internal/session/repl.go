@@ -394,6 +394,11 @@ func (s *Session) setConfig(key, value string) error {
 	if !ok {
 		return fmt.Errorf("config key must be 'module.key'")
 	}
+	if param == "risk_confirm" {
+		if b, err := strconv.ParseBool(value); err == nil && b {
+			s.Conf.ConfirmRisk(module)
+		}
+	}
 	if strings.EqualFold(value, "true") || strings.EqualFold(value, "false") {
 		if b, err := strconv.ParseBool(value); err == nil {
 			if b {
