@@ -157,7 +157,7 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 		return fmt.Errorf("%s blocked (missing %s)", id, blk)
 	}
 	meta := mod.Meta()
-	if meta.Risk >= attacks.RiskHigh && !s.Conf.IsRiskConfirmed(id) {
+	if meta.Risk >= attacks.RiskHigh && !s.Conf.IsRiskConfirmed(id) && !s.Conf.GetBool(id, "risk_confirm", false) {
 		return fmt.Errorf("%s is a %s-risk attack; run 'set %s.risk_confirm true' to allow", id, meta.Risk, id)
 	}
 
