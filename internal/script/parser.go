@@ -253,12 +253,15 @@ func (p *parser) parseWait() (Stmt, error) {
 		max := 10 * time.Minute
 		if p.at(tkIdent) && p.peek().text == "max" {
 			p.next()
+			valTok := p.peek()
 			secs, err := p.parseExprValue()
 			if err != nil {
 				return nil, err
 			}
 			if n, ok := numOf(secs); ok {
 				max = time.Duration(n * float64(time.Second))
+			} else {
+				return nil, parseError(valTok, "wait for %s max needs a number of seconds, found %s", id.text, valTok)
 			}
 		}
 		return WaitStmt{Module: id.text, Max: max}, nil
