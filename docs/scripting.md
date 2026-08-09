@@ -62,6 +62,18 @@ report -> "assessment.md"                     # write the session report
 - `[...]` builds a list from a property: `_hosts -> [$(net.hosts)]`.
 - `$(_name.size)` and `$(_list.size)` return lengths.
 
+## Strings and quoting
+
+- Double-quoted `"..."` strings interpolate `$(...)` and honour the escapes
+  `\n`, `\t`, `\r`, `\"`, `\\` and `\$`.
+- Single-quoted `'...'` strings are **literal**: no escapes, and `$(...)` is
+  kept as-is rather than resolved.
+- Unquoted values (numbers, IPs, CIDRs, module option values, command flags)
+  are taken verbatim, so `exec -> nmap -sS -p 80,443 10.0.0.1` and negative
+  numbers like `_offset -> -1` both work.
+- Module option values may mix quotes and comma-separated pieces, and
+  interpolation survives: `on arp.spoof targets 10.0.0.1,$(_hosts)`.
+
 ## Interpolation
 
 `$(...)` resolves live session state:
@@ -83,6 +95,9 @@ report -> "assessment.md"                     # write the session report
 - Operators: `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`.
 - Numbers compare numerically; strings compare lexically.
 - `while` loops are capped so a bad condition can never hang the script.
+- `break` and `continue` work inside all three loop forms (`for each`,
+  `repeat`, `while`).
+- `wait for <module> max <secs>` requires a numeric timeout.
 
 ## Safety model
 
