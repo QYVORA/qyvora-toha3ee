@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 )
 
-// capletDirs is the search path for caplet scripts.
+// capletDirs is the search path for caplet scripts. Directories are tried in
+// order, so a user script in "caplets/" shadows a same-named file in ".".
 var capletDirs = []string{"caplets", "."}
 
 // RunCaplet executes a caplet script non-interactively.
@@ -16,6 +17,8 @@ func (s *Session) RunCaplet(path string) error {
 
 // readCaplet locates and reads a caplet script.
 func readCaplet(path string) ([]byte, error) {
+	// Absolute paths are used verbatim; relative ones are resolved against
+	// each search directory.
 	if filepath.IsAbs(path) {
 		return os.ReadFile(path)
 	}

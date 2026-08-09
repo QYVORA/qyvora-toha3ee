@@ -25,27 +25,27 @@ var Version = "0.1.0"
 
 // Session is one interactive framework instance bound to an interface.
 type Session struct {
-	Iface  *netx.Iface
-	Bus    *events.Bus
-	Store  *store.Store
-	Conf   *config.Config
-	Safety *safety.Manager
+	Iface  *netx.Iface     // the network interface all attacks go through
+	Bus    *events.Bus     // publish/subscribe event bus for framework events
+	Store  *store.Store    // discovered hosts, creds, sessions
+	Conf   *config.Config  // module configuration store
+	Safety *safety.Manager // cleanup handlers registered by modules
 	Log    *slog.Logger
 	Out    io.Writer
 	UI     *ui.UI
 
-	mu      sync.Mutex
+	mu      sync.Mutex // guards the running map and hijack injector
 	running map[string]*runningModule
 	hijack  *hijackState
 }
 
 // runningModule tracks one live module instance.
 type runningModule struct {
-	mod     attacks.Module
+	mod     attacks.Module // the running module implementation
 	ctx     *attacks.AttackCtx
-	done    chan struct{}
+	done    chan struct{} // closed to signal Run to stop
 	started time.Time
-	err     error
+	err     error // set by the Run goroutine
 	wg      sync.WaitGroup
 }
 
@@ -61,7 +61,7 @@ func New(iface *netx.Iface, out io.Writer, log *slog.Logger) *Session {
 	return &Session{
 		Iface:   iface,
 		Bus:     bus,
-		Store:   store.New(5000),
+		Store:   store.New(5000), // keep the last 5000 entries
 		Conf:    config.Default(),
 		Safety:  safety.NewManager(bus, log),
 		Log:     log,
@@ -99,6 +99,8 @@ func (s *Session) goodf(format string, args ...any) {
 
 // Running returns the IDs of all currently running modules.
 func (s *Session) Running() []string {
+	// A lock is required because module start/stop happens from the REPL,
+	// script engine and module goroutines concurrently.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]string, 0, len(s.running))
@@ -124,6 +126,8 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 	if !ok {
 		return fmt.Errorf("unknown module %q", id)
 	}
+	// Guard against duplicate starts; the lock is released before Preflight
+	// because Preflight may emit UI output and take a while.
 	s.mu.Lock()
 	if _, dup := s.running[id]; dup {
 		s.mu.Unlock()
@@ -140,12 +144,14 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 		Iface:     s.Iface,
 		Safety:    s.Safety,
 		Logger:    s.Log,
-		Out:       ui.NewLineWriter(s.UI),
+		Out:       ui.NewLineWriter(s.UI), // line-wraps module output into UI rows
 		Done:      done,
-		State:     &sync.Map{},
-		Heartbeat: func() {},
+		State:     &sync.Map{}, // module-private scratch state
+		Heartbeat: func() {},   // pluggable liveness callback, unused by default
 	}
 
+	// Preflight validates prerequisites (interface capability, conflicting
+	// modules) and returns a human-readable report.
 	rep, err := mod.Preflight(ctx)
 	if err != nil {
 		return fmt.Errorf("%s preflight: %w", id, err)
@@ -156,22 +162,28 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 		s.warnf("%s blocked by %s; not started.", id, blk)
 		return fmt.Errorf("%s blocked (missing %s)", id, blk)
 	}
+	// High/critical-risk modules require explicit confirmation before they
+	// can be launched from the REPL.
 	meta := mod.Meta()
 	if meta.Risk >= attacks.RiskHigh && !s.Conf.IsRiskConfirmed(id) && !s.Conf.GetBool(id, "risk_confirm", false) {
 		return fmt.Errorf("%s is a %s-risk attack; run 'set %s.risk_confirm true' to allow", id, meta.Risk, id)
 	}
 
+	// Register the running module before launching Run so IsRunning is true
+	// the moment the goroutine starts.
 	rm := &runningModule{mod: mod, ctx: ctx, done: done, started: time.Now()}
 	s.mu.Lock()
 	s.running[id] = rm
 	s.mu.Unlock()
 
+	// Run executes asynchronously; the WaitGroup lets StopModule join it.
 	rm.wg.Add(1)
 	go func() {
 		defer rm.wg.Done()
 		rm.err = mod.Run(ctx, opts)
 		select {
 		case <-done:
+			// Stop was requested: the caller finishes the lifecycle.
 		default:
 			// Run returned before being told to stop: bounded module done.
 			s.finishModule(id, rm)
@@ -185,6 +197,8 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 
 // finishModule runs Verify + Cleanup after Run returned.
 func (s *Session) finishModule(id string, rm *runningModule) {
+	// Remove from the running set first so IsRunning stops reporting it
+	// before any remaining output appears.
 	s.mu.Lock()
 	delete(s.running, id)
 	s.mu.Unlock()
@@ -194,6 +208,8 @@ func (s *Session) finishModule(id string, rm *runningModule) {
 		s.Store.LogEvent(events.TopicModuleFailed, fmt.Sprintf("%s failed: %v", id, rm.err))
 		return
 	}
+	// Verify only runs when Run succeeded; a nil impact report means the
+	// module has nothing to report.
 	if imp, err := rm.mod.Verify(rm.ctx); err == nil && imp != nil {
 		s.UI.Section("verified " + id)
 		s.goodf("%s", imp.Summary)
@@ -201,6 +217,8 @@ func (s *Session) finishModule(id string, rm *runningModule) {
 			s.UI.KV(k, v)
 		}
 	}
+	// Cleanup restores any network state the module changed; failures are
+	// warnings, not fatal, because the module is already finished.
 	if err := rm.mod.Cleanup(rm.ctx); err != nil {
 		s.warnf("%s cleanup: %v", id, err)
 	}
@@ -217,6 +235,8 @@ func (s *Session) StopModule(id string) error {
 	if !ok {
 		return fmt.Errorf("%s is not running", id)
 	}
+	// Closing done tells Run to tear itself down; wg.Wait blocks until the
+	// Run goroutine actually returns.
 	close(rm.done)
 	rm.wg.Wait()
 	s.finishModule(id, rm)
@@ -225,6 +245,8 @@ func (s *Session) StopModule(id string) error {
 
 // StopAll halts every running module.
 func (s *Session) StopAll() {
+	// Iterate a snapshot so each StopModule's map mutation is safe; a module
+	// that fails to stop cleanly is ignored here.
 	for _, id := range s.Running() {
 		_ = s.StopModule(id)
 	}

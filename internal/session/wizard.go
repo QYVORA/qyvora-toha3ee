@@ -28,6 +28,8 @@ func (s *Session) WizardWithStdin() error {
 
 // Wizard guides the user through recon → vector analysis → module launch.
 func (s *Session) Wizard(rl *readline.Instance) error {
+	// ask prompts for input with a visible default; pressing Enter or
+	// encountering EOF falls back to the default.
 	ask := func(prompt, def string) string {
 		line, err := rl.ReadlineWithDefault(s.UI.White(prompt + " "))
 		if err != nil {
@@ -43,6 +45,7 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 	s.UI.Banner("guided attack wizard")
 	s.UI.BannerFoot(s.Iface.String(), versionString())
 
+	// Step 1: an optional subnet sweep (host discovery) for ~10s.
 	if ans := strings.ToLower(ask("Run a network sweep (net.scan for ~10s)? [Y/n]: ", "y")); !strings.HasPrefix(ans, "n") {
 		s.statusf("sweeping subnet (10s)...")
 		if err := s.StartModule("net.scan", nil); err != nil {
@@ -53,9 +56,12 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 		s.goodf("%d host(s) discovered.", len(s.Store.Hosts()))
 	}
 
+	// Step 2: an optional passive HTTP/LLMNR probe for ~15s.
 	if ans := strings.ToLower(ask("Run a passive HTTP/LLMNR probe for ~15s? [Y/n]: ", "y")); !strings.HasPrefix(ans, "n") {
 		s.statusf("probing network traffic (15s)...")
 		if err := s.StartModule("http.harvest", nil); err != nil {
+			// The probe is optional; a failure here only warns and the
+			// wizard continues with whatever was already discovered.
 			s.warnf("probe: %v", err)
 		} else {
 			time.Sleep(15 * time.Second)
@@ -63,6 +69,8 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 		}
 	}
 
+	// Build the network profile and ranked attack vectors from the loot
+	// gathered in the two recon steps above.
 	profile := vectors.BuildProfile(s.Store, s.Iface)
 	engine := vectors.NewEngine(s.metaResolver())
 	vectorsList := engine.Analyze(profile)
@@ -83,6 +91,7 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 	}
 	s.printVectors(vectorsList, engine, profile)
 
+	// Step 3: the user picks which vectors to launch, by index, "all", or none.
 	sel := ask("\nPick vector number to launch (comma list, 'all', or blank to skip): ", "")
 	if sel == "" {
 		s.statusf("wizard done (nothing launched)")
@@ -91,6 +100,7 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 
 	indexes := parseSelection(sel, len(vectorsList))
 	if indexes == nil && strings.EqualFold(sel, "all") {
+		// "all" expands to every vector index (1-based → 0-based).
 		for i := range vectorsList {
 			indexes = append(indexes, i)
 		}
@@ -98,6 +108,8 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 
 	for _, idx := range indexes {
 		v := vectorsList[idx]
+		// Skip vectors whose prerequisites cannot currently be satisfied
+		// rather than letting StartModule fail with a confusing error.
 		if !engine.Satisfiable(profile, v) {
 			s.warnf("skipping %s (prerequisites not satisfiable)", v.ModuleID)
 			continue
@@ -115,8 +127,12 @@ func (s *Session) launchVector(v vectors.Vector, ask func(string, string) string
 	meta, _ := attacks.Get(v.ModuleID)
 	_ = meta
 
+	// Module-specific pre-launch configuration: fill in sensible defaults the
+	// wizard can ask for, one module at a time.
 	switch v.ModuleID {
 	case "arp.spoof":
+		// Default targets = whole subnet; internal stays false so the gateway
+		// is included in the spoof.
 		if s.Conf.Get("arp.spoof", "targets") == "" {
 			s.Conf.Set("arp.spoof", "targets", s.Iface.CIDR())
 		}
@@ -124,6 +140,7 @@ func (s *Session) launchVector(v vectors.Vector, ask func(string, string) string
 			s.Conf.Set("arp.spoof", "internal", "false")
 		}
 	case "dns.spoof":
+		// No domains means answering all DNS queries.
 		if s.Conf.Get("dns.spoof", "domains") == "" {
 			domains := ask("Domain(s) to spoof (comma list; blank = all queries): ", "")
 			if domains == "" {
@@ -139,10 +156,13 @@ func (s *Session) launchVector(v vectors.Vector, ask func(string, string) string
 		}
 	}
 
+	// Per-module confirmation gate before anything launches.
 	if ans := strings.ToLower(ask(fmt.Sprintf("Launch %s? [Y/n]: ", v.ModuleID), "y")); strings.HasPrefix(ans, "n") {
 		return nil
 	}
 
+	// The wizard explicitly presents high-risk modules, so its confirmation
+	// doubles as the risk_confirm the REPL gate requires.
 	if parseRisk(v.Risk) >= attacks.RiskHigh {
 		s.Conf.ConfirmRisk(v.ModuleID)
 	}
@@ -151,6 +171,8 @@ func (s *Session) launchVector(v vectors.Vector, ask func(string, string) string
 
 // metaResolver adapts the attacks registry to the vector engine.
 func (s *Session) metaResolver() vectors.MetaResolver {
+	// The vector engine only needs the metadata fields, so the registry's
+	// rich Module is narrowed down to the vectors.MetaInfo view.
 	return func(id string) (vectors.MetaInfo, bool) {
 		m, ok := attacks.Get(id)
 		if !ok {
@@ -178,6 +200,8 @@ func parseSelection(sel string, n int) []int {
 	var out []int
 	for _, tok := range strings.Split(sel, ",") {
 		tok = strings.TrimSpace(tok)
+		// Indexes are 1-based in the UI; anything out of range invalidates
+		// the whole selection so the caller can treat it as a typo.
 		i, err := strconv.Atoi(tok)
 		if err != nil || i < 1 || i > n {
 			return nil
@@ -187,6 +211,7 @@ func parseSelection(sel string, n int) []int {
 	return out
 }
 
+// gatewayStr formats the profile gateway as an IP string for the KV display.
 func gatewayStr(p *vectors.Profile) string {
 	if p.Gateway == nil {
 		return "unknown"

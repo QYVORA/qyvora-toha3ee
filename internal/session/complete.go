@@ -8,20 +8,27 @@ import (
 
 // commandsCompleter builds the autocomplete tree for the REPL.
 func commandsCompleter() []readline.PrefixCompleterInterface {
+	// Items derived from the live module registry so tab-completion stays in
+	// sync when modules are added or removed.
 	var moduleItems []readline.PrefixCompleterInterface
 	var catItems []readline.PrefixCompleterInterface
 	var keyItems []readline.PrefixCompleterInterface
 	seenCat := map[string]bool{}
 	for _, m := range attacks.List() {
 		meta := m.Meta()
+		// Module ids complete whole tokens ("arp.spoof"); key items append a
+		// trailing dot so "set a<tab>" expands to "set arp.spoof." ready for
+		// the parameter name.
 		moduleItems = append(moduleItems, readline.PcItem(meta.ID))
 		keyItems = append(keyItems, readline.PcItem(meta.ID+"."))
+		// Each category completes once, for "modules <category>" filtering.
 		if !seenCat[meta.Category] {
 			seenCat[meta.Category] = true
 			catItems = append(catItems, readline.PcItem(meta.Category))
 		}
 	}
 
+	// The static tree: verb commands with their dynamic sub-items attached.
 	return []readline.PrefixCompleterInterface{
 		readline.PcItem("help"),
 		readline.PcItem("?"),
@@ -31,6 +38,8 @@ func commandsCompleter() []readline.PrefixCompleterInterface {
 		readline.PcItem("modules", catItems...),
 		readline.PcItem("list", catItems...),
 		readline.PcItem("show", moduleItems...),
+		// "module" accepts the on/off verbs and any module id (e.g.
+		// "module arp.spoof targets 10.0.0.5").
 		readline.PcItem("module", append([]readline.PrefixCompleterInterface{readline.PcItem("on"), readline.PcItem("off"), readline.PcItem("start"), readline.PcItem("stop")}, moduleItems...)...),
 		readline.PcItem("on", moduleItems...),
 		readline.PcItem("off", moduleItems...),

@@ -46,6 +46,8 @@ func (s *Session) REPL() error {
 			continue
 		}
 		quit, e := s.execWithPrompt(rl, line)
+		// Refresh the HUD after every command so the strip reflects the
+		// module/loot state just changed.
 		s.hud()
 		if e != nil {
 			if e == errQuit {
@@ -68,6 +70,8 @@ func (s *Session) execWithPrompt(rl *readline.Instance, line string) (bool, erro
 	if rl == nil {
 		return s.exec(rl, line)
 	}
+	// The ticker goroutine keeps the prompt alive during blocking commands;
+	// done is closed when exec returns so the goroutine cannot leak.
 	done := make(chan struct{})
 	go func() {
 		t := time.NewTicker(250 * time.Millisecond)
@@ -99,6 +103,8 @@ func (s *Session) execOnce(line string) error {
 	if len(fields) == 0 {
 		return nil
 	}
+	// The wizard requires an interactive readline prompt, which scripts do
+	// not have.
 	if fields[0] == "wizard" {
 		return fmt.Errorf("wizard is interactive; run it from the REPL")
 	}
@@ -119,6 +125,7 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 	case "help", "?":
 		s.help()
 	case "quit", "exit", "bye":
+		// Quitting stops every module and restores the network first.
 		s.Shutdown()
 		return true, nil
 	case "modules", "list":
@@ -141,6 +148,8 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 		if len(args) < 2 {
 			return false, fmt.Errorf("usage: set <module.key> <value>")
 		}
+		// Values with spaces rejoin so "set net.scan.targets 10.0.0.1 10.0.0.2"
+		// sets the whole list.
 		return false, s.setConfig(args[0], strings.Join(args[1:], " "))
 	case "get":
 		if len(args) == 0 {
@@ -172,6 +181,7 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 	case "hijack.dump":
 		s.hijackDump()
 	case "wizard":
+		// The wizard needs the live readline instance for prompts.
 		return false, s.Wizard(rl)
 	case "session.hijack":
 		return false, s.sessionHijack(args)
@@ -205,6 +215,8 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 		return false, s.BuildScript(args[0])
 	default:
 		// Allow "module on" / "module off" and "module [key value...]".
+		// Any unknown command that happens to be a registered module id is
+		// interpreted as a direct module invocation ("arp.spoof 10.0.0.5").
 		if m, ok := attacks.Get(cmd); ok {
 			_ = m
 			if len(args) == 0 {
@@ -232,6 +244,7 @@ func (s *Session) runArgs(args []string) error {
 		return fmt.Errorf("usage: on <module-id> [key value ...] | on <file>.toha3ee | on <file>.cap")
 	}
 	id := args[0]
+	// Registered module ids take priority over the file interpretations.
 	if _, ok := attacks.Get(id); ok {
 		return s.StartModule(id, parseOpts(args[1:]))
 	}
@@ -250,6 +263,9 @@ func (s *Session) runModuleWithOpts(id string, args []string) error {
 	return s.StartModule(id, parseOpts(args))
 }
 
+// parseOpts converts a flat "key value key value" argument list into an
+// options map. A trailing unmatched key is dropped rather than errored so
+// partial command lines stay forgiving.
 func parseOpts(args []string) map[string]string {
 	out := map[string]string{}
 	for i := 0; i+1 < len(args); i += 2 {
@@ -259,6 +275,8 @@ func parseOpts(args []string) map[string]string {
 }
 
 func (s *Session) help() {
+	// Static help text grouped by theme; command/description pairs are kept
+	// as fixed [2]string tuples so the rows render as a two-column table.
 	type grp struct {
 		name string
 		cmds [][2]string
@@ -312,9 +330,11 @@ func (s *Session) help() {
 
 func (s *Session) listModules(args []string) {
 	mods := attacks.List()
+	// One optional positional argument filters by category.
 	if len(args) == 1 {
 		mods = attacks.ListByCategory(args[0])
 	}
+	// Group modules by category, sorted alphabetically for stable output.
 	byCat := make(map[string][]attacks.Module)
 	var cats []string
 	for _, m := range mods {
@@ -343,6 +363,8 @@ func (s *Session) showModule(id string) error {
 		return fmt.Errorf("unknown module %q", id)
 	}
 	meta := m.Meta()
+	// Render the module metadata as a key/value block, skipping the fields
+	// the author left empty.
 	s.UI.Section("module " + meta.ID)
 	s.UI.KV("category", meta.Category)
 	s.UI.KV("risk", s.UI.RiskLevel(meta.Risk.String()))
@@ -394,11 +416,15 @@ func (s *Session) setConfig(key, value string) error {
 	if !ok {
 		return fmt.Errorf("config key must be 'module.key'")
 	}
+	// risk_confirm is special: setting it true marks the module as accepted
+	// so the high-risk gate in StartModule is satisfied.
 	if param == "risk_confirm" {
 		if b, err := strconv.ParseBool(value); err == nil && b {
 			s.Conf.ConfirmRisk(module)
 		}
 	}
+	// Canonicalize boolean spellings so the config store holds "true"/"false"
+	// regardless of how the user typed them ("TRUE", "1" etc. are rejected).
 	if strings.EqualFold(value, "true") || strings.EqualFold(value, "false") {
 		if b, err := strconv.ParseBool(value); err == nil {
 			if b {
@@ -416,6 +442,8 @@ func (s *Session) setConfig(key, value string) error {
 // splitModuleKey resolves "module.param" by splitting on the last dot so that
 // dotted module IDs like "arp.spoof.targets" resolve correctly.
 func splitModuleKey(key string) (module, param string, ok bool) {
+	// Scanning from the right keeps multi-dot module ids intact: the last
+	// dot always separates the id from its parameter.
 	for i := len(key) - 1; i > 0; i-- {
 		if key[i] == '.' {
 			return key[:i], key[i+1:], true
@@ -441,6 +469,7 @@ func (s *Session) showConfig(args []string) {
 	s.UI.Section("configuration")
 	rows := make([][]string, 0)
 	for _, k := range s.Conf.Keys() {
+		// A module filter keeps unrelated keys out of the listing.
 		if mod != "" && !strings.HasPrefix(k, mod+".") {
 			continue
 		}
@@ -465,6 +494,7 @@ func (s *Session) netShow(args []string) {
 }
 
 func (s *Session) eventsShow(args []string) {
+	// Default to the 20 most recent events; an optional count overrides it.
 	n := 20
 	if len(args) > 0 {
 		if parsed, err := strconv.Atoi(args[0]); err == nil {
@@ -480,6 +510,8 @@ func (s *Session) eventsShow(args []string) {
 	rows := make([][]string, 0, len(evs))
 	for _, e := range evs {
 		msg := ""
+		// The payload is best-effort: only string payloads render as the
+		// detail column, everything else shows empty.
 		if s, ok := e.Payload.(string); ok {
 			msg = s
 		}
@@ -513,6 +545,8 @@ func (s *Session) sessionsShow() {
 	s.UI.Section("sessions.show " + strconv.Itoa(len(sess)) + " sessions")
 	rows := make([][]string, 0, len(sess))
 	for _, ss := range sess {
+		// Only cookie names are listed here (values show under hijack.dump);
+		// the map iteration order is non-deterministic but cosmetic.
 		var cookies []string
 		for k := range ss.Cookies {
 			cookies = append(cookies, k)
@@ -546,9 +580,12 @@ func (s *Session) netProfile() {
 	s.UI.KV("dhcpv6", strconv.FormatBool(profile.SeesDHCPv6))
 	s.UI.KV("monitor", strconv.FormatBool(profile.MonitorCapable))
 
+	// The per-host table mirrors net.show but includes profile-specific ports.
 	if len(profile.Hosts) > 0 {
 		rows := make([][]string, 0, len(profile.Hosts))
 		for _, h := range profile.Hosts {
+			// Ports live in a set keyed by number; sort by collecting into a
+			// slice (iteration order here is only cosmetic).
 			ports := make([]uint16, 0, len(h.Ports))
 			for p := range h.Ports {
 				ports = append(ports, p)
@@ -570,6 +607,8 @@ func (s *Session) netProfile() {
 func (s *Session) printVectors(vecs []vectors.Vector, engine *vectors.Engine, profile *vectors.Profile) {
 	rows := make([][]string, 0, len(vecs))
 	for i, v := range vecs {
+		// Unsatisfiable vectors (missing prerequisites) are flagged amber so
+		// the operator can see at a glance which ones will actually run.
 		sat := "yes"
 		if !engine.Satisfiable(profile, v) {
 			sat = s.UI.Amber("no")
@@ -584,6 +623,8 @@ func (s *Session) printVectors(vecs []vectors.Vector, engine *vectors.Engine, pr
 		})
 	}
 	s.UI.Table([]string{"#", "module", "target", "conf", "risk", "satisfiable"}, rows)
+	// Impact narratives render below the table, keyed by the same 1-based
+	// index shown in the first column.
 	for i, v := range vecs {
 		if v.Impact != "" {
 			fmt.Fprintf(s.Out, "  %s %s\n", s.UI.DimWhite(strconv.Itoa(i+1)+"."), s.UI.White(v.Impact))
@@ -634,8 +675,12 @@ func (s *Session) phishServe(args []string) error {
 	if len(args) > 1 {
 		port = args[1]
 	}
+	// Serve from the attacker's own interface IP so the victim only needs a
+	// browser to reach us.
 	addr := s.Iface.IP.String() + ":" + port
 	fields := phish.DefaultFields(templateID)
+	// The form action and "original site" link both point back to us so
+	// captured submissions land on this host.
 	fields.Action = "/phish/" + templateID + "/submit"
 	fields.Orig = "http://" + addr
 	html, err := phish.Render(templateID, fields)
@@ -660,6 +705,9 @@ func (s *Session) hijackDump() {
 	rows := make([][]string, 0, len(sess))
 	for _, ss := range sess {
 		var cookies []string
+		// Cookie values are shown here (unlike sessions.show), and a captured
+		// Authorization header is shown as a pseudo-cookie since it grants
+		// the same session access.
 		for k, v := range ss.Cookies {
 			cookies = append(cookies, k+"="+v)
 		}
@@ -677,6 +725,8 @@ func (s *Session) runCaplet(path string) error {
 	if err != nil {
 		return err
 	}
+	// Blank lines and '#' comments are skipped; every other line is fed
+	// through the normal command dispatcher.
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -699,6 +749,7 @@ func (s *Session) echoCommand(line string) {
 // then returns. It is the headless equivalent of the interactive console and
 // powers the "toha3ee --eval 'net.scan; net.show'" one-shot mode.
 func (s *Session) Eval(seq string) error {
+	// Split on both ';' and newlines so pasted multi-line sequences work.
 	lines := strings.FieldsFunc(seq, func(r rune) bool { return r == ';' || r == '\n' })
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -723,6 +774,9 @@ func (s *Session) report(args []string) error {
 	return writeReport(path, rep)
 }
 
+// The unused-import guards below keep these packages in the import graph; the
+// type assertions prevent "declared and not used" errors when the packages'
+// symbols are only referenced via methods.
 var _ = store.Cred{}
 var _ = events.Event{}
 var _ = time.Time{}

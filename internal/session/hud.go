@@ -11,9 +11,11 @@ import (
 // and running modules — so the operator can read the battlefield at a glance
 // without dumping tables.
 func (s *Session) hud() {
+	// Non-TTY output (pipes, files) has no prompt to attach the strip to.
 	if !s.UI.Enabled() {
 		return
 	}
+	// Left half: interface and running modules.
 	var left strings.Builder
 	left.WriteString(s.UI.DimWhite("iface "))
 	if s.Iface != nil {
@@ -30,9 +32,11 @@ func (s *Session) hud() {
 	if len(running) == 0 {
 		left.WriteString(s.UI.DimWhite("none"))
 	} else {
+		// Running modules render in red as an active-attack warning.
 		left.WriteString(s.UI.Red(strings.Join(running, ",")))
 	}
 
+	// Right half: cumulative loot counts from the session store.
 	var right strings.Builder
 	hosts := len(s.Store.Hosts())
 	ports := 0
@@ -59,6 +63,7 @@ func (s *Session) hudSummary() string {
 	}
 	running := s.Running()
 	if len(running) == 0 {
+		// Keep the bracket list well-formed even when nothing is running.
 		running = []string{"none"}
 	}
 	hosts := len(s.Store.Hosts())

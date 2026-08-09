@@ -15,6 +15,8 @@ type hijackState struct {
 
 // Injector returns the shared injector (created lazily).
 func (s *Session) Injector() *hijack.Injector {
+	// Guarded by the session mutex so concurrent REPL commands and proxy
+	// goroutines never race on first-time initialization.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.hijack == nil {
@@ -42,6 +44,8 @@ func (s *Session) sessionHijack(args []string) error {
 		s.Injector().Remove(args[1])
 		fmt.Fprintf(s.Out, "removed injection for %s\n", args[1])
 	case "show", "list":
+		// Render every rule with its optional host filter and injected
+		// cookies/headers so the operator can review active injections.
 		for _, r := range s.Injector().Rules() {
 			fmt.Fprintf(s.Out, "  %-18s host=%-24s cookies=%v headers=%v\n", r.VictimIP, r.Host, r.Cookies, r.Headers)
 		}
@@ -55,17 +59,24 @@ func (s *Session) hijackAdd(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: session.hijack add <victim-ip> [host=<host>] [cookie=\"n=v\"] [header=\"K: V\"]")
 	}
+	// Start with empty cookie/header maps so the rule is always safe to
+	// iterate over even if the user supplies no extra options.
 	rule := hijack.CookieInjection{VictimIP: args[0], Cookies: map[string]string{}, Headers: map[string]string{}}
 	for _, arg := range args[1:] {
 		switch {
 		case strings.HasPrefix(arg, "host="):
+			// Optional host filter: the injection only applies to requests
+			// whose Host header matches.
 			rule.Host = strings.TrimPrefix(arg, "host=")
 		case strings.HasPrefix(arg, "cookie="):
+			// "cookie=name=value" splits on the first '=' after the prefix.
 			kv := strings.TrimPrefix(arg, "cookie=")
 			if i := strings.IndexByte(kv, '='); i > 0 {
 				rule.Cookies[kv[:i]] = kv[i+1:]
 			}
 		case strings.HasPrefix(arg, "header="):
+			// "header=K: V" splits on the first ':' and trims whitespace on
+			// both sides of the header value.
 			kv := strings.TrimPrefix(arg, "header=")
 			if i := strings.IndexByte(kv, ':'); i > 0 {
 				rule.Headers[strings.TrimSpace(kv[:i])] = strings.TrimSpace(kv[i+1:])
