@@ -85,9 +85,16 @@ crashing.
 
 ## Risk confirmation
 
-High/Critical modules require confirmation before first use. Confirmations
-are persisted in `confirmed_risks`, so you are not re-prompted every time in a
-later session.
+High/Critical modules require confirmation before first use. Confirm from the
+console (or a script) with:
+
+```text
+set <module>.risk_confirm true
+```
+
+Confirmations are persisted in `confirmed_risks`, so you are not re-prompted
+every time in a later session. The guided wizard and `.toha3ee` scripts
+confirm high/critical modules automatically on launch.
 
 ## Next steps
 
