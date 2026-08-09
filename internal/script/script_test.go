@@ -12,15 +12,16 @@ import (
 // slices are guarded by mu because the engine can drive the runner from
 // background goroutines (e.g. "wait for" polling) while the test mutates state.
 type mockRunner struct {
-	mu      sync.Mutex
-	conf    map[string]string
-	running map[string]bool
-	props   map[string]string
-	echos   []string
-	started []string
-	stopped []string
-	reports []string
-	cmds    []string
+	mu          sync.Mutex
+	conf        map[string]string
+	running     map[string]bool
+	props       map[string]string
+	echos       []string
+	started     []string
+	startedOpts []map[string]string
+	stopped     []string
+	reports     []string
+	cmds        []string
 }
 
 func newMock() *mockRunner {
@@ -50,6 +51,7 @@ func (m *mockRunner) GetConfig(key string) string {
 func (m *mockRunner) Start(id string, opts map[string]string) error {
 	m.mu.Lock()
 	m.started = append(m.started, id)
+	m.startedOpts = append(m.startedOpts, opts)
 	m.running[id] = true
 	m.mu.Unlock()
 	return nil
@@ -346,6 +348,118 @@ echo -> "never"
 	}
 	if len(m.echos) != 1 || m.echos[0] != "one" {
 		t.Errorf("stop didn't halt: %v", m.echos)
+	}
+}
+
+func TestBreakContinueInRepeatAndWhile(t *testing.T) {
+	src := `
+repeat 3 times
+	break
+end
+repeat 3 times
+	continue
+	echo -> "never"
+end
+repeat 5 times
+	while true
+		break
+	end
+end
+echo -> "ok"
+`
+	m, err := run(src)
+	if err != nil {
+		t.Fatalf("break/continue in repeat/while must not leak out: %v", err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "ok" {
+		t.Errorf("loop control echos wrong: %v", m.echos)
+	}
+}
+
+func TestWhileContinueDoesNotSkipCondition(t *testing.T) {
+	m := newMock()
+	e := NewEngine(m)
+	// continue re-checks the while condition; the sleep keeps the loop from
+	// spinning millions of times before the external flag flips.
+	prog := `
+while net.scan is running
+	sleep -> 0.05
+	continue
+	echo -> "never"
+end
+echo -> "stopped"
+`
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		m.setRunning("net.scan", false)
+	}()
+	m.setRunning("net.scan", true)
+	if err := e.Run(prog); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "stopped" {
+		t.Errorf("while+continue echos wrong: %v", m.echos)
+	}
+}
+
+func TestSingleQuotedStringIsLiteral(t *testing.T) {
+	m, err := run("echo -> 'hosts: $(hosts.count)'\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "hosts: $(hosts.count)" {
+		t.Errorf("single-quoted string was interpolated: %v", m.echos)
+	}
+}
+
+func TestNegativeAndFlagValues(t *testing.T) {
+	src := `
+_n -> -1
+echo -> "n=$(_n)"
+exec nmap -sS -p 80,443 10.0.0.1
+`
+	m, err := run(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "n=-1" {
+		t.Errorf("negative value failed: %v", m.echos)
+	}
+	want := "nmap -sS -p 80,443 10.0.0.1"
+	if len(m.cmds) != 1 || m.cmds[0] != want {
+		t.Errorf("exec flags failed: %q (want %q)", m.cmds, want)
+	}
+}
+
+func TestWaitMaxRequiresNumber(t *testing.T) {
+	if _, err := Parse("wait for net.scan max abc\n"); err == nil {
+		t.Error("expected an error for 'wait for ... max abc'")
+	}
+}
+
+func TestUnexpectedCharacterIsError(t *testing.T) {
+	for _, src := range []string{"echo -> hello@world\n", "echo -> \"x\" ;\n"} {
+		if _, err := Parse(src); err == nil {
+			t.Errorf("expected a lex error for %q", src)
+		}
+	}
+}
+
+func TestOptValueKeepsInterpolationAcrossCommas(t *testing.T) {
+	src := `
+_h -> 9
+on arp.spoof targets 10.0.0.1,$(_h),10.0.0.2
+`
+	m, err := run(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.started) != 1 || len(m.startedOpts) != 1 {
+		t.Fatalf("start not recorded: started=%v opts=%v", m.started, m.startedOpts)
+	}
+	opts := m.startedOpts[0]
+	if opts["targets"] != "10.0.0.1,9,10.0.0.2" {
+		t.Errorf("comma-joined option lost interpolation: %q", opts["targets"])
 	}
 }
 
