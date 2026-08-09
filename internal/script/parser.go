@@ -221,16 +221,33 @@ func (p *parser) parseOptValue() (Expr, error) {
 	if !p.at(tkComma) {
 		return first, nil
 	}
-	parts := []string{unquoteText(first)}
+	segs := optValueSegs(first)
 	for p.at(tkComma) {
 		p.next()
 		e, err := p.parseExprValue()
 		if err != nil {
 			return nil, err
 		}
-		parts = append(parts, unquoteText(e))
+		segs = append(segs, Seg{Text: ","})
+		segs = append(segs, optValueSegs(e)...)
 	}
-	return StringLit{Segs: []Seg{{Text: strings.Join(parts, ",")}}}, nil
+	return StringLit{Segs: segs}, nil
+}
+
+// optValueSegs flattens an option-value piece into interpolation segments so
+// that joining comma-separated pieces keeps $(...) references live instead of
+// turning them into literal text.
+func optValueSegs(e Expr) []Seg {
+	switch v := e.(type) {
+	case StringLit:
+		return v.Segs
+	case PropExpr:
+		return []Seg{{Prop: v.Path}}
+	case IdentExpr:
+		return []Seg{{Var: v.Name}}
+	default:
+		return []Seg{{Text: exprText(e)}}
+	}
 }
 
 func (p *parser) parseStop() (Stmt, error) {
