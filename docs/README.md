@@ -19,6 +19,7 @@ scripts or one-shot command sequences.
 | [Updating toha3ee](update.md) | Upgrade, reinstall, rollback and what's preserved |
 | [User guide](user-guide.md) | The console, commands, wizard, caplets, common workflows |
 | [Scripting reference](scripting.md) | The full `.toha3ee` language |
+| [Cheat sheet](cheat-sheet.md) | Copy-paste workflows grouped by task (recon → MITM → report) |
 | [Configuration](configuration.md) | `toha3ee.json`, per-module settings, environment variables |
 | [Architecture](architecture.md) | Module contract, lifecycle, layers, stealth engine |
 | [Module reference](module-reference.md) | Every module, its risk, targets and settings |
