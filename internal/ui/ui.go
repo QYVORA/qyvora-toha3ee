@@ -297,10 +297,19 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	}
 }
 
-// Banner prints the console banner art followed by the tagline.
+// Banner prints the console banner art in the brand red (matching the toha3ee
+// logo) followed by the tagline.
 func (u *UI) Banner(tagline string) {
 	for _, line := range bannerArt {
-		fmt.Fprintln(u.w, u.White(line))
+		var b strings.Builder
+		for _, r := range line {
+			if r == ' ' {
+				b.WriteRune(r)
+				continue
+			}
+			b.WriteString(u.paint(string(r), Red))
+		}
+		fmt.Fprintln(u.w, b.String())
 	}
 	fmt.Fprintln(u.w)
 	fmt.Fprintln(u.w, u.BoldWhite(strings.TrimSpace(tagline)))

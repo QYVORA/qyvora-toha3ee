@@ -132,3 +132,34 @@ func TestLineWriterNoColorPassthrough(t *testing.T) {
 		t.Fatalf("no-color passthrough mangled output: %q", got)
 	}
 }
+
+func TestBannerBrandRed(t *testing.T) {
+	nGlyphs := 0
+	for _, line := range bannerArt {
+		for _, r := range line {
+			if r != ' ' {
+				nGlyphs++
+			}
+		}
+	}
+
+	var sb strings.Builder
+	u := New(&sb)
+	u.SetColor(true)
+	u.Banner("toha3ee 3.1.0")
+	out := sb.String()
+	if got := strings.Count(out, Red); got != nGlyphs {
+		t.Errorf("red glyph codes = %d, want %d (one per '@' glyph)", got, nGlyphs)
+	}
+	if strings.Contains(out, Red+" ") {
+		t.Error("spaces must not be wrapped in color codes")
+	}
+
+	var plain strings.Builder
+	up := New(&plain)
+	up.SetColor(false)
+	up.Banner("toha3ee 3.1.0")
+	if strings.Contains(plain.String(), "\x1b") {
+		t.Error("banner must be plain when colors are disabled")
+	}
+}
