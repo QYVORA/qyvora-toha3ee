@@ -37,6 +37,10 @@ type Session struct {
 	mu      sync.Mutex // guards the running map and hijack injector
 	running map[string]*runningModule
 	hijack  *hijackState
+	// cwd is the console's working directory, used by host shell commands
+	// (!command, shell, cd, pwd). It persists across commands so the operator
+	// can navigate while working.
+	cwd string
 }
 
 // runningModule tracks one live module instance.

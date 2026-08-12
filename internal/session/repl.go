@@ -1,7 +1,10 @@
 package session
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +23,7 @@ import (
 func (s *Session) REPL() error {
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:      s.UI.Prompt("toha3ee"),
-		HistoryFile: ".toha3ee_history",
+		HistoryFile: s.historyPath(),
 		AutoComplete: readline.NewPrefixCompleter(
 			commandsCompleter()...,
 		),
@@ -39,7 +42,13 @@ func (s *Session) REPL() error {
 	for {
 		line, err := rl.Readline()
 		if err != nil {
-			return err // EOF (Ctrl-D)
+			// Ctrl-D (EOF) and Ctrl-C at the empty prompt leave the console
+			// cleanly; the caller's deferred Shutdown stops modules and
+			// restores the network.
+			if errors.Is(err, readline.ErrInterrupt) {
+				continue
+			}
+			return nil
 		}
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -62,32 +71,27 @@ func (s *Session) REPL() error {
 
 var errQuit = fmt.Errorf("quit")
 
-// execWithPrompt runs one command while keeping the readline prompt visible
-// and refreshed. Long-running modules (scans, sniffers, spoofers) block exec,
-// so a ticker re-renders the prompt until the command returns, matching the
-// live prompt behavior of tools like bettercap.
+// execWithPrompt runs one command. The readline prompt is left alone and
+// command output is the only writer during execution.
+//
+// An earlier implementation refreshed the readline prompt from a ticker
+// goroutine while blocking commands ran. That raced with readline's own
+// rendering and corrupted interactive sub-prompts (a typed answer in the
+// wizard or shell sub-prompt could be lost or misread), so the ticker is gone
+// entirely: the next Readline renders a fresh prompt when exec returns.
 func (s *Session) execWithPrompt(rl *readline.Instance, line string) (bool, error) {
-	if rl == nil {
-		return s.exec(rl, line)
+	return s.exec(rl, line)
+}
+
+// historyPath returns the console history file, kept in the user's home
+// directory so the file is not dumped into whatever directory the console
+// was started in.
+func (s *Session) historyPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".toha3ee_history"
 	}
-	// The ticker goroutine keeps the prompt alive during blocking commands;
-	// done is closed when exec returns so the goroutine cannot leak.
-	done := make(chan struct{})
-	go func() {
-		t := time.NewTicker(250 * time.Millisecond)
-		defer t.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-t.C:
-				rl.Refresh()
-			}
-		}
-	}()
-	quit, err := s.exec(rl, line)
-	close(done)
-	return quit, err
+	return filepath.Join(home, ".toha3ee_history")
 }
 
 // versionString returns the build version (injected by the CLI at build time).
@@ -118,6 +122,11 @@ func (s *Session) execOnce(line string) error {
 // exec dispatches a single command line.
 func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 	fields := strings.Fields(line)
+	if strings.HasPrefix(fields[0], "!") {
+		// Shell escape hatch (bettercap convention): "!ls -l" runs "ls -l"
+		// on the host, fully outside the command table.
+		return false, s.runHostCommand(fields[0][1:], fields[1:])
+	}
 	cmd := fields[0]
 	args := fields[1:]
 
@@ -128,6 +137,21 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 		// Quitting stops every module and restores the network first.
 		s.Shutdown()
 		return true, nil
+	case "shell":
+		if len(args) == 1 && args[0] == "--prompt" {
+			return false, s.changeDirOrEscape(rl)
+		}
+		if len(args) == 0 {
+			return false, s.runHostShell()
+		}
+		return false, s.runHostCommand(args[0], args[1:])
+	case "cd":
+		if len(args) == 1 && args[0] == "--prompt" {
+			return false, s.changeDirOrEscape(rl)
+		}
+		return false, s.changeDir(strings.Join(args, " "))
+	case "pwd":
+		s.printCwd()
 	case "modules", "list":
 		s.listModules(args)
 	case "module", "show":
@@ -289,6 +313,12 @@ func (s *Session) help() {
 			{"set <module.key> <val>", "set a config value (e.g. \"set arp.spoof.targets 192.168.8.0/24\")"},
 			{"get <module.key>", "show a config value"},
 			{"config", "dump the current configuration"},
+		}},
+		{"Shell", [][2]string{
+			{"!<command>", "run a host command (e.g. !ls -l)"},
+			{"shell", "drop into an interactive host shell"},
+			{"cd [dir]", "change the console working directory"},
+			{"pwd", "print the working directory"},
 		}},
 		{"Modules", [][2]string{
 			{"modules [category]", "list all modules (optionally filtered by category)"},
