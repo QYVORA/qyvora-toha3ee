@@ -135,10 +135,17 @@ func (i *Iface) Gateway() (net.IP, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read /proc/net/route: %w", err)
 	}
+	return parseRouteFile(data, i.Name)
+}
+
+// parseRouteFile extracts the default-route gateway for an interface from the
+// kernel's /proc/net/route format. It is split out from Gateway so the
+// little-endian parsing can be unit-tested without touching the filesystem.
+func parseRouteFile(data []byte, iface string) (net.IP, error) {
 	// Drop the header line; every remaining line is one kernel route.
 	for _, line := range strings.Split(string(data), "\n")[1:] {
 		fields := strings.Fields(line)
-		if len(fields) < 4 || fields[0] != i.Name {
+		if len(fields) < 4 || fields[0] != iface {
 			continue // not a route belonging to our interface
 		}
 		if fields[1] != "00000000" { // not the default route
@@ -154,7 +161,7 @@ func (i *Iface) Gateway() (net.IP, error) {
 		}
 		return gw, nil
 	}
-	return nil, fmt.Errorf("no default gateway for interface %s", i.Name)
+	return nil, fmt.Errorf("no default gateway for interface %s", iface)
 }
 
 // hexToIP converts the little-endian hex IP format used in /proc/net/route
