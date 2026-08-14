@@ -5,6 +5,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,35 +18,92 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/config"
-	"github.com/qyvora/toha3ee/internal/netx"
-	"github.com/qyvora/toha3ee/internal/session"
-	"github.com/qyvora/toha3ee/internal/ui"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/config"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/session"
+	"github.com/QYVORA/qyvora-toha3ee/internal/ui"
 
 	// Register all attack modules and vector rules.
 	// Each package runs an init() that self-registers its modules (and, for
 	// vectors/rules, its vector rules) in the central attacks registry, so the
 	// CLI never needs to know what modules exist at compile time.
-	_ "github.com/qyvora/toha3ee/internal/attacks/auth"
-	_ "github.com/qyvora/toha3ee/internal/attacks/enum"
-	_ "github.com/qyvora/toha3ee/internal/attacks/espionage"
-	_ "github.com/qyvora/toha3ee/internal/attacks/mitm"
-	_ "github.com/qyvora/toha3ee/internal/attacks/osint"
-	_ "github.com/qyvora/toha3ee/internal/attacks/post"
-	_ "github.com/qyvora/toha3ee/internal/attacks/recon"
-	_ "github.com/qyvora/toha3ee/internal/attacks/switch"
-	_ "github.com/qyvora/toha3ee/internal/attacks/web"
-	_ "github.com/qyvora/toha3ee/internal/attacks/wlan"
-	_ "github.com/qyvora/toha3ee/internal/vectors/rules"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/auth"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/enum"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/espionage"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/mitm"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/osint"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/post"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/recon"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/switch"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/web"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/wlan"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/vectors/rules"
 )
 
 // noSudo is set by the --no-sudo flag and suppresses the automatic sudo
 // re-exec escalation (see maybeElevate).
 var noSudo bool
+
+// Exit statuses documented in man/toha3ee.1 (EXIT STATUS).
+const (
+	exitOK          = 0
+	exitRuntime     = 1
+	exitUsage       = 2
+	exitInterrupted = 130 // 128 + SIGINT, the conventional "interrupted" status
+)
+
+// usageError marks an error as a usage mistake so it maps to exit code 2
+// instead of 1. The cobra arg validators report wrong argument counts as
+// plain errors, so they are wrapped to keep the documented contract honest.
+type usageError struct{ err error }
+
+func (u usageError) Error() string { return u.err.Error() }
+func (u usageError) Unwrap() error { return u.err }
+
+// exactArgsUsage enforces an exact argument count, classifying violations as
+// usage errors (exit 2).
+func exactArgsUsage(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := cobra.ExactArgs(n)(cmd, args); err != nil {
+			return usageError{err}
+		}
+		return nil
+	}
+}
+
+// isValidOutput reports whether -o names a supported report format.// isValidOutput reports whether -o names a supported report format.
+func isValidOutput(spec string) bool {
+	switch spec {
+	case "terminal", "json", "markdown":
+		return true
+	}
+	return false
+}
+
+// exitCodeFor maps an execution error to the documented exit status: usage
+// mistakes (bad flags, wrong argument counts, unknown subcommands) exit 2,
+// everything else 1.
+func exitCodeFor(err error) int {
+	if err == nil {
+		return exitOK
+	}
+	var ue usageError
+	if errors.As(err, &ue) {
+		return exitUsage
+	}
+	// Cobra reports unknown subcommands ("unknown command \"x\" for
+	// \"toha3ee\"") as plain errors; treat them as usage mistakes too.
+	if msg := err.Error(); strings.HasPrefix(msg, "unknown command") && strings.Contains(msg, " for ") {
+		return exitUsage
+	}
+	return exitRuntime
+}
 
 func main() {
 	// Panic recovery: even if a module or handler panics, run the global
@@ -66,6 +124,7 @@ func main() {
 	var ifaceName string
 	var configPath string
 	var eval string
+	var output string
 	var verbose bool
 	var noColor bool
 
@@ -77,6 +136,11 @@ func main() {
 		// Bare "toha3ee" drops straight into the interactive console;
 		// "--eval \"net.scan; net.show\"" runs without a subcommand too.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Reject an unknown -o value before any command runs so the exit
+			// status is the documented 2 (usage) rather than a runtime error.
+			if output != "" && !isValidOutput(output) {
+				return usageError{fmt.Errorf("invalid output format %q (terminal, json, markdown)", output)}
+			}
 			// Any invocation (subcommand or not) escalates to root before it
 			// touches the network stack.
 			return maybeElevate()
@@ -99,8 +163,17 @@ func main() {
 	root.PersistentFlags().StringVar(&configPath, "config", "", "config file path (default toha3ee.json)")
 	root.PersistentFlags().StringVar(&eval, "eval", "", "run a one-shot command sequence and exit, e.g. \"net.scan; net.show\"")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose logging")
+	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress informational status output")
 	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 	root.PersistentFlags().BoolVar(&noSudo, "no-sudo", false, "do not auto-escalate to root via sudo")
+	root.PersistentFlags().StringVarP(&output, "output", "o", "", "output format for reports and version: terminal, json, markdown")
+	root.PersistentFlags().StringVar(&eventsStream, "events", "", "emit JSONL event stream to stdout, stderr, or a file path (e.g. --events session.jsonl)")
+
+	// Flag parse failures are usage errors: classify them so the process
+	// exits with status 2 (see man/toha3ee.1 EXIT STATUS).
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return usageError{err}
+	})
 
 	// `toha3ee interactive` is the explicit spelling of the default REPL mode.
 	replCmd := &cobra.Command{
@@ -137,7 +210,7 @@ func main() {
 				seq = args[0]
 			}
 			if seq == "" {
-				return fmt.Errorf("eval: nothing to run (pass --eval or a quoted string)")
+				return usageError{fmt.Errorf("eval: nothing to run (pass --eval or a quoted string)")}
 			}
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.Eval(seq)
@@ -150,7 +223,7 @@ func main() {
 	runCapletCmd := &cobra.Command{
 		Use:   "run",
 		Short: "execute a script or caplet non-interactively",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactArgsUsage(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				if strings.HasSuffix(args[0], ".toha3ee") {
@@ -164,7 +237,7 @@ func main() {
 	scriptCmd := &cobra.Command{
 		Use:   "script",
 		Short: "execute a .toha3ee script file",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactArgsUsage(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.RunScript(args[0])
@@ -177,7 +250,7 @@ func main() {
 	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "validate a .toha3ee script and print a dry-run plan",
-		Args:  cobra.ExactArgs(1),
+		Args:  exactArgsUsage(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.BuildScript(args[0])
@@ -203,19 +276,92 @@ func main() {
 	versionCmd := &cobra.Command{
 		Use:   "version",
 		Short: "print the version",
-		Run: func(cmd *cobra.Command, args []string) {
-			u := ui.New(os.Stdout)
-			u.SetColor(!noColor && u.Enabled())
-			u.Banner("network exploitation & MITM framework")
-			u.BannerFoot("", session.Version)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch output {
+			case "json":
+				data, err := json.MarshalIndent(map[string]string{
+					"framework": "toha3ee",
+					"version":   session.Version,
+				}, "", "  ")
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(os.Stdout, string(data))
+			case "markdown":
+				fmt.Fprintf(os.Stdout, "**toha3ee** %s\n", session.Version)
+			default:
+				u := ui.New(os.Stdout)
+				u.SetColor(!noColor && u.Enabled())
+				u.Banner("network exploitation & MITM framework")
+				u.BannerFoot("", session.Version)
+			}
+			return nil
 		},
 	}
 
-	root.AddCommand(replCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd)
+	// `toha3ee report [file]` re-renders a previously written session report
+	// in the requested -o format. The on-disk artifact stays JSON; -o only
+	// controls what is printed to stdout (terminal, json, markdown).
+	reportCmd := &cobra.Command{
+		Use:   "report",
+		Short: "render a saved session report (default toha3ee-report.json)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := "toha3ee-report.json"
+			if len(args) == 1 {
+				path = args[0]
+			}
+			rep, err := session.LoadReport(path)
+			if err != nil {
+				return err
+			}
+			switch output {
+			case "json":
+				data, err := rep.RenderJSON()
+				if err != nil {
+					return err
+				}
+				_, err = os.Stdout.Write(data)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(os.Stdout)
+			case "markdown":
+				fmt.Fprint(os.Stdout, rep.RenderMarkdown())
+			default:
+				fmt.Fprint(os.Stdout, rep.RenderTerminal())
+			}
+			return nil
+		},
+	}
+
+	// `toha3ee completion <shell>` emits a shell completion script. It is the
+	// canonical verb shared with the other QYVORA frameworks.
+	completionCmd := &cobra.Command{
+		Use:   "completion bash|zsh|fish|powershell",
+		Short: "generate a shell completion script",
+		Args:  exactArgsUsage(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return root.GenBashCompletionV2(os.Stdout, true)
+			case "zsh":
+				return root.GenZshCompletion(os.Stdout)
+			case "fish":
+				return root.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return root.GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return usageError{fmt.Errorf("unknown shell %q (bash, zsh, fish, powershell)", args[0])}
+			}
+		},
+	}
+
+	root.AddCommand(replCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd, reportCmd, completionCmd)
 	root.SetArgs(os.Args[1:])
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toha3ee:", err)
-		os.Exit(1)
+		os.Exit(exitCodeFor(err))
 	}
 }
 
@@ -246,6 +392,58 @@ func printModules(u *ui.UI, mods []attacks.Module) {
 	u.Status("+", "%d modules registered", len(mods))
 }
 
+// eventsStream is bound to the --events persistent flag. It is package-level
+// because the run/openEventsWriter helpers are called from every subcommand.
+var eventsStream string
+
+// quiet is bound to the -q/--quiet flag and suppresses informational status
+// lines (never errors or command results).
+var quiet bool
+
+// openEventsWriter resolves the --events destination spec into a writer:
+//
+//	""        disabled (no event stream)
+//	"stdout"  JSONL to stdout (machine output; do not mix with human reports)
+//	"stderr"  JSONL to stderr (the default choice for interactive use)
+//	anything else is a file path, created/truncated with 0600
+//
+// The returned close function must be called when the stream is done.
+func openEventsWriter(spec string) (io.Writer, func() error, error) {
+	switch spec {
+	case "":
+		return nil, nil, nil
+	case "stdout":
+		return os.Stdout, nil, nil
+	case "stderr":
+		return os.Stderr, nil, nil
+	}
+	f, err := os.OpenFile(spec, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("events file: %w", err)
+	}
+	return f, f.Close, nil
+}
+
+// newEventsEmitter builds an emitter bound to the --events destination. It
+// returns (nil, nil, nil) when the stream is disabled.
+func newEventsEmitter() (*events.Emitter, func(), error) {
+	w, closeFn, err := openEventsWriter(eventsStream)
+	if err != nil {
+		return nil, nil, err
+	}
+	if w == nil {
+		return nil, nil, nil
+	}
+	execID := fmt.Sprintf("toha3ee-%d", time.Now().UnixNano())
+	return events.NewEmitter(w, execID), func() {
+		if closeFn != nil {
+			_ = closeFn()
+		}
+	}, nil
+}
+
+// run executes the session body (REPL, eval, script, build) against a live
+// session, wiring the optional JSONL event stream around it.
 func run(ifaceName, configPath string, verbose, noColor bool, body func(*session.Session) error) error {
 	log := slog.Default()
 	if !verbose {
@@ -266,6 +464,9 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 	}
 
 	s := session.New(iface, os.Stdout, log)
+	if quiet {
+		s.UI.Quiet = true
+	}
 	if noColor {
 		s.SetColor(false)
 	}
@@ -282,7 +483,7 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 		<-sigCh
 		fmt.Fprintln(os.Stderr, "\n[*] Caught signal, cleaning up...")
 		s.Shutdown()
-		os.Exit(0)
+		os.Exit(exitInterrupted)
 	}()
 
 	// Apply a user-supplied config file on top of the defaults; errors are
@@ -292,7 +493,39 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 			s.Conf = cfg
 		}
 	}
-	return body(s)
+
+	// Bind the optional JSONL event stream before any command runs so the
+	// full lifecycle (run.started .. run.completed) is captured.
+	emitter, closeStream, err := newEventsEmitter()
+	if err != nil {
+		return err
+	}
+	if closeStream != nil {
+		defer closeStream()
+	}
+	if emitter != nil {
+		s.Events = emitter
+		events.SubscribeJSONL(s.Bus, emitter)
+		emitter.Info("toha3ee", events.RunStarted, map[string]any{
+			"version": session.Version,
+			"iface":   iface.Name,
+			"cidr":    iface.CIDR(),
+		})
+	}
+	runErr := body(s)
+	if emitter != nil {
+		if runErr != nil {
+			emitter.Fail("toha3ee", events.Error, map[string]any{"message": runErr.Error()})
+		} else {
+			emitter.Info("toha3ee", events.RunCompleted, map[string]any{
+				"hosts":    len(s.Store.Hosts()),
+				"creds":    len(s.Store.Creds()),
+				"sessions": len(s.Store.Sessions()),
+				"events":   len(s.Store.Events()),
+			})
+		}
+	}
+	return runErr
 }
 
 func runWizard(s *session.Session) error {
