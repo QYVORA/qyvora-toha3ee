@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // Report is the serialized session report.
@@ -92,7 +93,7 @@ func buildReport(db *store.Store, running []string) *Report {
 
 // writeReport serializes rep as indented JSON to path.
 func writeReport(path string, rep *Report) error {
-	data, err := json.MarshalIndent(rep, "", "  ")
+	data, err := rep.RenderJSON()
 	if err != nil {
 		return err
 	}
@@ -101,6 +102,116 @@ func writeReport(path string, rep *Report) error {
 		return fmt.Errorf("write report: %w", err)
 	}
 	return nil
+}
+
+// RenderJSON serializes the report as indented JSON.
+func (r *Report) RenderJSON() ([]byte, error) {
+	return json.MarshalIndent(r, "", "  ")
+}
+
+// RenderTerminal renders a human-readable summary. Credential passwords are
+// redacted: the JSON format is the only one that carries plaintext loot.
+func (r *Report) RenderTerminal() string {
+	var b strings.Builder
+	b.WriteString("toha3ee session report\n")
+	b.WriteString("=====================\n")
+	fmt.Fprintf(&b, "generated: %s\n", r.Generated.Format(time.RFC3339))
+	fmt.Fprintf(&b, "running modules: %s\n", strings.Join(r.Running, ", "))
+	b.WriteString("\n")
+	if len(r.Hosts) == 0 {
+		b.WriteString("hosts: none\n")
+	} else {
+		fmt.Fprintf(&b, "hosts (%d):\n", len(r.Hosts))
+		for _, h := range r.Hosts {
+			fmt.Fprintf(&b, "  %s  %s  %s\n", h.IP, h.MAC, h.Vendor)
+		}
+	}
+	b.WriteString("\n")
+	if len(r.Creds) == 0 {
+		b.WriteString("credentials: none\n")
+	} else {
+		fmt.Fprintf(&b, "credentials (%d):\n", len(r.Creds))
+		for _, c := range r.Creds {
+			fmt.Fprintf(&b, "  #%d %s  %s:%s  %s\n", c.ID, c.Service, c.Username, redacted(c.Password), c.VictimIP)
+		}
+	}
+	b.WriteString("\n")
+	if len(r.Sessions) == 0 {
+		b.WriteString("sessions: none\n")
+	} else {
+		fmt.Fprintf(&b, "sessions (%d):\n", len(r.Sessions))
+		for _, ss := range r.Sessions {
+			fmt.Fprintf(&b, "  #%d %s  host=%s cookies=%d\n", ss.ID, ss.VictimIP, ss.Host, len(ss.Cookies))
+		}
+	}
+	return b.String()
+}
+
+// RenderMarkdown renders the report as Markdown. Passwords are redacted.
+func (r *Report) RenderMarkdown() string {
+	var b strings.Builder
+	b.WriteString("# toha3ee session report\n\n")
+	fmt.Fprintf(&b, "- **generated**: %s\n", r.Generated.Format(time.RFC3339))
+	fmt.Fprintf(&b, "- **running modules**: %s\n", strings.Join(r.Running, ", "))
+	b.WriteString("\n## Hosts\n\n")
+	if len(r.Hosts) == 0 {
+		b.WriteString("_none_\n")
+	} else {
+		b.WriteString("| ip | mac | vendor |\n| --- | --- | --- |\n")
+		for _, h := range r.Hosts {
+			fmt.Fprintf(&b, "| %s | %s | %s |\n", h.IP, h.MAC, h.Vendor)
+		}
+	}
+	b.WriteString("\n## Credentials\n\n")
+	if len(r.Creds) == 0 {
+		b.WriteString("_none_\n")
+	} else {
+		b.WriteString("| id | service | username | victim | source |\n| --- | --- | --- | --- | --- |\n")
+		for _, c := range r.Creds {
+			fmt.Fprintf(&b, "| %d | %s | %s | %s | %s |\n", c.ID, c.Service, c.Username, c.VictimIP, c.Source)
+		}
+	}
+	b.WriteString("\n## Sessions\n\n")
+	if len(r.Sessions) == 0 {
+		b.WriteString("_none_\n")
+	} else {
+		b.WriteString("| id | victim | host | cookies |\n| --- | --- | --- | --- |\n")
+		for _, ss := range r.Sessions {
+			fmt.Fprintf(&b, "| %d | %s | %s | %d |\n", ss.ID, ss.VictimIP, ss.Host, len(ss.Cookies))
+		}
+	}
+	b.WriteString("\n## Events\n\n")
+	if len(r.Events) == 0 {
+		b.WriteString("_none_\n")
+	} else {
+		b.WriteString("| time | topic | message |\n| --- | --- | --- |\n")
+		for _, e := range r.Events {
+			fmt.Fprintf(&b, "| %s | %s | %s |\n", e.Time.Format(time.RFC3339), e.Topic, e.Msg)
+		}
+	}
+	return b.String()
+}
+
+// LoadReport reads a previously written report file into a Report.
+func LoadReport(path string) (*Report, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read report: %w", err)
+	}
+	var rep Report
+	if err := json.Unmarshal(data, &rep); err != nil {
+		return nil, fmt.Errorf("parse report %s: %w", path, err)
+	}
+	return &rep, nil
+}
+
+// redacted masks a secret so human-readable reports never leak plaintext
+// credentials to the terminal or to markdown consumers.
+func redacted(secret string) string {
+	if secret == "" {
+		return "<empty>"
+	}
+	return "<redacted>"
 }
 
 // macString renders raw MAC bytes as colon-separated lowercase hex.
