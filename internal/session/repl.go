@@ -12,17 +12,17 @@ import (
 
 	"github.com/chzyer/readline"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/phish"
-	"github.com/qyvora/toha3ee/internal/store"
-	"github.com/qyvora/toha3ee/internal/vectors"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/phish"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/vectors"
 )
 
 // REPL runs the interactive console. It returns when the user quits.
 func (s *Session) REPL() error {
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:      s.UI.Prompt("toha3ee"),
+		Prompt:      s.UI.Prompt("toha3eeλ"),
 		HistoryFile: s.historyPath(),
 		AutoComplete: readline.NewPrefixCompleter(
 			commandsCompleter()...,
@@ -83,15 +83,18 @@ func (s *Session) execWithPrompt(rl *readline.Instance, line string) (bool, erro
 	return s.exec(rl, line)
 }
 
-// historyPath returns the console history file, kept in the user's home
-// directory so the file is not dumped into whatever directory the console
-// was started in.
+// historyPath returns the console history file, kept under ~/.qyvora so it
+// survives sessions without cluttering the working directory.
 func (s *Session) historyPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ".toha3ee_history"
 	}
-	return filepath.Join(home, ".toha3ee_history")
+	dir := filepath.Join(home, ".qyvora")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ".toha3ee_history"
+	}
+	return filepath.Join(dir, "toha3ee_history")
 }
 
 // versionString returns the build version (injected by the CLI at build time).
@@ -262,10 +265,10 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 
 // runArgs handles "on module [key value...]" style invocations and script
 // files: `run <module>` starts a module, while `run <file>.toha3ee` or
-// `run <file>.cap` executes a script or caplet.
+// `run <file>.caplet` (also `.cap`) executes a script or caplet.
 func (s *Session) runArgs(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: on <module-id> [key value ...] | on <file>.toha3ee | on <file>.cap")
+		return fmt.Errorf("usage: on <module-id> [key value ...] | on <file>.toha3ee | on <file>.caplet")
 	}
 	id := args[0]
 	// Registered module ids take priority over the file interpretations.
@@ -275,7 +278,9 @@ func (s *Session) runArgs(args []string) error {
 	if strings.HasSuffix(id, ".toha3ee") {
 		return s.RunScript(id)
 	}
-	if strings.HasSuffix(id, ".cap") {
+	// Caplets ship with a .caplet extension; .cap remains accepted for
+	// bettercap-style files.
+	if strings.HasSuffix(id, ".caplet") || strings.HasSuffix(id, ".cap") {
 		return s.runCaplet(id)
 	}
 	return fmt.Errorf("unknown module %q (try 'modules' or 'script <file>.toha3ee')", id)
@@ -770,8 +775,12 @@ func (s *Session) runCaplet(path string) error {
 	return nil
 }
 
-// echoCommand prints a command being executed (caplets and eval mode).
+// echoCommand prints a command being executed (caplets and eval mode). In
+// quiet mode the echo is suppressed with the rest of the status chatter.
 func (s *Session) echoCommand(line string) {
+	if s.UI.Quiet {
+		return
+	}
 	fmt.Fprintf(s.Out, "  %s %s\n", s.UI.Glyph(">"), s.UI.White(line))
 }
 
@@ -801,7 +810,16 @@ func (s *Session) report(args []string) error {
 		path = args[0]
 	}
 	rep := buildReport(s.Store, s.Running())
-	return writeReport(path, rep)
+	if err := writeReport(path, rep); err != nil {
+		return err
+	}
+	s.Events.Emit("toha3ee", events.LevelInfo, events.ReportGenerated, map[string]any{
+		"path":     path,
+		"hosts":    len(rep.Hosts),
+		"creds":    len(rep.Creds),
+		"sessions": len(rep.Sessions),
+	})
+	return nil
 }
 
 // The unused-import guards below keep these packages in the import graph; the

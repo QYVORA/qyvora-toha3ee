@@ -45,6 +45,8 @@ type UI struct {
 	w io.Writer
 	// color toggles ANSI emission; false forces plain text.
 	color bool
+	// Quiet suppresses informational status lines (-q); errors always print.
+	Quiet bool
 }
 
 // New returns a UI writing to w, with color auto-detected from the terminal.
@@ -174,7 +176,13 @@ func (u *UI) KVf(key, format string, args ...any) {
 //	[x] hard error (red)
 //	[>] system (bold white)
 //	[-] neutral (dim white)
+//
+// Status prints a [glyph] status line. It is informational chatter; in quiet
+// mode (-q) it is suppressed so automation sees only errors and results.
 func (u *UI) Status(glyph, format string, args ...any) {
+	if u.Quiet {
+		return
+	}
 	sym := u.Glyph(glyph)
 	fmt.Fprintf(u.w, "  %s %s\n", sym, u.White(fmt.Sprintf(format, args...)))
 }

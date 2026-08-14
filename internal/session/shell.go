@@ -135,7 +135,7 @@ func (s *Session) changeDirOrEscape(rl *readline.Instance) error {
 	for {
 		rl.SetPrompt(s.UI.DimWhite("cd (enter to keep, 'exit' to start shell)") + " > ")
 		line, err := rl.Readline()
-		rl.SetPrompt(s.UI.Prompt("toha3ee"))
+		rl.SetPrompt(s.UI.Prompt("toha3eeλ"))
 		if err != nil {
 			return nil // EOF (Ctrl-D) falls through to the interactive shell
 		}
