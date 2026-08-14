@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/config"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx"
-	"github.com/qyvora/toha3ee/internal/safety"
-	"github.com/qyvora/toha3ee/internal/store"
-	"github.com/qyvora/toha3ee/internal/ui"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/config"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/ui"
 )
 
 // Version is the framework version reported by the console banner and the
@@ -33,6 +33,9 @@ type Session struct {
 	Log    *slog.Logger
 	Out    io.Writer
 	UI     *ui.UI
+	// Events receives the optional JSONL event stream; nil disables it. Set
+	// by the CLI after session construction.
+	Events *events.Emitter
 
 	mu      sync.Mutex // guards the running map and hijack injector
 	running map[string]*runningModule
