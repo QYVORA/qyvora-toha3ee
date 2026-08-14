@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/config"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx/ntlm"
-	"github.com/qyvora/toha3ee/internal/safety"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/config"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ntlm"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 var ntlmSig = []byte{'N', 'T', 'L', 'M', 'S', 'S', 'P', 0}

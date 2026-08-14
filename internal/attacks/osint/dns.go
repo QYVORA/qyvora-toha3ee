@@ -9,8 +9,8 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 )
 
 // DNSEnum enumerates public DNS records for a domain and attempts an AXFR

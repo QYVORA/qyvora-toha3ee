@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 )
 
 // Action is a single reversible change made by a module.

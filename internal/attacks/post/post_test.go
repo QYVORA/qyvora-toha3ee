@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 func TestRenderReportSections(t *testing.T) {

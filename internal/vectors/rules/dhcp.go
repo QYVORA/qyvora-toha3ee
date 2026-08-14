@@ -1,7 +1,7 @@
 package rules
 
 import (
-	v "github.com/qyvora/toha3ee/internal/vectors"
+	v "github.com/QYVORA/qyvora-toha3ee/internal/vectors"
 )
 
 // dhcpRules suggests DHCP/DHCPv6/NDP and ICMP-redirect based attacks.

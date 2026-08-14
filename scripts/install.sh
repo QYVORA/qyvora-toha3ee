@@ -22,7 +22,7 @@
 set -eu
 
 REPO="qyvora/qyvora-toha3ee"
-MODULE="github.com/qyvora/toha3ee"
+MODULE="github.com/QYVORA/qyvora-toha3ee"
 BIN="toha3ee"
 VERSION="${TOHA3EE_VERSION:-}"
 PREFIX="${TOHA3EE_PREFIX:-}"

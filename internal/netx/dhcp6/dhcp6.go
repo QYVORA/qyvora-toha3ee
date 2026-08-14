@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 )
 
 // DHCPv6 message types. These are the one-byte message-type field values at

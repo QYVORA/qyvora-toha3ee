@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/dhcp"
-	"github.com/qyvora/toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/dhcp"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // init registers the DHCP starvation and rogue-server modules.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // WaybackEnum lists every URL the Internet Archive has captured for a domain

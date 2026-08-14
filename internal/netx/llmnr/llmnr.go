@@ -12,8 +12,8 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // Responder answers LLMNR queries for names that failed DNS resolution,

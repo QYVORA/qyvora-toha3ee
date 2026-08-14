@@ -10,10 +10,10 @@ import (
 
 	"github.com/google/gopacket/layers"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/wlan"
-	"github.com/qyvora/toha3ee/internal/phish"
-	"github.com/qyvora/toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/wlan"
+	"github.com/QYVORA/qyvora-toha3ee/internal/phish"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 func init() {

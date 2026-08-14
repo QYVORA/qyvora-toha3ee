@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/script"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/script"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // ScriptRunner adapts a Session to the script engine's Runner contract, so a

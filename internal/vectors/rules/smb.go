@@ -1,7 +1,7 @@
 package rules
 
 import (
-	v "github.com/qyvora/toha3ee/internal/vectors"
+	v "github.com/QYVORA/qyvora-toha3ee/internal/vectors"
 )
 
 // smbRules suggests LLMNR/NBNS/mDNS poisoning and NTLM relay attacks.

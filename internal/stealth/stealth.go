@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/config"
+	"github.com/QYVORA/qyvora-toha3ee/internal/config"
 )
 
 // Default is the stealth profile used by code paths that are not configured

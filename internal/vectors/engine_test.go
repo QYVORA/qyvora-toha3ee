@@ -4,8 +4,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/qyvora/toha3ee/internal/vectors"
-	_ "github.com/qyvora/toha3ee/internal/vectors/rules" // register rules
+	"github.com/QYVORA/qyvora-toha3ee/internal/vectors"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/vectors/rules" // register rules
 )
 
 func testProfile() *vectors.Profile {

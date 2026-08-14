@@ -16,8 +16,8 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/tcpassembly"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // credentialFields are form/query keys treated as authentication secrets.

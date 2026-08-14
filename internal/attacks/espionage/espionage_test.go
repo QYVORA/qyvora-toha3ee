@@ -3,7 +3,7 @@ package espionage
 import (
 	"testing"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 func TestModuleRegistration(t *testing.T) {

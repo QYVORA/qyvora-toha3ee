@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/ldap"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ldap"
 )
 
 // LDAPEnum tests directory servers for unauthenticated/anonymous binds and

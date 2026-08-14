@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/qyvora/toha3ee/internal/config"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx"
-	"github.com/qyvora/toha3ee/internal/safety"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/config"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // AttackCtx carries everything a module needs to run, verify and clean up.

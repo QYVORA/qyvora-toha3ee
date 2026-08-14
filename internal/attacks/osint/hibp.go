@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // HIBP checks whether candidate passwords have appeared in public breach data

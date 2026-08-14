@@ -15,9 +15,9 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 
-	"github.com/qyvora/toha3ee/internal/netx"
-	"github.com/qyvora/toha3ee/internal/netx/arp"
-	"github.com/qyvora/toha3ee/internal/stealth"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/arp"
+	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
 // State is the verdict for a scanned TCP port.

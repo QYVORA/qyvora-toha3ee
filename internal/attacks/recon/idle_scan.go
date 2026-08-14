@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx/ports"
-	"github.com/qyvora/toha3ee/internal/stealth"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
+	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
 // IdleScan maps open TCP ports of a target through an idle "zombie" third

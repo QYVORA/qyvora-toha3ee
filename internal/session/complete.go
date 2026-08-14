@@ -3,7 +3,7 @@ package session
 import (
 	"github.com/chzyer/readline"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // commandsCompleter builds the autocomplete tree for the REPL.

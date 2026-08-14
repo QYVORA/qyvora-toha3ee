@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx/ports"
-	"github.com/qyvora/toha3ee/internal/stealth"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
+	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
 // TCPConnectScan performs a full TCP connect scan (complete three-way

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // Dork runs search-engine queries to surface indexable results that expose

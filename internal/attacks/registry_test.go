@@ -3,19 +3,19 @@ package attacks_test
 import (
 	"testing"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 
-	_ "github.com/qyvora/toha3ee/internal/attacks/auth"
-	_ "github.com/qyvora/toha3ee/internal/attacks/enum"
-	_ "github.com/qyvora/toha3ee/internal/attacks/espionage"
-	_ "github.com/qyvora/toha3ee/internal/attacks/mitm"
-	_ "github.com/qyvora/toha3ee/internal/attacks/osint"
-	_ "github.com/qyvora/toha3ee/internal/attacks/post"
-	_ "github.com/qyvora/toha3ee/internal/attacks/recon"
-	_ "github.com/qyvora/toha3ee/internal/attacks/switch"
-	_ "github.com/qyvora/toha3ee/internal/attacks/web"
-	_ "github.com/qyvora/toha3ee/internal/attacks/wlan"
-	_ "github.com/qyvora/toha3ee/internal/vectors/rules"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/auth"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/enum"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/espionage"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/mitm"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/osint"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/post"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/recon"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/switch"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/web"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/attacks/wlan"
+	_ "github.com/QYVORA/qyvora-toha3ee/internal/vectors/rules"
 )
 
 // TestRegistryCompleteness pins the full module catalogue the framework must

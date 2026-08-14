@@ -5,9 +5,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/dhcp6"
-	"github.com/qyvora/toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/dhcp6"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // init registers the DHCPv6 spoofing module in the global attack registry.

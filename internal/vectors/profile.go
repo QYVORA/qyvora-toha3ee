@@ -9,9 +9,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/netx"
-	"github.com/qyvora/toha3ee/internal/netx/wlan"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/wlan"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // Host is the vector-engine view of a single network host.

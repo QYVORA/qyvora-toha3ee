@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx/arp"
-	"github.com/qyvora/toha3ee/internal/oui"
-	"github.com/qyvora/toha3ee/internal/safety"
-	"github.com/qyvora/toha3ee/internal/stealth"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/arp"
+	"github.com/QYVORA/qyvora-toha3ee/internal/oui"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
 // init registers every recon module with the attacks registry at startup.

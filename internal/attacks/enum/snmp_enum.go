@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/snmp"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/snmp"
 )
 
 // SNMPEnum probes SNMP agents with common community strings and walks the

@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/gopacket/pcap"
 
-	"github.com/qyvora/toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
 )
 
 // Pair is a single poison relationship: targetIP learns that spoofedIP lives

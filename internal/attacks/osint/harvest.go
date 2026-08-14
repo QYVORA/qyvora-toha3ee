@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // Harvest extracts email addresses belonging to a target domain from search

@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx/ntlm"
-	"github.com/qyvora/toha3ee/internal/netx/smb"
-	"github.com/qyvora/toha3ee/internal/safety"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ntlm"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/smb"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // init self-registers every module in this package. init() runs once at

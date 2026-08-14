@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // Shodan looks up a host's pre-indexed banners, open ports and known

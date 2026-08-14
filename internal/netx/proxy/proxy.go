@@ -21,11 +21,11 @@ import (
 
 	"github.com/elazarl/goproxy"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/hijack"
-	"github.com/qyvora/toha3ee/internal/phish"
-	"github.com/qyvora/toha3ee/internal/store"
-	"github.com/qyvora/toha3ee/pkg/certutil"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/hijack"
+	"github.com/QYVORA/qyvora-toha3ee/internal/phish"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/pkg/certutil"
 )
 
 // MaxBody is the largest response body the proxy will buffer for rewriting.

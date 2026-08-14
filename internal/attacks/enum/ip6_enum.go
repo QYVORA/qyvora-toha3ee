@@ -5,9 +5,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/ndp"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ndp"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // IP6Sweep discovers IPv6 hosts on the local link with Neighbor Solicitation /

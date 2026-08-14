@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // Metadata harvests authorship and tooling metadata from documents (PDF, DOCX,

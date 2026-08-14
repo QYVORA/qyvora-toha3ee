@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 func TestAllTemplatesRender(t *testing.T) {

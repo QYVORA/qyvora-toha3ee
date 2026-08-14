@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/rpc"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/rpc"
 )
 
 // NFSEnum lists NFS exports and checks for readable mounts and service

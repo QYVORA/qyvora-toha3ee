@@ -13,8 +13,8 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // Rule is a single spoof mapping. Pattern may be a plain domain ("bank.com")

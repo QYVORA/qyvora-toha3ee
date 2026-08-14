@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // SMTPEnum probes SMTP servers for user enumeration via VRFY/EXPN/RCPT TO.

@@ -1,4 +1,4 @@
-module github.com/qyvora/toha3ee
+module github.com/QYVORA/qyvora-toha3ee
 
 go 1.26.5
 

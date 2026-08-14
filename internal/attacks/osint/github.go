@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // GitHubDork searches GitHub code for leaked secrets and internal references

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // CaptureServer is an HTTP server that serves phishing pages and harvests

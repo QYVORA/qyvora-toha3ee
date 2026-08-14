@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/netx/arp"
-	"github.com/qyvora/toha3ee/internal/oui"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/arp"
+	"github.com/QYVORA/qyvora-toha3ee/internal/oui"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // GatewayIP returns the default gateway of the session interface. The gateway

@@ -8,8 +8,8 @@ import (
 
 	"github.com/chzyer/readline"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/vectors"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/vectors"
 )
 
 // WizardWithStdin runs the wizard against a fresh readline instance so the

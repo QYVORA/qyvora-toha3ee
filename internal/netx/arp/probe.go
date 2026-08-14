@@ -9,7 +9,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 
-	"github.com/qyvora/toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
 )
 
 // Probe sends a who-has request for targetIP to dstMAC (or the broadcast

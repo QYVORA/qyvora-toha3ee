@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // BucketEnum enumerates publicly readable cloud storage buckets (AWS S3, Google

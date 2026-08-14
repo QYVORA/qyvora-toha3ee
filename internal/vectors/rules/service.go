@@ -3,7 +3,7 @@ package rules
 import (
 	"strings"
 
-	v "github.com/qyvora/toha3ee/internal/vectors"
+	v "github.com/QYVORA/qyvora-toha3ee/internal/vectors"
 )
 
 // serviceRules suggests scanning, fingerprinting and default-credential

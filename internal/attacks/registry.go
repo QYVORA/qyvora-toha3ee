@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/qyvora/toha3ee/internal/safety"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // Risk classifies how disruptive an attack is. The ordering matters and is

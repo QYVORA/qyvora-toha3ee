@@ -9,9 +9,9 @@ import (
 
 	"github.com/elazarl/goproxy"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/hijack"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/hijack"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 func TestInjectJS(t *testing.T) {

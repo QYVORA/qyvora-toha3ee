@@ -3,7 +3,7 @@ package auth
 import (
 	"fmt"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 )
 
 // ASREP suggests the AS-REP roasting angle of an Active Directory attack: any

@@ -5,7 +5,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/qyvora/toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
 )
 
 func testIface() *netx.Iface {

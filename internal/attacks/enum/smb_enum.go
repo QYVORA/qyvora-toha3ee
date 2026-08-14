@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/qyvora/toha3ee/internal/attacks"
-	"github.com/qyvora/toha3ee/internal/netx/smb"
+	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx/smb"
 )
 
 // SMBEnum checks SMB services for signing policy and anonymous/null-session

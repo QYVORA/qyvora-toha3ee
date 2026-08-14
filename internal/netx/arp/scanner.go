@@ -13,11 +13,11 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 
-	"github.com/qyvora/toha3ee/internal/events"
-	"github.com/qyvora/toha3ee/internal/netx"
-	"github.com/qyvora/toha3ee/internal/oui"
-	"github.com/qyvora/toha3ee/internal/stealth"
-	"github.com/qyvora/toha3ee/internal/store"
+	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
+	"github.com/QYVORA/qyvora-toha3ee/internal/oui"
+	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
+	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
 // Scanner performs active ARP sweeps and passively tracks ARP traffic. It is
