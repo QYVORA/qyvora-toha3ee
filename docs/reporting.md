@@ -8,13 +8,13 @@ session captured. The report is **only ever as good as the data in the store**
 
 ```sh
 # From the console
-toha3ee> report engagement-1.md
+toha3eeλ> report engagement-1.md
 
 # Via the report.generate module
-toha3ee> on report.generate
+toha3eeλ> on report.generate
 # or with a custom path
-toha3ee> set report.generate.out engagement-1.md
-toha3ee> on report.generate
+toha3eeλ> set report.generate.out engagement-1.md
+toha3eeλ> on report.generate
 
 # From a .toha3ee script
 report -> "engagement-1.md"

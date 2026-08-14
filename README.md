@@ -170,7 +170,7 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 ## Console
 
 Bare `toha3ee` (or `toha3ee interactive`) opens a bettercap/metasploit-style
-console: the `@@@` banner, a **red-accented `toha3ee > ` prompt** with
+console: the `@@@` banner, a **red-accented `toha3eeλ > ` prompt** with
 tab-completion, and a persistent one-line **status HUD** above the prompt that
 shows the interface, running modules and live host/port/credential/event
 counts. Output is grouped and aligned in a green/amber/white palette — red is
@@ -229,7 +229,7 @@ network exploitation & MITM framework
 type 'help' for commands, 'modules' for the catalogue, 'quit' to exit
 
 [*] session ready. type 'help' for commands.
-toha3ee> help
+toha3eeλ> help
 ```
 
 Status glyphs follow bettercap's convention:
@@ -250,12 +250,12 @@ is reprinted after every command so counts stay current without extra typing.
 Example session:
 
 ```
-toha3ee> modules recon        # module catalogue filtered by category
-toha3ee> on net.scan          # run a module (preflight checks shown first)
-toha3ee> net.show             # discovered hosts
-toha3ee> net.profile          # profile + ranked attack vectors
-toha3ee> help                 # grouped command reference
-toha3ee> quit
+toha3eeλ> modules recon        # module catalogue filtered by category
+toha3eeλ> on net.scan          # run a module (preflight checks shown first)
+toha3eeλ> net.show             # discovered hosts
+toha3eeλ> net.profile          # profile + ranked attack vectors
+toha3eeλ> help                 # grouped command reference
+toha3eeλ> quit
 ```
 
 `set <module.key> <value>` stores per-module settings (module IDs are dotted,

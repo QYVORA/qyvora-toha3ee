@@ -21,7 +21,7 @@ Requirements: Go 1.26+, and libpcap headers on Linux.
 # Debian/Ubuntu
 sudo apt install libpcap-dev
 
-git clone https://github.com/qyvora/toha3ee.git
+git clone https://github.com/QYVORA/qyvora-toha3ee.git
 cd toha3ee
 
 # quality gates that CI runs

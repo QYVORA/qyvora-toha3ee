@@ -53,7 +53,7 @@ Installs to `%LOCALAPPDATA%\Programs\toha3ee\bin` and updates your user PATH.
 ### From source
 
 ```sh
-git clone https://github.com/qyvora/toha3ee.git
+git clone https://github.com/QYVORA/qyvora-toha3ee.git
 cd toha3ee
 
 # Debian/Ubuntu prerequisite
@@ -101,7 +101,7 @@ sudo toha3ee --iface eth0
 Drop into the console, then run a subnet sweep:
 
 ```
-toha3ee> on net.scan
+toha3eeλ> on net.scan
 ```
 
 `net.scan` ARP-sweeps your subnet and populates the host inventory. The status
@@ -111,22 +111,22 @@ while it runs.
 ### 2. Inspect what was found
 
 ```
-toha3ee> net.show         # discovered hosts (IP, MAC, vendor, OS guess)
-toha3ee> net.profile      # ranked attack vectors for the target set
+toha3eeλ> net.show         # discovered hosts (IP, MAC, vendor, OS guess)
+toha3eeλ> net.profile      # ranked attack vectors for the target set
 ```
 
 ### 3. Profile services
 
 ```
-toha3ee> on service.synscan       # half-open SYN scan of common ports
-toha3ee> on service.fingerprint   # banner grabs + HTTP fingerprinting
-toha3ee> on service.tls           # TLS handshake probe (HTTPS services)
+toha3eeλ> on service.synscan       # half-open SYN scan of common ports
+toha3eeλ> on service.fingerprint   # banner grabs + HTTP fingerprinting
+toha3eeλ> on service.tls           # TLS handshake probe (HTTPS services)
 ```
 
 ### 4. Generate a report
 
 ```
-toha3ee> exec -> report.generate
+toha3eeλ> exec -> report.generate
 ```
 
 This writes `toha3ee-report.md` in the current directory — hosts, credentials,

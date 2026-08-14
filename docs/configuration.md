@@ -9,9 +9,9 @@ the first save.
 
 ```sh
 # From the console
-toha3ee> set arp.spoof.targets 192.168.8.0/24
-toha3ee> get arp.spoof.targets
-toha3ee> config          # dump everything
+toha3eeλ> set arp.spoof.targets 192.168.8.0/24
+toha3eeλ> get arp.spoof.targets
+toha3eeλ> config          # dump everything
 
 # From a .toha3ee script
 set net.scan.targets -> "192.168.8.0/24"
@@ -65,11 +65,11 @@ Modules read their knobs through `Config.Get*`, so **any** setting a module
 consults can be overridden with `set <module.key> <value>`. Examples:
 
 ```sh
-toha3ee> set report.generate.out assessment.md
-toha3ee> set service.synscan.stealth_burst 128
-toha3ee> set net.scan.stealth_jitter 5ms
-toha3ee> set auth.spray.users admin,root
-toha3ee> set cve.suggest.limit 20
+toha3eeλ> set report.generate.out assessment.md
+toha3eeλ> set service.synscan.stealth_burst 128
+toha3eeλ> set net.scan.stealth_jitter 5ms
+toha3eeλ> set auth.spray.users admin,root
+toha3eeλ> set cve.suggest.limit 20
 ```
 
 Type-aware accessors (`GetBool`, `GetInt`, `GetDuration`) are used by modules,

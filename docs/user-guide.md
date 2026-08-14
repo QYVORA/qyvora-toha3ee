@@ -10,7 +10,7 @@ everyday workflows for running an authorised engagement with toha3ee.
 | **Interactive console** | `sudo toha3ee --iface eth0` | exploring, ad-hoc attacks, live monitoring |
 | **Wizard** | `sudo toha3ee wizard` | you want a guided, risk-gated walkthrough |
 | **One-shot eval** | `sudo toha3ee --eval "net.scan; net.show"` | a fixed sequence in scripts/CI |
-| **Caplet** | `sudo toha3ee run caplets/mitm-arp.cap` | a reusable attack recipe |
+| **Caplet** | `sudo toha3ee run caplets/mitm-arp.caplet` | a reusable attack recipe |
 | **Script** | `sudo toha3ee script scripts/full-pipeline.toha3ee` | a full programmatic engagement |
 | **Dry run** | `toha3ee --no-sudo build scripts/x.toha3ee` | validate a script, print the plan, no packets |
 
@@ -80,34 +80,58 @@ commands mid-attack.
 | `script <file.toha3ee>` | run a `.toha3ee` script |
 | `build <file.toha3ee>` | dry-run validate a script |
 
+## Machine-readable event stream
+
+Every invocation can emit a JSONL event stream that agents and CI can consume
+line-by-line, without scraping the terminal:
+
+```
+$ sudo toha3ee --eval "net.scan; net.show" --events session.jsonl
+```
+
+`--events` accepts `stdout`, `stderr`, or a file path. A file is created or
+truncated with mode 0600. Each line is one self-describing event:
+
+```
+{"schema_version":"1.0","timestamp":"...","execution_id":"toha3ee-...",
+ "framework":"toha3ee","level":"info","event":"run.started",
+ "data":{"iface":"eth0","version":"0.1.0"}}
+```
+
+Events include the run lifecycle (`run.started`, `run.completed`), module
+lifecycle (`module.started`, `module.stopped`, `module.failed`), findings
+(`host.discovered`, `credential.discovered`, `session.captured`,
+`arp.spoof.started/stopped`), `report.generated`, and `error`. The schema is
+identical across the QYVORA frameworks so one consumer works for all of them.
+
 ## Example session
 
 ```
 $ sudo toha3ee --iface eth0
 
 # discover the subnet
-toha3ee> on net.scan
+toha3eeλ> on net.scan
 [*] net.scan: preflight OK
 [*] net.scan: sweeping 192.168.8.0/24 ...
-toha3ee> net.show
+toha3eeλ> net.show
 
 # find open services and grab banners
-toha3ee> on service.synscan
-toha3ee> on service.fingerprint
-toha3ee> on service.tls
+toha3eeλ> on service.synscan
+toha3eeλ> on service.fingerprint
+toha3eeλ> on service.tls
 
 # enumerate protocols
-toha3ee> on service.protoscan
-toha3ee> on smb.enum
-toha3ee> on snmp.enum
+toha3eeλ> on service.protoscan
+toha3eeλ> on smb.enum
+toha3eeλ> on snmp.enum
 
 # check for credential exposure
-toha3ee> on auth.spray
-toha3ee> on auth.asrep
+toha3eeλ> on auth.spray
+toha3eeλ> on auth.asrep
 
 # collect + report
-toha3ee> report engagement-1.md
-toha3ee> quit
+toha3eeλ> report engagement-1.md
+toha3eeλ> quit
 ```
 
 ## The wizard
@@ -118,7 +142,7 @@ The risk model is described in [Security & responsible use](security.md).
 
 ## Caplets
 
-A caplet is a short sequence of console commands with a `.cap` extension.
+A caplet is a short sequence of console commands with a `.caplet` extension.
 Caplets included with the project:
 
 | Caplet | Purpose |
@@ -129,8 +153,8 @@ Caplets included with the project:
 | `phishing.caplet` | captive-portal phishing setup |
 | `wireless-scan.caplet` | passive 802.11 scan |
 
-Run one from the console (`run.caplet caplets/mitm-arp.cap`), via the CLI
-(`toha3ee run caplets/mitm-arp.cap`), or combine several in a `.toha3ee`
+Run one from the console (`run.caplet caplets/mitm-arp.caplet`), via the CLI
+(`toha3ee run caplets/mitm-arp.caplet`), or combine several in a `.toha3ee`
 script.
 
 ## Capability check: what actually works

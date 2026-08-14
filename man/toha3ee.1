@@ -39,6 +39,15 @@ Run a one-shot command sequence and exit, e.g.
 toha3ee \-\-eval "net.scan; net.show"
 .RE
 .TP
+.BI \-\-events " spec"
+Emit a machine-readable JSONL event stream alongside the run:
+.BR stdout ,
+.BR stderr ,
+or a file path, which is created/truncated with mode 0600.
+Each line is a self-describing event carrying schema_version, timestamp,
+execution_id, framework, level, event and data; it is the canonical feed for
+agents and CI. Omit or pass an empty string to disable the stream.
+.TP
 .BI \-\-iface " iface"
 Network interface to attack from.
 .TP
@@ -47,6 +56,15 @@ Disable coloured output.
 .TP
 .B \-\-no\-sudo
 Do not auto-escalate to root via sudo.
+.TP
+.BI \-o ", " \-\-output " format"
+Output format for the
+.B report
+and
+.B version
+commands: \fIterminal\fR (default), \fIjson\fR, or \fImarkdown\fR.
+Machine-readable output never leaks plaintext credentials; only the JSON
+session report file does, and it is written 0600.
 .TP
 .B \-v, \-\-verbose
 Verbose logging.
@@ -71,6 +89,12 @@ Start the interactive console (the default action when no command is given).
 .B modules
 List all registered modules with their risk level and description.
 .TP
+.B report
+Render a saved session report (default
+.IR toha3ee-report.json )
+in the format given by
+.BR \-o .
+.TP
 .B run
 Execute a script or caplet non-interactively.
 .TP
@@ -80,7 +104,8 @@ Execute a
 script file.
 .TP
 .B version
-Print the version and banner.
+Print the version and banner (honours
+.BR \-o " json" ).
 .TP
 .B wizard
 Guided attack setup: step through target, interface and module choices.
@@ -240,6 +265,9 @@ Runtime error, failed preflight, or script failure.
 .TP
 .B 2
 Usage error.
+.TP
+.B 130
+Interrupted by SIGINT/SIGTERM (after automatic cleanup).
 .SH SECURITY
 This tool is capable of disrupting networks. It must only be used with
 authorisation. Modules are subject to preflight checks, a safety manager

@@ -47,7 +47,7 @@ Modules are the unit of functionality. A minimal module:
 ```go
 package mycat
 
-import "github.com/qyvora/toha3ee/internal/attacks"
+import "github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 
 func init() { attacks.Register(&MyModule{}) }
 
@@ -107,7 +107,9 @@ Checklist:
 - Never reach into another module's internals; use the store and event bus.
 - New external dependencies must be justified; prefer stdlib + existing deps.
 - Keep the module catalogue in `attacks.Registry` as the single source of
-  truth; docs are generated from it (`toha3ee modules`).
+  truth; the live listing is generated from it (`toha3ee modules`). The
+  human-readable `docs/module-reference.md` is maintained by hand, so keep
+  its module table in sync when adding or renaming a module.
 
 ## Testing
 

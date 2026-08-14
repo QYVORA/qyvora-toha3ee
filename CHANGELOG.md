@@ -31,6 +31,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `golang.org/x/crypto` added as a dependency for SSH auth.
 - Registry test now pins the complete module catalogue, including the new
   enum/osint/auth/recon modules.
+- `-o/--output` selects `terminal` (default), `json` or `markdown` rendering
+  for `report` and `version`; invalid formats exit 2. Human-readable renderers
+  redact credential passwords; only the JSON report file carries plaintext
+  loot (written 0600).
+- New `report` subcommand renders a saved session report from disk.
+- `run` and `run.caplet` accept both `.caplet` and `.cap` suffixes; shipped
+  caplets use `.caplet`.
+- New `--events` JSONL event stream (`stdout`/`stderr`/file, file mode 0600)
+  emitting run, module, finding, arp and report events; schema matches the
+  other QYVORA frameworks.
+- Module path moved to `github.com/QYVORA/qyvora-toha3ee`.
 
 ## [0.1.0] - 2026-08-05
 
