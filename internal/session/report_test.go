@@ -21,6 +21,9 @@ func sampleReport() *Report {
 		Sessions: []reportSession{
 			{ID: 7, VictimIP: "192.168.1.10", Host: "mail", Cookies: map[string]string{"sid": "abc"}, Auth: "Bearer x"},
 		},
+		Runs: []reportRun{
+			{ID: 1, Module: "http.harvest", Started: time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC), Finished: time.Date(2026, 1, 2, 3, 4, 7, 0, time.UTC), Status: "success", Summary: "captured session", Metrics: map[string]string{"sessions": "1"}, EvidenceRef: "sessions:1"},
+		},
 		Events: []reportEvent{
 			{Time: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), Topic: "scan.started", Msg: "begin"},
 		},
@@ -57,6 +60,37 @@ func TestRenderMarkdownRedactsPasswords(t *testing.T) {
 	}
 	if !strings.Contains(out, "| 1 | http | alice | 192.168.1.10 | http.harvest |") {
 		t.Error("markdown credentials table missing expected row")
+	}
+}
+
+func TestRenderRunsSections(t *testing.T) {
+	rep := sampleReport()
+	json, err := rep.RenderJSON()
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	if !strings.Contains(string(json), `"http.harvest"`) || !strings.Contains(string(json), `"sessions:1"`) {
+		t.Error("JSON report missing structured module run record")
+	}
+	term := rep.RenderTerminal()
+	if !strings.Contains(term, "module runs (1):") || !strings.Contains(term, "http.harvest  success") {
+		t.Error("terminal report missing module runs section")
+	}
+	md := rep.RenderMarkdown()
+	if !strings.Contains(md, "## Module Runs") || !strings.Contains(md, "http.harvest") {
+		t.Error("markdown report missing module runs table")
+	}
+}
+
+func TestRenderEmptyRuns(t *testing.T) {
+	rep := &Report{Generated: time.Now()}
+	term := rep.RenderTerminal()
+	if !strings.Contains(term, "module runs: none") {
+		t.Errorf("empty runs terminal: %q", term)
+	}
+	md := rep.RenderMarkdown()
+	if !strings.Contains(md, "## Module Runs") || !strings.Contains(md, "_none_") {
+		t.Errorf("empty runs markdown: %q", md)
 	}
 }
 

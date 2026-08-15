@@ -17,6 +17,7 @@ type Report struct {
 	Hosts     []reportHost    `json:"hosts"`           // discovered network hosts
 	Creds     []reportCred    `json:"credentials"`     // captured credentials
 	Sessions  []reportSession `json:"sessions"`        // captured web sessions
+	Runs      []reportRun     `json:"runs"`            // structured module execution records
 	Events    []reportEvent   `json:"events"`          // framework event log
 }
 
@@ -58,6 +59,20 @@ type reportEvent struct {
 	Msg   string    `json:"message"`
 }
 
+// reportRun is the JSON-safe view of a structured module run. Metrics and
+// summary carry verified impact; error/evidence_ref only appear when relevant.
+type reportRun struct {
+	ID          int               `json:"id"`
+	Module      string            `json:"module"`
+	Started     time.Time         `json:"started"`
+	Finished    time.Time         `json:"finished"`
+	Status      string            `json:"status"`                 // success | failed | stopped
+	Error       string            `json:"error,omitempty"`        // failure message when failed
+	Summary     string            `json:"summary,omitempty"`      // verified verdict
+	Metrics     map[string]string `json:"metrics,omitempty"`      // quantified proof
+	EvidenceRef string            `json:"evidence_ref,omitempty"` // loot this run produced
+}
+
 // buildReport snapshots the current store state into a serializable Report.
 func buildReport(db *store.Store, running []string) *Report {
 	rep := &Report{Generated: time.Now(), Running: running}
@@ -83,6 +98,13 @@ func buildReport(db *store.Store, running []string) *Report {
 	for _, s := range db.Sessions() {
 		rep.Sessions = append(rep.Sessions, reportSession{
 			ID: s.ID, VictimIP: s.VictimIP, Host: s.Host, Cookies: s.Cookies, Auth: s.AuthHeader,
+		})
+	}
+	for _, r := range db.Runs() {
+		rep.Runs = append(rep.Runs, reportRun{
+			ID: r.ID, Module: r.Module, Started: r.Started, Finished: r.Finished,
+			Status: r.Status, Error: r.Error, Summary: r.Summary,
+			Metrics: copyStringMap(r.Metrics), EvidenceRef: r.EvidenceRef,
 		})
 	}
 	for _, e := range db.Events() {
@@ -144,6 +166,22 @@ func (r *Report) RenderTerminal() string {
 			fmt.Fprintf(&b, "  #%d %s  host=%s cookies=%d\n", ss.ID, ss.VictimIP, ss.Host, len(ss.Cookies))
 		}
 	}
+	b.WriteString("\n")
+	if len(r.Runs) == 0 {
+		b.WriteString("module runs: none\n")
+	} else {
+		fmt.Fprintf(&b, "module runs (%d):\n", len(r.Runs))
+		for _, run := range r.Runs {
+			fmt.Fprintf(&b, "  #%d %s  %s", run.ID, run.Module, run.Status)
+			if run.Summary != "" {
+				fmt.Fprintf(&b, "  %s", run.Summary)
+			}
+			if run.Error != "" {
+				fmt.Fprintf(&b, "  error: %s", run.Error)
+			}
+			b.WriteString("\n")
+		}
+	}
 	return b.String()
 }
 
@@ -178,6 +216,15 @@ func (r *Report) RenderMarkdown() string {
 		b.WriteString("| id | victim | host | cookies |\n| --- | --- | --- | --- |\n")
 		for _, ss := range r.Sessions {
 			fmt.Fprintf(&b, "| %d | %s | %s | %d |\n", ss.ID, ss.VictimIP, ss.Host, len(ss.Cookies))
+		}
+	}
+	b.WriteString("\n## Module Runs\n\n")
+	if len(r.Runs) == 0 {
+		b.WriteString("_none_\n")
+	} else {
+		b.WriteString("| id | module | status | result | evidence |\n| --- | --- | --- | --- | --- |\n")
+		for _, run := range r.Runs {
+			fmt.Fprintf(&b, "| %d | %s | %s | %s | %s |\n", run.ID, run.Module, run.Status, run.Summary, run.EvidenceRef)
 		}
 	}
 	b.WriteString("\n## Events\n\n")
@@ -233,6 +280,18 @@ func macString(m []byte) string {
 // of the live store (which the harvesters keep mutating).
 func copyPortsMap(src map[uint16]string) map[uint16]string {
 	out := make(map[uint16]string, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
+}
+
+// copyStringMap deep-copies a string map for report snapshots.
+func copyStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
 	for k, v := range src {
 		out[k] = v
 	}
