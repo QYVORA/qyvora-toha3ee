@@ -54,6 +54,10 @@ type runningModule struct {
 	started time.Time
 	err     error // set by the Run goroutine
 	wg      sync.WaitGroup
+	// baseline loot counters captured before Run so the run record can point
+	// at the evidence this execution produced.
+	baseCreds    int
+	baseSessions int
 }
 
 // New builds a fresh session with clean bus, store, safety and config.
@@ -178,7 +182,8 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 
 	// Register the running module before launching Run so IsRunning is true
 	// the moment the goroutine starts.
-	rm := &runningModule{mod: mod, ctx: ctx, done: done, started: time.Now()}
+	rm := &runningModule{mod: mod, ctx: ctx, done: done, started: time.Now(),
+		baseCreds: len(s.Store.Creds()), baseSessions: len(s.Store.Sessions())}
 	s.mu.Lock()
 	s.running[id] = rm
 	s.mu.Unlock()
@@ -202,7 +207,9 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 	return nil
 }
 
-// finishModule runs Verify + Cleanup after Run returned.
+// finishModule runs Verify + Cleanup after Run returned, records the run as a
+// structured store.ModuleRun and emits the module.completed event so reports
+// and the JSONL stream carry the verified outcome.
 func (s *Session) finishModule(id string, rm *runningModule) {
 	// Remove from the running set first so IsRunning stops reporting it
 	// before any remaining output appears.
@@ -210,27 +217,63 @@ func (s *Session) finishModule(id string, rm *runningModule) {
 	delete(s.running, id)
 	s.mu.Unlock()
 
+	run := store.ModuleRun{
+		Module:   id,
+		Started:  rm.started,
+		Finished: time.Now(),
+		Status:   "success",
+	}
 	if rm.err != nil {
+		run.Status = "failed"
+		run.Error = rm.err.Error()
 		s.UI.Status("!", "%s finished with error: %v", id, rm.err)
 		s.Store.LogEvent(events.TopicModuleFailed, fmt.Sprintf("%s failed: %v", id, rm.err))
-		return
-	}
-	// Verify only runs when Run succeeded; a nil impact report means the
-	// module has nothing to report.
-	if imp, err := rm.mod.Verify(rm.ctx); err == nil && imp != nil {
-		s.UI.Section("verified " + id)
-		s.goodf("%s", imp.Summary)
-		for k, v := range imp.Metrics {
-			s.UI.KV(k, v)
+	} else {
+		// A closed done channel means the operator stopped the module, not
+		// that it reached a natural end.
+		select {
+		case <-rm.done:
+			run.Status = "stopped"
+		default:
+		}
+		// Verify only runs when Run succeeded; a nil impact report means the
+		// module has nothing to report.
+		if imp, err := rm.mod.Verify(rm.ctx); err == nil && imp != nil {
+			s.UI.Section("verified " + id)
+			s.goodf("%s", imp.Summary)
+			for k, v := range imp.Metrics {
+				s.UI.KV(k, v)
+			}
+			run.Summary = imp.Summary
+			if len(imp.Metrics) > 0 {
+				run.Metrics = make(map[string]string, len(imp.Metrics))
+				for k, v := range imp.Metrics {
+					run.Metrics[k] = v
+				}
+			}
+		}
+		// Cleanup restores any network state the module changed; failures are
+		// warnings, not fatal, because the module is already finished.
+		if err := rm.mod.Cleanup(rm.ctx); err != nil {
+			s.warnf("%s cleanup: %v", id, err)
 		}
 	}
-	// Cleanup restores any network state the module changed; failures are
-	// warnings, not fatal, because the module is already finished.
-	if err := rm.mod.Cleanup(rm.ctx); err != nil {
-		s.warnf("%s cleanup: %v", id, err)
+	// Point the run at the evidence it produced so a consumer can jump from
+	// the run record straight to the captured loot.
+	if creds := len(s.Store.Creds()) - rm.baseCreds; creds > 0 {
+		run.EvidenceRef = fmt.Sprintf("credentials:%d", creds)
 	}
+	if sess := len(s.Store.Sessions()) - rm.baseSessions; sess > 0 {
+		if run.EvidenceRef != "" {
+			run.EvidenceRef += " "
+		}
+		run.EvidenceRef += fmt.Sprintf("sessions:%d", sess)
+	}
+
+	run = s.Store.AddRun(run)
 	s.Store.LogEvent(events.TopicModuleStopped, fmt.Sprintf("%s stopped", id))
 	s.Bus.Emit(events.TopicModuleStopped, id)
+	s.Bus.Emit(events.TopicModuleCompleted, run)
 }
 
 // StopModule halts a running module: closes its Done channel, waits for Run,
