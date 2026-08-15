@@ -24,7 +24,7 @@ Default output path: `toha3ee-report.md`.
 
 ## Report structure
 
-The generated Markdown contains four sections:
+The generated Markdown contains six sections:
 
 ### 1. Header
 
@@ -73,6 +73,23 @@ The chronological framework event log, one line per event:
 - `2026-08-08T12:00:01Z` [log] net.scan: 12 hosts discovered
 ```
 
+### 6. Module runs
+
+One row per completed module execution:
+
+```
+| id | module | status | result | evidence |
+| --- | --- | --- | --- | --- |
+| 1 | auth.spray | success | 3 credentials captured | credentials:3 sessions:1 |
+```
+
+Every module run is recorded in the store (`module.completed` event) with a
+status of `success`, `failed`, or `stopped`, a human-readable summary of what
+was captured, and an `EvidenceRef` describing the credential/session deltas
+the run produced. Run records let you reconstruct exactly which modules ran,
+what they returned, and what new loot each one captured — even after the
+report is written.
+
 ## Interpreting the report
 
 - **Hosts with no ports** — found on L2 but not yet service-scanned; run
@@ -80,6 +97,8 @@ The chronological framework event log, one line per event:
 - **Credentials** are the highest-value output. Verify each with
   `session.replay` where applicable, then rotate them in the engagement
   report.
+- **Module runs** are an execution ledger: a `failed` or `stopped` status on
+  a run whose loot matters means the module did not complete its post-step.
 - **Missing sections** mean the corresponding data was never captured (empty
   store), not that it doesn't exist.
 

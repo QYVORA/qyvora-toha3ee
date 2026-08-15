@@ -40,7 +40,7 @@ commands mid-attack.
 |---------|-------------|
 | `on <module> [key value ...]` | start a module, e.g. `on arp.spoof` |
 | `off <module>` | stop a running module |
-| `status` | list running modules |
+| `status` | list running modules and recently completed module runs |
 | `set <module.key> <value>` | set a config value, e.g. `set arp.spoof.targets 192.168.8.0/24` |
 | `get <module.key>` | show a config value |
 | `config` | dump the current configuration |
@@ -99,9 +99,15 @@ truncated with mode 0600. Each line is one self-describing event:
 ```
 
 Events include the run lifecycle (`run.started`, `run.completed`), module
-lifecycle (`module.started`, `module.stopped`, `module.failed`), findings
+lifecycle (`module.started`, `module.stopped`, `module.completed`,
+`module.failed`), findings
 (`host.discovered`, `credential.discovered`, `session.captured`,
-`arp.spoof.started/stopped`), `report.generated`, and `error`. The schema is
+`arp.spoof.started/stopped`), `report.generated`, and `error`. Every module
+that finishes emits `module.completed` carrying the structured run record
+(`id`, `module`, `status` of `success|failed|stopped`, `summary`, and
+`EvidenceRef` with `credentials:`/`sessions:` deltas), which is also how the
+`status` command's completed-runs table and the report's `## Module Runs`
+section stay in sync. The schema is
 identical across the QYVORA frameworks so one consumer works for all of them.
 
 ## Example session
