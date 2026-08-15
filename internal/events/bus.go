@@ -35,6 +35,7 @@ const (
 	TopicModuleStopped     = "module.stopped"      // a module finished
 	TopicModulePreflighted = "module.preflighted"  // a module passed preflight
 	TopicModuleFailed      = "module.failed"       // a module errored out
+	TopicModuleCompleted   = "module.completed"    // a module run finished and recorded verified impact
 	TopicPacketCaptured    = "net.packet.captured" // a frame was captured
 	TopicLog               = "log.message"         // a generic human-readable log line
 )

@@ -20,6 +20,7 @@ const (
 	ModuleStarted   = "module.started"
 	ModuleStopped   = "module.stopped"
 	ModuleFailed    = "module.failed"
+	ModuleCompleted = "module.completed"
 	HostDiscovered  = "host.discovered"
 	CredentialFound = "credential.discovered"
 	SessionCaptured = "session.captured"
@@ -123,6 +124,7 @@ var subscribeTopics = map[string]struct {
 	TopicModuleStarted:     {ModuleStarted, LevelInfo},
 	TopicModuleStopped:     {ModuleStopped, LevelInfo},
 	TopicModuleFailed:      {ModuleFailed, LevelError},
+	TopicModuleCompleted:   {ModuleCompleted, LevelInfo},
 	TopicModulePreflighted: {ModuleStarted, LevelInfo},
 	TopicARPSpoofStarted:   {"arp.spoof.started", LevelInfo},
 	TopicARPSpoofStopped:   {"arp.spoof.stopped", LevelInfo},
