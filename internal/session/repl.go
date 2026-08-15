@@ -422,20 +422,41 @@ func (s *Session) showModule(id string) error {
 func (s *Session) status() {
 	running := s.Running()
 	sort.Strings(running)
+	s.UI.Section("running modules")
 	if len(running) == 0 {
-		s.UI.Section("running modules")
 		s.statusf("no modules running")
+	} else {
+		rows := make([][]string, 0, len(running))
+		for _, id := range running {
+			if rm, ok := s.runningModule(id); ok {
+				meta, _ := attacks.Get(id)
+				rows = append(rows, []string{id, s.UI.RiskLevel(meta.Meta().Risk.String()), rm.started.Format("15:04:05")})
+			}
+		}
+		s.UI.Table([]string{"id", "risk", "started"}, rows)
+	}
+	s.completedRuns()
+}
+
+// completedRuns prints the structured run history so operators can review
+// every module execution and its verified outcome from the REPL.
+func (s *Session) completedRuns() {
+	runs := s.Store.Runs()
+	if len(runs) == 0 {
 		return
 	}
-	s.UI.Section("running modules")
-	rows := make([][]string, 0, len(running))
-	for _, id := range running {
-		if rm, ok := s.runningModule(id); ok {
-			meta, _ := attacks.Get(id)
-			rows = append(rows, []string{id, s.UI.RiskLevel(meta.Meta().Risk.String()), rm.started.Format("15:04:05")})
-		}
+	s.UI.Section("completed runs")
+	rows := make([][]string, 0, len(runs))
+	for _, r := range runs {
+		rows = append(rows, []string{
+			fmt.Sprintf("#%d", r.ID),
+			r.Module,
+			r.Status,
+			r.Summary,
+			r.EvidenceRef,
+		})
 	}
-	s.UI.Table([]string{"id", "risk", "started"}, rows)
+	s.UI.Table([]string{"id", "module", "status", "result", "evidence"}, rows)
 }
 
 // runningModule returns a live runningModule by id (locked access).
