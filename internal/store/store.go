@@ -127,6 +127,22 @@ type EventRecord struct {
 	Msg   string
 }
 
+// ModuleRun records the outcome of one bounded module execution. It is the
+// framework's structured exploitation result: every successful, failed and
+// stopped module run is persisted here so reports and the event feed carry a
+// consistent view of "what ran and what it proved".
+type ModuleRun struct {
+	ID          int               `json:"id"`                     // stable run counter
+	Module      string            `json:"module"`                 // module id, e.g. "spray.ntlmv2"
+	Started     time.Time         `json:"started"`                // when Run began
+	Finished    time.Time         `json:"finished"`               // when the run completed
+	Status      string            `json:"status"`                 // "success" | "failed" | "stopped"
+	Error       string            `json:"error,omitempty"`        // failure message when Status=failed
+	Summary     string            `json:"summary,omitempty"`      // verified impact verdict
+	Metrics     map[string]string `json:"metrics,omitempty"`      // quantified proof (creds, hashes, ...)
+	EvidenceRef string            `json:"evidence_ref,omitempty"` // pointer into creds/sessions/hosts data
+}
+
 // Recon accumulates environment evidence gathered passively during recon.
 // Flags are set by sniffers and low-level listeners and read by the vector
 // engine when building the network profile.
@@ -144,14 +160,16 @@ type Recon struct {
 
 // Store is the process-wide state container.
 type Store struct {
-	// mu guards the creds/sessions/events slices and their id counters.
+	// mu guards the creds/sessions/events/runs slices and their id counters.
 	mu         sync.RWMutex
 	hosts      sync.Map // key: string(ip) -> *Host
 	creds      []Cred
 	sessions   []Session
 	events     []EventRecord
+	runs       []ModuleRun
 	nextCredID int
 	nextSessID int
+	nextRunID  int
 	// capEvents bounds the in-memory event log.
 	capEvents int
 
@@ -309,4 +327,29 @@ func (s *Store) ClearEvents() {
 	defer s.mu.Unlock()
 	// Reuse the backing array instead of allocating a fresh slice.
 	s.events = s.events[:0]
+}
+
+// AddRun appends a structured module run record and returns it with its
+// stable run id assigned.
+func (s *Store) AddRun(r ModuleRun) ModuleRun {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextRunID++
+	r.ID = s.nextRunID
+	s.runs = append(s.runs, r)
+	return r
+}
+
+// Runs returns a snapshot of all recorded module runs, oldest first.
+func (s *Store) Runs() []ModuleRun {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]ModuleRun(nil), s.runs...)
+}
+
+// RunCount returns how many module runs have been recorded.
+func (s *Store) RunCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.runs)
 }

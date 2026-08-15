@@ -89,3 +89,36 @@ func TestEventLogCapped(t *testing.T) {
 		t.Fatal("future event timestamp")
 	}
 }
+
+func TestModuleRuns(t *testing.T) {
+	s := New(0)
+	first := s.AddRun(ModuleRun{Module: "spray.ntlmv2", Status: "success", Summary: "1 credential", Metrics: map[string]string{"creds": "1"}})
+	s.AddRun(ModuleRun{Module: "arp.spoof", Status: "stopped"})
+	s.AddRun(ModuleRun{Module: "phish", Status: "failed", Error: "port busy"})
+	if s.RunCount() != 3 {
+		t.Fatalf("RunCount = %d, want 3", s.RunCount())
+	}
+	runs := s.Runs()
+	if len(runs) != 3 {
+		t.Fatalf("Runs len = %d, want 3", len(runs))
+	}
+	if runs[0].ID != first.ID || runs[0].Module != "spray.ntlmv2" {
+		t.Errorf("first run = %+v", runs[0])
+	}
+	if runs[0].Metrics["creds"] != "1" {
+		t.Errorf("first run metrics = %v", runs[0].Metrics)
+	}
+	if runs[2].Status != "failed" || runs[2].Error == "" {
+		t.Errorf("failed run = %+v", runs[2])
+	}
+}
+
+func TestModuleRunsSnapshotIsIsolated(t *testing.T) {
+	s := New(0)
+	s.AddRun(ModuleRun{Module: "hijack", Status: "success"})
+	snap := s.Runs()
+	snap[0].Status = "tampered"
+	if got := s.Runs()[0].Status; got != "success" {
+		t.Errorf("store mutated via snapshot: status = %q", got)
+	}
+}
