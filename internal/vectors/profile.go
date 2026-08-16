@@ -120,7 +120,7 @@ func BuildProfile(db *store.Store, iface *netx.Iface) *Profile {
 			TLS:     h.TLS,
 			// Snapshot the ports so later store writes cannot mutate the
 			// profile under the rules engine.
-			Ports: copyPorts(h.Ports),
+			Ports: copyPorts(h.PortsSnapshot()),
 		})
 	}
 

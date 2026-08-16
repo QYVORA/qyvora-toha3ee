@@ -73,10 +73,16 @@ func (s *Spoofer) Start() {
 	go s.loop()
 }
 
-// Stop halts the poisoning loop and closes the pcap handle.
+// Stop halts the poisoning loop. The pcap handle is left open so Restore can
+// still send on it; call Close when no more traffic will be sent.
 func (s *Spoofer) Stop() {
 	close(s.stop)
 	s.wg.Wait()
+}
+
+// Close releases the underlying pcap handle. Call it only after the loop is
+// stopped and any Restore traffic has been sent.
+func (s *Spoofer) Close() {
 	s.handle.Close()
 }
 

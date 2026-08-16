@@ -22,7 +22,7 @@ import (
 // REPL runs the interactive console. It returns when the user quits.
 func (s *Session) REPL() error {
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:      s.UI.Prompt("toha3eeλ"),
+		Prompt:      s.UI.Prompt("toha3ee"),
 		HistoryFile: s.historyPath(),
 		AutoComplete: readline.NewPrefixCompleter(
 			commandsCompleter()...,

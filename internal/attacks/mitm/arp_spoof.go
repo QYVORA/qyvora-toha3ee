@@ -215,12 +215,16 @@ func (m *ARPSpoof) makeCleanup(ctx *attacks.AttackCtx) func() error {
 		var errs []error
 		if v, ok := ctx.GetState("arp.spoof"); ok {
 			state := v.(*arpRunState)
-			// Stop announcing, then actively re-announce the true mappings so
-			// the victims' caches recover without waiting for their timeout.
+			// Stop the poisoning loop first so no further fake replies are
+			// sent, then actively re-announce the true mappings while the
+			// pcap handle is still open so the victims' caches recover
+			// without waiting for their timeout, and finally release the
+			// handle.
 			state.spoof.Stop()
 			if err := state.spoof.Restore(); err != nil {
 				errs = append(errs, err)
 			}
+			state.spoof.Close()
 			// Fall back to the pre-attack kernel snapshot if the loop-based
 			// restore could not be applied.
 			if len(state.arpSnap) > 0 {

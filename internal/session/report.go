@@ -86,7 +86,7 @@ func buildReport(db *store.Store, running []string) *Report {
 			Vendor:  h.Vendor,
 			Name:    h.Name,
 			OSGuess: h.OSGuess,
-			Ports:   copyPortsMap(h.Ports),
+			Ports:   copyPortsMap(h.PortsSnapshot()),
 		})
 	}
 	for _, c := range db.Creds() {

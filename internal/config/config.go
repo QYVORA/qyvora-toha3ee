@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -47,6 +48,10 @@ type Config struct {
 	Settings map[string]map[string]string `json:"settings"`
 	// ConfirmedRisks remembers High/Critical modules the user already approved.
 	ConfirmedRisks map[string]bool `json:"confirmed_risks"`
+
+	// mu guards Settings and ConfirmedRisks: module goroutines read them on
+	// every run loop while the REPL, wizard, and scripts write them live.
+	mu sync.Mutex `json:"-"`
 }
 
 // Default returns a Config populated with sane defaults for a Kali host.
@@ -121,6 +126,8 @@ func (c *Config) Save() error {
 			return fmt.Errorf("create config dir: %w", err)
 		}
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// MarshalIndent produces the human-editable, two-space-indented JSON
 	// document the REPL and users interact with.
 	data, err := json.MarshalIndent(c, "", "  ")
@@ -133,6 +140,8 @@ func (c *Config) Save() error {
 
 // Set stores a per-module parameter. An empty value removes it.
 func (c *Config) Set(module, key, value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Lazily initialize the two-level map so Set works on a zero-value Config.
 	if c.Settings == nil {
 		c.Settings = make(map[string]map[string]string)
@@ -159,6 +168,8 @@ func (c *Config) Set(module, key, value string) {
 
 // Get returns the raw per-module parameter value ("" if unset).
 func (c *Config) Get(module, key string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if mod, ok := c.Settings[module]; ok {
 		// A missing key and an explicitly empty value both read as "";
 		// callers wanting a fallback use GetDefault.
@@ -177,6 +188,8 @@ func (c *Config) GetDefault(module, key, def string) string {
 
 // Keys returns all "module.key" pairs currently set, sorted by module.
 func (c *Config) Keys() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Module names are sorted first so the resulting list is deterministic
 	// and grouped for stable REPL/config listings.
 	mods := make([]string, 0, len(c.Settings))
@@ -252,6 +265,8 @@ func (c *Config) GetDuration(module, key string, def time.Duration) time.Duratio
 
 // ConfirmRisk remembers that the user approved a High/Critical module.
 func (c *Config) ConfirmRisk(moduleID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.ConfirmedRisks == nil {
 		c.ConfirmedRisks = make(map[string]bool)
 	}
@@ -261,6 +276,8 @@ func (c *Config) ConfirmRisk(moduleID string) {
 
 // IsRiskConfirmed reports whether the user already approved moduleID.
 func (c *Config) IsRiskConfirmed(moduleID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.ConfirmedRisks == nil {
 		// A nil map reads as "nothing approved yet".
 		return false

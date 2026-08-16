@@ -5,6 +5,7 @@ import (
 	"net"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -99,6 +100,7 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	type probeKey struct{ port int }
 	replies := map[int]string{}
 	done := map[int]bool{}
+	var mu sync.Mutex
 
 	// Collector goroutine for ICMP answers.
 	stop := make(chan struct{})
@@ -124,12 +126,14 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 				continue
 			}
 			if src, ok := peer.(*net.IPAddr); ok {
+				mu.Lock()
 				replies[port] = src.IP.String()
 				// Destination unreachable means the target itself answered:
 				// it refused our UDP datagram on the chosen (unused) port.
 				if rm.Type == ipv4.ICMPTypeDestinationUnreachable {
 					done[port] = true
 				}
+				mu.Unlock()
 			}
 		}
 	}()
@@ -160,14 +164,20 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 			// Wait for this probe's reply.
 			deadline := time.Now().Add(timeout)
 			for time.Now().Before(deadline) {
-				if src, ok := replies[port]; ok {
+				mu.Lock()
+				src, ok := replies[port]
+				rDone := done[port]
+				if ok {
+					delete(replies, port)
+				}
+				mu.Unlock()
+				if ok {
 					rtt := time.Since(start)
 					if best == 0 || rtt < best {
 						best = rtt
 						got = src
 					}
-					reached = done[port]
-					delete(replies, port)
+					reached = rDone
 					break
 				}
 				time.Sleep(20 * time.Millisecond)

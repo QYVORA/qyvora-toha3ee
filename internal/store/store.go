@@ -83,6 +83,19 @@ func (h *Host) PortBanner(port uint16) string {
 	return h.Ports[port]
 }
 
+// PortsSnapshot returns a deep copy of the ports map for external consumers
+// (reports, profiles) so they never read the live map concurrently with the
+// store writer.
+func (h *Host) PortsSnapshot() map[uint16]string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make(map[uint16]string, len(h.Ports))
+	for k, v := range h.Ports {
+		out[k] = v
+	}
+	return out
+}
+
 // OpenPorts returns the sorted list of open TCP ports.
 func (h *Host) OpenPorts() []uint16 {
 	h.mu.Lock()
@@ -207,6 +220,9 @@ func (s *Store) UpsertHost(h *Host) *Host {
 		}
 		if h.TLS {
 			oh.TLS = true
+		}
+		if len(h.MAC) > 0 {
+			oh.MAC = h.MAC
 		}
 		// Ports merge under the host's own lock because a scanner goroutine
 		// may be updating them concurrently.
