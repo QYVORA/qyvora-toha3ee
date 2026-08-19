@@ -56,7 +56,7 @@ func whoisQuery(server, query string, timeout time.Duration) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	// Bound the whole exchange (dial + write + read) with one deadline so a
 	// hung registry server cannot stall the module.
 	_ = conn.SetDeadline(time.Now().Add(timeout))

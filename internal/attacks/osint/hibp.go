@@ -94,7 +94,7 @@ func pwnedCount(pw string, timeout time.Duration) (int, error) {
 			n := 0
 			// The count field is a plain integer; Sscanf tolerates stray
 			// whitespace around it. A count of 0 means "seen but unused".
-			fmt.Sscanf(parts[1], "%d", &n)
+			_, _ = fmt.Sscanf(parts[1], "%d", &n)
 			return n, nil
 		}
 	}

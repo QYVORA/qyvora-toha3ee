@@ -197,7 +197,7 @@ func parseOOXMLMeta(data []byte, m *docMeta) {
 			continue
 		}
 		content, err := io.ReadAll(rc)
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			continue
 		}

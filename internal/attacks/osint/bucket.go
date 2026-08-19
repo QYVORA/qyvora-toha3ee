@@ -114,7 +114,7 @@ func probeS3(client *http.Client, name string) (bucketFinding, bool) {
 		// DNS/network failure usually means no such bucket; treat as not found.
 		return bucketFinding{}, false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// Read only the first 256 bytes — enough to fingerprint the XML envelope —
 	// without pulling a potentially large bucket listing into memory.
 	body := make([]byte, 256)
@@ -145,7 +145,7 @@ func probeGCS(client *http.Client, name string) (bucketFinding, bool) {
 	if err != nil {
 		return bucketFinding{}, false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := make([]byte, 256)
 	n, _ := resp.Body.Read(body)
 	text := strings.ToLower(string(body[:n]))
@@ -170,7 +170,7 @@ func probeAzure(client *http.Client, name string) (bucketFinding, bool) {
 	if err != nil {
 		return bucketFinding{}, false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body := make([]byte, 256)
 	n, _ := resp.Body.Read(body)
 	text := strings.ToLower(string(body[:n]))

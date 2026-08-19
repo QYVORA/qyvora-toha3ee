@@ -89,7 +89,7 @@ func ddgResults(query string, timeout time.Duration) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		// Non-200 (including DDG's anti-bot 202) means no usable results.
 		return nil, fmt.Errorf("search engine returned HTTP %d", resp.StatusCode)

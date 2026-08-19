@@ -9,7 +9,6 @@ package osint
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"time"
 
@@ -51,7 +50,7 @@ func httpGet(url string, timeout time.Duration) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// Any non-200 (rate-limit 429, auth 401/403, server 5xx) is surfaced as an
 	// error rather than being parsed as an empty result set.
 	if resp.StatusCode != http.StatusOK {
@@ -73,11 +72,6 @@ func target(ctx *attacks.AttackCtx, ns, key string) (string, error) {
 		return "", fmt.Errorf("%s: set %s.%s first (e.g. 'set %s.%s example.com')", ns, ns, key, ns, key)
 	}
 	return t, nil
-}
-
-// isIP reports whether s parses as an IP address.
-func isIP(s string) bool {
-	return net.ParseIP(s) != nil
 }
 
 // readAllLimit reads up to n bytes from a reader, used to bound response-body

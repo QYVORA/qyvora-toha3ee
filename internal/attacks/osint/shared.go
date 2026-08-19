@@ -56,7 +56,7 @@ func (c *authClient) get(u string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		// Non-200 (401 bad token, 403 rate limit) is reported with the URL so
 		// the failure is attributable to the exact endpoint hit.
