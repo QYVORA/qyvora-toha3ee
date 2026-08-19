@@ -60,6 +60,43 @@ func TestParseCVEOrgFallbackID(t *testing.T) {
 	}
 }
 
+func TestMatchBannerNarrowMatching(t *testing.T) {
+	tests := []struct {
+		name    string
+		banner  string
+		port    uint16
+		wantCVE string // empty = no match
+	}{
+		{"nginx without version does not match CVE-2023-44487", "nginx", 80, ""},
+		{"nginx with version matches CVE-2023-44487", "nginx/1.24.0", 80, "CVE-2023-44487"},
+		{"httpd without version does not match", "Apache", 80, ""},
+		{"httpd with version matches", "Apache/2.4.49", 80, "CVE-2021-41773"},
+		{"generic HP printer does not match CVE-2023-27350", "HP Printer", 80, ""},
+		{"specific HP LaserJet matches", "HP LaserJet Pro MFP M428", 80, "CVE-2023-27350"},
+		{"Brother HL-L matches", "Brother HL-L2350DW", 80, "CVE-2023-27350"},
+		{"port 8443 without cisco banner no match", "Apache Tomcat", 8443, ""},
+		{"port 8443 with cisco banner matches", "Cisco ASA 5506", 8443, "CVE-2020-3452"},
+		{"OpenSSH old version matches", "OpenSSH_8.4p1", 22, "CVE-2023-48795"},
+		{"OpenSSH new version does not match", "OpenSSH_9.6p1", 22, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchBanner(tt.banner, tt.port)
+			if tt.wantCVE == "" {
+				if got != nil {
+					t.Errorf("expected no match, got %s", got.id)
+				}
+			} else {
+				if got == nil {
+					t.Errorf("expected %s, got no match", tt.wantCVE)
+				} else if got.id != tt.wantCVE {
+					t.Errorf("expected %s, got %s", tt.wantCVE, got.id)
+				}
+			}
+		})
+	}
+}
+
 func TestFirstEnglish(t *testing.T) {
 	ds := []struct {
 		Lang  string `json:"lang"`

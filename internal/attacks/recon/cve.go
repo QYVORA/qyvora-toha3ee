@@ -405,14 +405,14 @@ var rules = []cveRule{
 	{id: "CVE-2021-42013", severity: "critical", service: "apache", re: regexp.MustCompile(`(?i)Apache/2\.4\.5[01]`), reason: "path traversal + RCE bypass on Apache 2.4.50"},
 	{id: "CVE-2022-0778", severity: "high", service: "apache", re: regexp.MustCompile(`(?i)Apache/2\.4\.4[0-9]`), reason: "OpenSSL BN_mod_sqrt infinite loop DoS"},
 	{id: "CVE-2024-23897", severity: "critical", service: "jenkins", re: regexp.MustCompile(`(?i)Jenkins\s*/?\s*([01]\.([0-4]\d|5[0-4])\.\d+)`), reason: "CLI arbitrary file read (Jenkins < 2.442/LTS 2.426.2)"},
-	{id: "CVE-2023-44487", severity: "high", service: "http", re: regexp.MustCompile(`(?i)(nginx|httpd|caddy|node)`), reason: "HTTP/2 rapid-reset DoS affects most HTTP/2 servers"},
+	{id: "CVE-2023-44487", severity: "high", service: "http", re: regexp.MustCompile(`(?i)(nginx/[1-9]\.|httpd/2\.[4-5]\.|caddy/v2\.|node/v[18]\.)`), reason: "HTTP/2 rapid-reset DoS affects most HTTP/2 servers"},
 	{id: "CVE-2021-23017", severity: "medium", service: "nginx", re: regexp.MustCompile(`(?i)nginx/1\.(2[01]|1[89]\.\d)`), reason: "DNS resolver off-by-one stack write in nginx"},
 	{id: "CVE-2017-7494", severity: "critical", service: "samba", re: regexp.MustCompile(`(?i)Samba\s+4\.[0-5]\.\d`), reason: "EternalRed SMB RCE (CVE-2017-7494) on Samba < 4.6.4"},
 	{id: "CVE-2023-22527", severity: "critical", service: "confluence", re: regexp.MustCompile(`(?i)Confluence\s+8\.[0-5]`), reason: "template injection RCE on Confluence 8.5.x"},
 	{id: "CVE-2021-34473", severity: "critical", service: "exchange", re: regexp.MustCompile(`(?i)Microsoft\s+Exchange\s+Server\s+2019\s+CU\d`), reason: "ProxyLogon SSRF/RCE chain on on-prem Exchange"},
 	{id: "CVE-2023-23397", severity: "critical", service: "exchange", re: regexp.MustCompile(`(?i)Microsoft\s+Exchange\s+Server\s+(2013|2016|2019)`), reason: "NTLM relay via malicious meeting invite"},
 	{id: "CVE-2018-13379", severity: "high", service: "fortinet", re: regexp.MustCompile(`(?i)FortiOS|FortiGate`), reason: "SSL-VPN path traversal leaking sessions"},
-	{id: "CVE-2023-27350", severity: "critical", service: "printers", re: regexp.MustCompile(`(?i)HP|brother|lexmark`), reason: "printer RCE on several embedded web UIs"},
+	{id: "CVE-2023-27350", severity: "critical", service: "printers", re: regexp.MustCompile(`(?i)(HP\s+LaserJet\s+Pro|MFP\s+M[0-9]|Brother\s+HL-L|Brother\s+MFC-L|Lexmark\s+MS[0-9]|Lexmark\s+MX[0-9])`), reason: "printer RCE on several embedded web UIs"},
 	{id: "CVE-2019-11510", severity: "critical", service: "pulse", re: regexp.MustCompile(`(?i)Pulse\s+Secure|PulseConnectSecure`), reason: "SSL-VPN arbitrary file read"},
 }
 
@@ -439,7 +439,9 @@ func matchBanner(banner string, port uint16) *cveRule {
 			}
 		}
 	case 8443:
-		return &cveRule{id: "CVE-2020-3452", severity: "high", service: "vpn", reason: "Cisco ASA/FTD path traversal on /+CSCOE+/ endpoint (verify product)"}
+		if strings.Contains(strings.ToLower(banner), "cisco") || strings.Contains(strings.ToLower(banner), "asa") || strings.Contains(strings.ToLower(banner), "ftd") {
+			return &cveRule{id: "CVE-2020-3452", severity: "high", service: "vpn", reason: "Cisco ASA/FTD path traversal on /+CSCOE+/ endpoint (verify product)"}
+		}
 	}
 	return nil
 }
