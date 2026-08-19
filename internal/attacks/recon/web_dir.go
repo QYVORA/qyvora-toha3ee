@@ -120,8 +120,8 @@ func (*WebDir) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 					}
 					// Drain a bounded amount of the body so keep-alive
 					// connections can be reused, then close.
-					io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-					resp.Body.Close()
+					_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+					_ = resp.Body.Close()
 					total++
 					// Interesting = exists (200), redirect, or protected
 					// (401/403). A soft 404 would return 404 or a catch-all.
@@ -160,7 +160,7 @@ func loadWordlist(wordlist string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var out []string
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {

@@ -81,7 +81,7 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	if err != nil {
 		return fmt.Errorf("net.traceroute: open icmp socket: %w", err)
 	}
-	defer ic.Close()
+	defer func() { _ = ic.Close() }()
 
 	// The UDP socket carries the probes; we vary the per-probe TTL via
 	// PacketConn so the kernel stamps the outgoing IP header for us.
@@ -89,7 +89,7 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	if err != nil {
 		return fmt.Errorf("net.traceroute: open udp socket: %w", err)
 	}
-	defer udp.Close()
+	defer func() { _ = udp.Close() }()
 	pc := ipv4.NewPacketConn(udp)
 	if err := pc.SetTTL(1); err != nil {
 		return fmt.Errorf("net.traceroute: set ttl: %w", err)
@@ -97,7 +97,6 @@ func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 
 	// replies maps probe identity -> hop source IP.
 	// probe identity is the UDP destination port; reply src is the hop.
-	type probeKey struct{ port int }
 	replies := map[int]string{}
 	done := map[int]bool{}
 	var mu sync.Mutex

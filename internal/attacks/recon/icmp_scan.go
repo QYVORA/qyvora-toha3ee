@@ -104,7 +104,7 @@ func runICMPPing(ctx *attacks.AttackCtx, mname string) error {
 	if err != nil {
 		return fmt.Errorf("net.ping: open icmp socket: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// A random 16-bit identifier distinguishes our probes from other ICMP
 	// traffic on the wire.
@@ -286,7 +286,7 @@ func runUDPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("net.ping: open icmp socket: %w", err)
 	}
-	defer ic.Close()
+	defer func() { _ = ic.Close() }()
 
 	got := map[string]bool{}
 	var alive []net.IP
@@ -303,11 +303,10 @@ func runUDPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
 		if err != nil {
 			continue
 		}
-		if _, err := conn.Write([]byte{0x00}); err == nil {
-			// The ICMP unreachable will quote this socket's port; any reply
-			// from this host means it is up.
-		}
-		conn.Close()
+		// Write a payload so the kernel routes the datagram; any ICMP
+		// port-unreachable reply from this host means it is up.
+		_, _ = conn.Write([]byte{0x00})
+		_ = conn.Close()
 	}
 
 	// Collect ICMP port-unreachable replies for the sweep window.

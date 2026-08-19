@@ -88,7 +88,7 @@ func (*UDPScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 				if err != nil {
 					return
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				_ = conn.SetDeadline(time.Now().Add(timeout))
 				_, _ = conn.Write([]byte{0})
 				buf := make([]byte, 512)

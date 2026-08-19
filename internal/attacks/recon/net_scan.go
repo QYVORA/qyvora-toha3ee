@@ -144,7 +144,7 @@ func (*NetScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	}
 	imp.Add("hosts", fmt.Sprintf("%d", len(hosts)))
 	imp.Add("macs_resolved", fmt.Sprintf("%d", st.sc.MACsResolved()))
-	imp.Add("uptime", fmt.Sprintf("%s", time.Since(st.start).Round(time.Second)))
+	imp.Add("uptime", time.Since(st.start).Round(time.Second).String())
 	for _, h := range hosts {
 		imp.Add("host", h.IP.String())
 	}

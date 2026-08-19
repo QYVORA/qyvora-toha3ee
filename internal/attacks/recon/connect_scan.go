@@ -85,7 +85,7 @@ func (*TCPConnectScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error
 					// filtered; either way not an open port.
 					return
 				}
-				conn.Close()
+				_ = conn.Close()
 				mu.Lock()
 				open++
 				mu.Unlock()

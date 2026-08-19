@@ -226,8 +226,8 @@ func httpTitle(client *http.Client, ip net.IP, port uint16, st *stealth.Config) 
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	return resp.Header.Get("Server")
 }
 

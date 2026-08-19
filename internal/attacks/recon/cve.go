@@ -301,7 +301,7 @@ func httpGetCVE(u string, timeout time.Duration) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("CVE API returned HTTP %d", resp.StatusCode)
 	}

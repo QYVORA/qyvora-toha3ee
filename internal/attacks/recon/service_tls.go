@@ -112,7 +112,7 @@ func probeTLS(ip net.IP, port uint16, timeout time.Duration) (tlsFinding, error)
 	if err != nil {
 		return tlsFinding{}, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	f := tlsFinding{Host: ip.String(), Port: port}
 	state := conn.ConnectionState()
