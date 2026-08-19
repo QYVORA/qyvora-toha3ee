@@ -63,7 +63,7 @@ func sshAttempt(addr, user, password string, timeout time.Duration) (bool, error
 	if err != nil {
 		return false, err
 	}
-	client.Close()
+	_ = client.Close()
 	return true, nil
 }
 

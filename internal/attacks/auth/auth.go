@@ -130,7 +130,7 @@ func (*DefaultCreds) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 				b := make([]byte, 256)
 				n, _ := resp.Body.Read(b)
 				body = b[:n]
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 			// A success means the server did NOT challenge us with
 			// 401/403 and the returned page does not look like a login
@@ -380,7 +380,7 @@ func (*NTLMRelay) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 	if err != nil {
 		rep.AddBlocked("port", fmt.Sprintf("cannot bind :%d: %v", port, err))
 	} else {
-		probe.Close()
+		_ = probe.Close()
 		rep.AddOK("port", fmt.Sprintf("bindable on :%d", port))
 	}
 	return rep, nil

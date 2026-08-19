@@ -116,7 +116,7 @@ func (*PasswordSpray) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 			}
 			attempts++
 			if resp.Body != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 			// 401/403 means the credential was refused. Anything else with a
 			// valid basic-auth header is treated as accepted.
@@ -178,7 +178,7 @@ func readLines(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var out []string
 	sc := bufio.NewScanner(f)
 	// 64KiB start, up to 1MiB max token length.

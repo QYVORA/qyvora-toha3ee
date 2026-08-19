@@ -158,13 +158,13 @@ func TestSMBProbeModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		req := make([]byte, 102)
 		for i := range req {
 			if _, err := conn.Read(req[i : i+1]); err != nil {
@@ -177,7 +177,7 @@ func TestSMBProbeModule(t *testing.T) {
 		resp[4], resp[5] = 64, 0
 		resp[12], resp[13] = 0, 0
 		resp[64], resp[65] = 65, 0 // structure size, security mode (0)
-		conn.Write(resp)
+		_, _ = conn.Write(resp)
 	}()
 
 	db := store.New(100)
@@ -241,7 +241,7 @@ func TestNTLMRelayCapture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// NTLM type 1 negotiate.
 	t1 := append([]byte{}, ntlmSig...)
