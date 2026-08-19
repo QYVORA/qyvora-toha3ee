@@ -286,9 +286,9 @@ func main() {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(os.Stdout, string(data))
+				_, _ = fmt.Fprintln(os.Stdout, string(data))
 			case "markdown":
-				fmt.Fprintf(os.Stdout, "**toha3ee** %s\n", session.Version)
+				_, _ = fmt.Fprintf(os.Stdout, "**toha3ee** %s\n", session.Version)
 			default:
 				u := ui.New(os.Stdout)
 				u.SetColor(!noColor && u.Enabled())
@@ -325,11 +325,11 @@ func main() {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(os.Stdout)
+				_, _ = fmt.Fprintln(os.Stdout)
 			case "markdown":
-				fmt.Fprint(os.Stdout, rep.RenderMarkdown())
+				_, _ = fmt.Fprint(os.Stdout, rep.RenderMarkdown())
 			default:
-				fmt.Fprint(os.Stdout, rep.RenderTerminal())
+				_, _ = fmt.Fprint(os.Stdout, rep.RenderTerminal())
 			}
 			return nil
 		},
