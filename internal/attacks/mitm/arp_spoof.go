@@ -44,7 +44,6 @@ func (*ARPSpoof) Meta() attacks.ModuleMeta {
 type arpRunState struct {
 	spoof   *arp.Spoofer      // active background poisoning loop
 	hb      *safety.Heartbeat // watchdog that proves the loop is still alive
-	restore func() error      // reserved ip_forward restore callback
 	pairs   []arp.Pair        // the poison relationships currently in effect
 	arpSnap []arp.Row         // kernel ARP table snapshot taken before poisoning
 }

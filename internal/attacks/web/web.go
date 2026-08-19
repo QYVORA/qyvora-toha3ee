@@ -110,7 +110,7 @@ func (*Misconfig) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			findings = append(findings, checkServer(h.IP.String(), p, resp)...)
 			findings = append(findings, checkDirectoryListing(h.IP.String(), p, resp, body, base)...)
 			findings = append(findings, checkVerboseError(client, st, h.IP.String(), p, base)...)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}
 	ctx.SetState("web.misconfig", findings)
@@ -187,7 +187,7 @@ func checkVerboseError(client *http.Client, st *stealth.Config, host string, por
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	low := strings.ToLower(string(body))
 	var leak string

@@ -155,7 +155,7 @@ func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			// browsers to re-fetch so PAC updates take effect quickly.
 			w.Header().Set("Content-Type", "application/x-ns-proxy-autoconfig")
 			w.Header().Set("Cache-Control", "no-cache")
-			fmt.Fprint(w, pac)
+			_, _ = fmt.Fprint(w, pac)
 			ctx.Emit(events.TopicLog, fmt.Sprintf("wpad.poison: served PAC to %s", r.RemoteAddr), nil)
 			return
 		}

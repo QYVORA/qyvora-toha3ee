@@ -42,7 +42,7 @@ func get(t *testing.T, srv *httptest.Server, path string) (*http.Response, []byt
 	if err != nil {
 		t.Fatalf("GET %s: %v", path, err)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read body: %v", err)
@@ -120,7 +120,7 @@ func TestCheckServerBareProductNameNotVersion(t *testing.T) {
 func TestCheckDirectoryListing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, "<h1>Index of /var/www</h1><ul><li>secret.tgz</li></ul>")
+		_, _ = io.WriteString(w, "<h1>Index of /var/www</h1><ul><li>secret.tgz</li></ul>")
 	}))
 	defer srv.Close()
 	resp, body := get(t, srv, "/")
@@ -136,7 +136,7 @@ func TestCheckDirectoryListing(t *testing.T) {
 func TestCheckDirectoryListingNonHTMLIgnored(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		io.WriteString(w, "Index of / (Apache/2.4.41 (Ubuntu) Server at 10.0.0.1)")
+		_, _ = io.WriteString(w, "Index of / (Apache/2.4.41 (Ubuntu) Server at 10.0.0.1)")
 	}))
 	defer srv.Close()
 	resp, body := get(t, srv, "/")
@@ -147,7 +147,7 @@ func TestCheckDirectoryListingNonHTMLIgnored(t *testing.T) {
 
 func TestCheckVerboseErrorStackTrace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, "<pre>Exception in thread \"main\" java.lang.NullPointerException\n        at com.example.App.run(App.java:42)</pre>")
+		_, _ = io.WriteString(w, "<pre>Exception in thread \"main\" java.lang.NullPointerException\n        at com.example.App.run(App.java:42)</pre>")
 	}))
 	defer srv.Close()
 	ctx, _ := testCtx()
@@ -163,7 +163,7 @@ func TestCheckVerboseErrorStackTrace(t *testing.T) {
 
 func TestCheckVerboseErrorCleanPage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, "<html><body>404 Not Found</body></html>")
+		_, _ = io.WriteString(w, "<html><body>404 Not Found</body></html>")
 	}))
 	defer srv.Close()
 	ctx, _ := testCtx()

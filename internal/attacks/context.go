@@ -73,7 +73,7 @@ func (c *AttackCtx) SetState(key string, v any) {
 // Printf writes formatted output to the session console.
 func (c *AttackCtx) Printf(format string, args ...any) {
 	if c.Out != nil {
-		fmt.Fprintf(c.Out, format, args...)
+		_, _ = fmt.Fprintf(c.Out, format, args...)
 	}
 }
 

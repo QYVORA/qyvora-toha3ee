@@ -231,7 +231,7 @@ func (*SessionReplay) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 	if err != nil {
 		return fmt.Errorf("session.replay: host %s unreachable: %w", sess.Host, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 
 	st := &replayState{session: sess, status: resp.StatusCode, alive: resp.StatusCode < 400}
@@ -295,12 +295,12 @@ func (*PcapExport) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("pcap.export: %w", err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.Create(dst)
 	if err != nil {
 		return fmt.Errorf("pcap.export: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	n, err := io.Copy(out, in)
 	if err != nil {
 		return fmt.Errorf("pcap.export: %w", err)
