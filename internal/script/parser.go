@@ -121,6 +121,10 @@ func (p *parser) parseStmt() (Stmt, error) {
 			return p.parseRepeat()
 		case "while":
 			return p.parseWhile()
+		case "try":
+			return p.parseTry()
+		case "def":
+			return p.parseFuncDef()
 		case "break":
 			p.next()
 			return BreakStmt{}, nil
@@ -153,6 +157,30 @@ func (p *parser) parseStmt() (Stmt, error) {
 					op = ">>"
 				}
 				return AssignStmt{Var: t.text, Op: op, Value: val}, nil
+			}
+		}
+
+		// Function call: `funcname arg1 arg2` or `funcname` (no args)
+		// Must be an identifier that is NOT a keyword and NOT underscore-prefixed.
+		// Only valid at the start of a line (previous token was newline or EOF).
+		// Not valid when followed by -> or = (those are assignments).
+		if !strings.HasPrefix(t.text, "_") && !isKeyword(t.text) {
+			// Check if we're at the start of a line
+			if p.pos == 0 || p.toks[p.pos-1].kind == tkNewline {
+				// Check next token: if it's -> or =, this is not a function call
+				if p.pos+1 < len(p.toks) {
+					nextKind := p.toks[p.pos+1].kind
+					if nextKind == tkArrow || nextKind == tkAssign || nextKind == tkAppend {
+						return nil, parseError(t, "expected a statement, found %s", t)
+					}
+					// Check if next token is on the same line (not newline/EOF)
+					if nextKind != tkNewline && nextKind != tkEOF {
+						return p.parseCall()
+					}
+				}
+				// Bare function call with no args
+				p.next()
+				return CallStmt{Name: t.text}, nil
 			}
 		}
 	}
@@ -410,6 +438,26 @@ func (p *parser) parseIf() (Stmt, error) {
 		return nil, err
 	}
 	stmt := IfStmt{Cond: cond, Then: then}
+
+	// Handle elif chains: if ... elif ... elif ... else ... end
+	for term == "elif" {
+		p.next() // elif
+		elifCond, err := p.parseCond()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.endOfLine(); err != nil {
+			return nil, err
+		}
+		elifBody, term2, err := p.parseBlock(true)
+		if err != nil {
+			return nil, err
+		}
+		stmt.Elifs = append(stmt.Elifs, ElifCond{Cond: elifCond, Body: elifBody})
+		term = term2
+	}
+
+	// Final else branch
 	if term == "else" {
 		p.next() // else
 		if err := p.endOfLine(); err != nil {
@@ -420,14 +468,18 @@ func (p *parser) parseIf() (Stmt, error) {
 			return nil, err
 		}
 		stmt.Else = els
-		// An else block must terminate with 'end', never another 'else'.
 		if term2 != "end" {
 			return nil, parseError(p.peek(), "expected 'end', found %s", p.peek())
 		}
 		p.next()
-	} else {
-		p.next() // end
+		return stmt, nil
 	}
+
+	// No else: just close with end
+	if term != "end" {
+		return nil, parseError(p.peek(), "expected 'end', found %s", p.peek())
+	}
+	p.next()
 	return stmt, nil
 }
 
@@ -512,9 +564,11 @@ func (p *parser) parseWhile() (Stmt, error) {
 	return WhileStmt{Cond: cond, Body: body}, nil
 }
 
-// parseBlock parses statements until "end" (or "else", when stopOnElse is
-// true). It returns the statements plus the terminator token's text.
-func (p *parser) parseBlock(stopOnElse bool) ([]Stmt, string, error) {
+// parseBlock parses statements until "end" (or "else"/"elif", when stopOnElse is
+// true, or "catch" when stopOnCatch is true). It returns the statements plus
+// the terminator token's text.
+func (p *parser) parseBlock(stopOnElse bool, stopOnCatch ...bool) ([]Stmt, string, error) {
+	catchOk := len(stopOnCatch) > 0 && stopOnCatch[0]
 	var stmts []Stmt
 	for {
 		p.skipNewlines()
@@ -525,10 +579,12 @@ func (p *parser) parseBlock(stopOnElse bool) ([]Stmt, string, error) {
 			return nil, "", parseError(t, "expected 'end' before end of script")
 		case t.kind == tkIdent && t.text == "end":
 			return stmts, "end", nil
-		case t.kind == tkIdent && t.text == "else" && stopOnElse:
-			// Only the if-statement cares about 'else'; for loops it would be
-			// a plain (and likely invalid) statement.
-			return stmts, "else", nil
+		case t.kind == tkIdent && (t.text == "else" || t.text == "elif") && stopOnElse:
+			// Only the if-statement cares about 'else' and 'elif'; for loops
+			// they would be plain (and likely invalid) statements.
+			return stmts, t.text, nil
+		case t.kind == tkIdent && t.text == "catch" && catchOk:
+			return stmts, "catch", nil
 		case t.kind == tkNewline:
 			continue
 		}
@@ -711,9 +767,72 @@ func isCondOp(t token) bool {
 
 // -- expressions -----------------------------------------------------------
 
-// parseExprValue parses a value expression: string, number, variable, $(...)
-// property, or list.
+// isArithOp reports whether the current token is an arithmetic operator.
+func (p *parser) isArithOp() bool {
+	t := p.peek()
+	if t.kind == tkIdent {
+		return t.text == "+" || t.text == "-" || t.text == "*" || t.text == "/"
+	}
+	return false
+}
+
+// arithOpText returns the operator text from the current token.
+func (p *parser) arithOpText() string {
+	return p.peek().text
+}
+
+// parseArithExpr parses arithmetic expressions with + and - (lowest precedence).
+func (p *parser) parseArithExpr() (Expr, error) {
+	left, err := p.parseArithTerm()
+	if err != nil {
+		return nil, err
+	}
+	for p.isArithOp() {
+		op := p.arithOpText()
+		if op == "+" || op == "-" {
+			p.next()
+			right, err := p.parseArithTerm()
+			if err != nil {
+				return nil, err
+			}
+			left = ArithExpr{Op: op, Left: left, Right: right}
+		} else {
+			break
+		}
+	}
+	return left, nil
+}
+
+// parseArithTerm parses arithmetic expressions with * and / (higher precedence).
+func (p *parser) parseArithTerm() (Expr, error) {
+	left, err := p.parseExprAtom()
+	if err != nil {
+		return nil, err
+	}
+	for p.isArithOp() {
+		op := p.arithOpText()
+		if op == "*" || op == "/" {
+			p.next()
+			right, err := p.parseExprAtom()
+			if err != nil {
+				return nil, err
+			}
+			left = ArithExpr{Op: op, Left: left, Right: right}
+		} else {
+			break
+		}
+	}
+	return left, nil
+}
+
+// parseExprValue parses a value expression: possibly with arithmetic operators.
 func (p *parser) parseExprValue() (Expr, error) {
+	return p.parseArithExpr()
+}
+
+// parseExprAtom parses a single atomic value expression: string, number, variable,
+// $(...) property, or list.
+func (p *parser) parseExprAtom() (Expr, error) {
 	t := p.peek()
 	switch t.kind {
 	case tkString:
@@ -864,4 +983,113 @@ func numOf(e Expr) (float64, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// isKeyword reports whether text is a reserved keyword that cannot be used as
+// a function name.
+func isKeyword(text string) bool {
+	switch text {
+	case "set", "get", "on", "start", "run", "off", "stop", "wait", "sleep",
+		"echo", "say", "print", "show", "exec", "run.cmd", "command", "report",
+		"if", "else", "elif", "end", "for", "each", "in", "repeat", "times",
+		"while", "break", "continue", "true", "false", "not", "is", "contains",
+		"try", "catch", "def", "return":
+		return true
+	}
+	return false
+}
+
+// parseTry parses: try ... catch _err ... end
+func (p *parser) parseTry() (Stmt, error) {
+	p.next() // try
+	if err := p.endOfLine(); err != nil {
+		return nil, err
+	}
+	body, term, err := p.parseBlock(false, true)
+	if err != nil {
+		return nil, err
+	}
+	if term != "catch" {
+		return nil, parseError(p.peek(), "expected 'catch', found %s", p.peek())
+	}
+	p.next() // catch
+	// Optional error variable name
+	var catchVar string
+	if p.at(tkIdent) && strings.HasPrefix(p.peek().text, "_") {
+		catchVar = p.peek().text
+		p.next()
+	}
+	if err := p.endOfLine(); err != nil {
+		return nil, err
+	}
+	catchBody, term2, err := p.parseBlock(false)
+	if err != nil {
+		return nil, err
+	}
+	if term2 != "end" {
+		return nil, parseError(p.peek(), "expected 'end', found %s", p.peek())
+	}
+	p.next()
+	return TryStmt{Body: body, CatchVar: catchVar, CatchBody: catchBody}, nil
+}
+
+// parseFuncDef parses: def funcname(_param1, _param2) ... end
+func (p *parser) parseFuncDef() (Stmt, error) {
+	p.next() // def
+	name, err := p.expect(tkIdent, "a function name")
+	if err != nil {
+		return nil, err
+	}
+	// Parse optional parameter list: ( _p1, _p2 )
+	var params []string
+	if p.at(tkLParen) {
+		p.next() // (
+		for !p.at(tkRParen) && !p.at(tkEOF) {
+			if p.at(tkComma) {
+				p.next()
+				continue
+			}
+			param, err := p.expect(tkIdent, "a parameter name starting with '_'")
+			if err != nil {
+				return nil, err
+			}
+			if !strings.HasPrefix(param.text, "_") {
+				return nil, parseError(param, "parameter must start with '_'")
+			}
+			params = append(params, param.text)
+		}
+		if _, err := p.expect(tkRParen, "')'"); err != nil {
+			return nil, err
+		}
+	}
+	if err := p.endOfLine(); err != nil {
+		return nil, err
+	}
+	body, term, err := p.parseBlock(false)
+	if err != nil {
+		return nil, err
+	}
+	if term != "end" {
+		return nil, parseError(p.peek(), "expected 'end', found %s", p.peek())
+	}
+	p.next()
+	return FuncDefStmt{Name: name.text, Params: params, Body: body}, nil
+}
+
+// parseCall parses a function call with arguments.
+func (p *parser) parseCall() (Stmt, error) {
+	name := p.next() // function name
+	var args []Expr
+	for !p.at(tkNewline) && !p.at(tkEOF) {
+		if p.at(tkComma) {
+			p.next()
+			continue
+		}
+		e, err := p.parseExprValue()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, e)
+	}
+	return CallStmt{Name: name.text, Args: args}, nil
 }

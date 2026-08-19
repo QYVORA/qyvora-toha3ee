@@ -54,6 +54,7 @@ func (NumLit) expr() string    { return "number" }
 func (IdentExpr) expr() string { return "variable" }
 func (ListExpr) expr() string  { return "list" }
 func (PropExpr) expr() string  { return "property" }
+func (ArithExpr) expr() string { return "arithmetic" }
 
 // -- conditions ------------------------------------------------------------
 
@@ -148,11 +149,18 @@ type ReportStmt struct{ Path Expr }
 // ExecStmt runs a one-shot REPL command line verbatim.
 type ExecStmt struct{ Raw string }
 
-// IfStmt is a conditional block.
-type IfStmt struct {
+// ElifCond is one branch of a chained if/elif/else.
+type ElifCond struct {
 	Cond Cond
-	Then []Stmt
-	Else []Stmt // may be empty when there is no else clause
+	Body []Stmt
+}
+
+// IfStmt is a conditional block with optional elif/else chains.
+type IfStmt struct {
+	Cond  Cond
+	Then  []Stmt
+	Elifs []ElifCond // elif branches, evaluated in order
+	Else  []Stmt     // may be empty when there is no else clause
 }
 
 // ForEachStmt iterates a list.
@@ -183,6 +191,33 @@ type ContinueStmt struct{}
 // HaltStmt stops the whole script.
 type HaltStmt struct{}
 
+// TryStmt wraps a block and catches errors, assigning the error message to a variable.
+type TryStmt struct {
+	Body      []Stmt
+	CatchVar  string // variable name to store error message (e.g. "_err")
+	CatchBody []Stmt // executed when an error occurs
+}
+
+// FuncDefStmt defines a named function with parameters.
+type FuncDefStmt struct {
+	Name   string   // function name (without _ prefix)
+	Params []string // parameter names (must start with _)
+	Body   []Stmt
+}
+
+// CallStmt calls a named function.
+type CallStmt struct {
+	Name string // function name
+	Args []Expr // arguments to pass to parameters
+}
+
+// ArithExpr performs arithmetic on two values.
+type ArithExpr struct {
+	Op    string // +, -, *, /
+	Left  Expr
+	Right Expr
+}
+
 // stmt() marker methods tag each concrete statement for the engine switch and
 // the dry-run renderer.
 func (AssignStmt) stmt() string   { return "assign" }
@@ -203,6 +238,9 @@ func (WhileStmt) stmt() string    { return "while" }
 func (BreakStmt) stmt() string    { return "break" }
 func (ContinueStmt) stmt() string { return "continue" }
 func (HaltStmt) stmt() string     { return "halt" }
+func (TryStmt) stmt() string      { return "try" }
+func (FuncDefStmt) stmt() string  { return "func-def" }
+func (CallStmt) stmt() string     { return "call" }
 
 // parseError reports a syntax error at a line.
 func parseError(tok token, format string, args ...any) error {

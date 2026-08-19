@@ -50,7 +50,8 @@ const maxLoop = 1000000
 // Engine evaluates a parsed Program against a Runner.
 type Engine struct {
 	Runner Runner
-	vars   map[string]value // script variables, keyed by name ("_hosts", ...)
+	vars   map[string]value        // script variables, keyed by name ("_hosts", ...)
+	funcs  map[string]*FuncDefStmt // defined functions, keyed by name
 }
 
 // NewEngine returns an engine that drives r.
@@ -186,6 +187,11 @@ func (e *Engine) evalStmt(s Stmt) error {
 		if e.evalCond(st.Cond) {
 			return e.evalBody(st.Then)
 		}
+		for _, elif := range st.Elifs {
+			if e.evalCond(elif.Cond) {
+				return e.evalBody(elif.Body)
+			}
+		}
 		return e.evalBody(st.Else)
 
 	case ForEachStmt:
@@ -239,6 +245,22 @@ func (e *Engine) evalStmt(s Stmt) error {
 
 	case HaltStmt:
 		return errStop
+
+	case TryStmt:
+		return e.evalTry(st)
+
+	case FuncDefStmt:
+		// Store the function definition in the engine's function table.
+		if e.funcs == nil {
+			e.funcs = map[string]*FuncDefStmt{}
+		}
+		// Copy to avoid aliasing issues
+		fd := st
+		e.funcs[st.Name] = &fd
+		return nil
+
+	case CallStmt:
+		return e.evalCall(st)
 	}
 	return fmt.Errorf("script: unknown statement %T", s)
 }
@@ -319,6 +341,56 @@ func (e *Engine) forEach(st ForEachStmt) error {
 	return nil
 }
 
+// evalTry executes a try/catch block, catching errors and assigning them to a variable.
+func (e *Engine) evalTry(st TryStmt) error {
+	err := e.evalBody(st.Body)
+	if err == nil {
+		return nil
+	}
+	// Store the error message in the catch variable if provided
+	if st.CatchVar != "" {
+		e.vars[st.CatchVar] = value{s: err.Error()}
+	}
+	// Execute the catch body (which may handle the error)
+	return e.evalBody(st.CatchBody)
+}
+
+// evalCall executes a function call.
+func (e *Engine) evalCall(st CallStmt) error {
+	fd, ok := e.funcs[st.Name]
+	if !ok {
+		return fmt.Errorf("script: undefined function %q", st.Name)
+	}
+	// Save current scope and create a new one for the function
+	savedVars := e.vars
+	e.vars = map[string]value{}
+	// Copy outer variables that start with _ (script convention for shared state)
+	for k, v := range savedVars {
+		if strings.HasPrefix(k, "_") {
+			e.vars[k] = v
+		}
+	}
+	// Bind arguments to parameters
+	for i, param := range fd.Params {
+		if i < len(st.Args) {
+			e.vars[param] = e.evalExpr(st.Args[i])
+		} else {
+			e.vars[param] = value{}
+		}
+	}
+	// Execute the function body
+	err := e.evalBody(fd.Body)
+	// Restore the outer scope, but keep any new _ variables set by the function
+	outerVars := savedVars
+	for k, v := range e.vars {
+		if strings.HasPrefix(k, "_") {
+			outerVars[k] = v
+		}
+	}
+	e.vars = outerVars
+	return err
+}
+
 // evalExpr resolves an expression to a runtime value.
 func (e *Engine) evalExpr(x Expr) value {
 	switch ex := x.(type) {
@@ -343,6 +415,8 @@ func (e *Engine) evalExpr(x Expr) value {
 			out = append(out, e.evalExpr(item).str())
 		}
 		return value{isList: true, list: out}
+	case ArithExpr:
+		return e.evalArith(ex)
 	}
 	return value{}
 }
@@ -461,6 +535,32 @@ func cmpValues(op string, l, r value) bool {
 	return false
 }
 
+// evalArith performs arithmetic on two values.
+func (e *Engine) evalArith(ex ArithExpr) value {
+	l := e.evalExpr(ex.Left)
+	r := e.evalExpr(ex.Right)
+	ln, lok := numFromValue(l)
+	rn, rok := numFromValue(r)
+	if !lok || !rok {
+		return value{s: "0"}
+	}
+	var result float64
+	switch ex.Op {
+	case "+":
+		result = ln + rn
+	case "-":
+		result = ln - rn
+	case "*":
+		result = ln * rn
+	case "/":
+		if rn == 0 {
+			return value{s: "0"}
+		}
+		result = ln / rn
+	}
+	return value{s: strconv.FormatFloat(result, 'f', -1, 64)}
+}
+
 func cmpNums(op string, l, r float64) bool {
 	switch op {
 	case "==":
@@ -533,6 +633,10 @@ func Describe(prog *Program) []string {
 			case IfStmt:
 				out = append(out, fmt.Sprintf("%sif %s", indent(depth), condText(st.Cond)))
 				walk(st.Then, depth+1)
+				for _, elif := range st.Elifs {
+					out = append(out, fmt.Sprintf("%selif %s", indent(depth), condText(elif.Cond)))
+					walk(elif.Body, depth+1)
+				}
 				// The else clause is only shown when the script actually has one.
 				if len(st.Else) > 0 {
 					out = append(out, indent(depth)+"else")
@@ -557,6 +661,27 @@ func Describe(prog *Program) []string {
 				out = append(out, indent(depth)+"continue")
 			case HaltStmt:
 				out = append(out, indent(depth)+"stop the script")
+			case TryStmt:
+				out = append(out, indent(depth)+"try")
+				walk(st.Body, depth+1)
+				catchVar := ""
+				if st.CatchVar != "" {
+					catchVar = " " + st.CatchVar
+				}
+				out = append(out, fmt.Sprintf("%scatch%s", indent(depth), catchVar))
+				walk(st.CatchBody, depth+1)
+				out = append(out, indent(depth)+"end")
+			case FuncDefStmt:
+				params := strings.Join(st.Params, ", ")
+				out = append(out, fmt.Sprintf("%sdef %s(%s)", indent(depth), st.Name, params))
+				walk(st.Body, depth+1)
+				out = append(out, indent(depth)+"end")
+			case CallStmt:
+				args := make([]string, 0, len(st.Args))
+				for _, a := range st.Args {
+					args = append(args, exprText(a))
+				}
+				out = append(out, fmt.Sprintf("%s%s(%s)", indent(depth), st.Name, strings.Join(args, ", ")))
 			}
 		}
 	}
@@ -581,6 +706,8 @@ func exprText(e Expr) string {
 			parts = append(parts, exprText(it))
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
+	case ArithExpr:
+		return fmt.Sprintf("%s %s %s", exprText(v.Left), v.Op, exprText(v.Right))
 	}
 	return "?"
 }

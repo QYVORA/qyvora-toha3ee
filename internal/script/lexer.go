@@ -139,6 +139,9 @@ func (l *lexer) next() (token, error) {
 				l.skipComment()
 				continue
 			}
+			// Bare '/' is an arithmetic operator.
+			l.pos++
+			return token{kind: tkIdent, text: "/", line: l.line}, nil
 
 		case c == '-':
 			if l.pos+1 < len(l.src) && l.src[l.pos+1] == '>' {
@@ -235,6 +238,16 @@ func (l *lexer) next() (token, error) {
 				return tok, nil
 			}
 
+		case c == '+':
+			// Bare '+' is an arithmetic operator.
+			l.pos++
+			return token{kind: tkIdent, text: "+", line: l.line}, nil
+
+		case c == '*':
+			// Bare '*' is an arithmetic operator.
+			l.pos++
+			return token{kind: tkIdent, text: "*", line: l.line}, nil
+
 		case c == '"':
 			return l.lexQuoted()
 
@@ -245,7 +258,7 @@ func (l *lexer) next() (token, error) {
 			return l.lexIdent()
 
 		default:
-			// Anything else (e.g. '*', '~') must begin a raw value or be an
+			// Anything else (e.g. '~') must begin a raw value or be an
 			// error; lexRaw decides which.
 			return l.lexRaw()
 		}

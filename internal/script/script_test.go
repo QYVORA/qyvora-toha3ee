@@ -2,6 +2,7 @@ package script
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +23,7 @@ type mockRunner struct {
 	stopped     []string
 	reports     []string
 	cmds        []string
+	failOnStart string // module name that should fail on Start
 }
 
 func newMock() *mockRunner {
@@ -50,10 +52,13 @@ func (m *mockRunner) GetConfig(key string) string {
 }
 func (m *mockRunner) Start(id string, opts map[string]string) error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failOnStart != "" && id == m.failOnStart {
+		return fmt.Errorf("module %s failed", id)
+	}
 	m.started = append(m.started, id)
 	m.startedOpts = append(m.startedOpts, opts)
 	m.running[id] = true
-	m.mu.Unlock()
 	return nil
 }
 func (m *mockRunner) Stop(id string) error {
@@ -500,4 +505,147 @@ func TestRunnerErrorPropagates(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = errors.Is // keep import used
+}
+
+func TestElifChains(t *testing.T) {
+	m := newMock()
+	e := NewEngine(m)
+
+	// Test elif with first condition true
+	err := e.Run("_x -> 1\nif _x == 1\n  echo -> 'one'\nelif _x == 2\n  echo -> 'two'\nelse\n  echo -> 'other'\nend\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "one" {
+		t.Errorf("expected 'one', got %v", m.echos)
+	}
+
+	// Test elif with second condition true
+	m.echos = nil
+	e = NewEngine(m)
+	err = e.Run("_x -> 2\nif _x == 1\n  echo -> 'one'\nelif _x == 2\n  echo -> 'two'\nelse\n  echo -> 'other'\nend\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "two" {
+		t.Errorf("expected 'two', got %v", m.echos)
+	}
+
+	// Test elif with else fallback
+	m.echos = nil
+	e = NewEngine(m)
+	err = e.Run("_x -> 3\nif _x == 1\n  echo -> 'one'\nelif _x == 2\n  echo -> 'two'\nelse\n  echo -> 'other'\nend\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "other" {
+		t.Errorf("expected 'other', got %v", m.echos)
+	}
+}
+
+func TestTryCatch(t *testing.T) {
+	m := newMock()
+	m.failOnStart = "fail.mod"
+	e := NewEngine(m)
+
+	// Test try/catch with error
+	err := e.Run("try\n  on fail.mod\ncatch _err\n  echo -> $(_err)\nend\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || !strings.Contains(m.echos[0], "failed") {
+		t.Errorf("expected error message in catch block, got %v", m.echos)
+	}
+
+	// Test try/catch without error (catch should not run)
+	m.echos = nil
+	m.failOnStart = ""
+	e = NewEngine(m)
+	err = e.Run("try\n  echo -> 'ok'\ncatch _err\n  echo -> 'error'\nend\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "ok" {
+		t.Errorf("expected 'ok', got %v", m.echos)
+	}
+}
+
+func TestFuncDefAndCall(t *testing.T) {
+	m := newMock()
+	e := NewEngine(m)
+
+	// Define a function and call it (use double-quoted strings for interpolation)
+	err := e.Run("def greet(_name)\n  echo -> \"Hello $(_name)\"\nend\ngreet 'World'\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "Hello World" {
+		t.Errorf("expected 'Hello World', got %v", m.echos)
+	}
+
+	// Test function with no args
+	m.echos = nil
+	e = NewEngine(m)
+	err = e.Run("def sayhi()\n  echo -> \"hi\"\nend\nsayhi\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "hi" {
+		t.Errorf("expected 'hi', got %v", m.echos)
+	}
+
+	// Test undefined function error
+	m.echos = nil
+	e = NewEngine(m)
+	err = e.Run("undefined_func\n")
+	if err == nil {
+		t.Error("expected error for undefined function")
+	}
+}
+
+func TestArithmeticExpressions(t *testing.T) {
+	m := newMock()
+	e := NewEngine(m)
+
+	// Test addition
+	err := e.Run("_a -> 2\n_b -> 3\n_c -> _a + _b\necho -> $(_c)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "5" {
+		t.Errorf("expected '5', got %v", m.echos)
+	}
+
+	// Test multiplication
+	m.echos = nil
+	e = NewEngine(m)
+	err = e.Run("_a -> 4\n_b -> 5\n_c -> _a * _b\necho -> $(_c)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "20" {
+		t.Errorf("expected '20', got %v", m.echos)
+	}
+
+	// Test division
+	m.echos = nil
+	e = NewEngine(m)
+	err = e.Run("_a -> 10\n_b -> 2\n_c -> _a / _b\necho -> $(_c)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "5" {
+		t.Errorf("expected '5', got %v", m.echos)
+	}
+
+	// Test operator precedence (* before +)
+	m.echos = nil
+	e = NewEngine(m)
+	err = e.Run("_a -> 2\n_b -> 3\n_c -> _a + _b * 4\necho -> $(_c)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.echos) != 1 || m.echos[0] != "14" {
+		t.Errorf("expected '14', got %v", m.echos)
+	}
 }
