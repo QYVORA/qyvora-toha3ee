@@ -76,7 +76,7 @@ func (s *Sniffer) Start(outFile string) error {
 		// A pcap file starts with a 24-byte global header declaring the max
 		// snapshot length and the link-layer type (ethernet).
 		if err := s.writer.WriteFileHeader(65535, layers.LinkTypeEthernet); err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("write pcap header: %w", err)
 		}
 	}
@@ -90,8 +90,8 @@ func (s *Sniffer) Stop() {
 	close(s.stop)
 	s.wg.Wait()
 	if s.file != nil {
-		s.file.Sync()
-		s.file.Close()
+		_ = s.file.Sync()
+		_ = s.file.Close()
 		s.file = nil
 	}
 	s.handle.Close()

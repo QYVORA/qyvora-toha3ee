@@ -28,7 +28,7 @@ func SnapshotTable() ([]Row, error) {
 	// on the internal arpRow representation.
 	out := make([]Row, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Row{IP: r.IP, MAC: r.MAC, Iface: r.Iface})
+		out = append(out, Row(r))
 	}
 	return out, nil
 }
@@ -62,7 +62,7 @@ func readARPRows() ([]arpRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open /proc/net/arp: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var rows []arpRow
 	sc := bufio.NewScanner(f)

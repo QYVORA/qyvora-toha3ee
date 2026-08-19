@@ -40,8 +40,8 @@ func Call(addr string, prog, vers, proc uint32, prot int, args []byte, timeout t
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(timeout))
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 	return callConn(conn, prog, vers, proc, args)
 }
 

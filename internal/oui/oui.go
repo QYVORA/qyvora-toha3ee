@@ -23,7 +23,7 @@ func New() *DB {
 // Lookup returns the vendor for a hardware address, or "" if unknown.
 func (d *DB) Lookup(mac net.HardwareAddr) string {
 	// MACs shorter than 3 bytes (e.g. bogus/empty frames) have no OUI.
-	if mac == nil || len(mac) < 3 {
+	if len(mac) < 3 {
 		return ""
 	}
 	// mac.String() yields "aa:bb:cc:dd:ee:ff"; the first 8 chars are the OUI

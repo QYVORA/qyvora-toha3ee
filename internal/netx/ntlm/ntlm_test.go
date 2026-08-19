@@ -118,7 +118,7 @@ func TestServerCapture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Client sends type 1 negotiate.
 	t1 := append([]byte{}, Signature...)

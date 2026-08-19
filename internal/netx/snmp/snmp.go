@@ -77,7 +77,7 @@ func Dial(addr, community string, timeout time.Duration) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn.SetDeadline(time.Now().Add(timeout))
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 	return &Client{addr: addr, community: community, timeout: timeout, conn: conn}, nil
 }
 

@@ -302,7 +302,7 @@ func (s *Server) handle(conn net.Conn) {
 		s.mu.Lock()
 		delete(s.conns, conn)
 		s.mu.Unlock()
-		conn.Close()
+		_ = conn.Close()
 	}()
 
 	challenge := s.challenge
@@ -421,12 +421,12 @@ func (s *Server) Stop() {
 		close(s.done)
 	}
 	if s.ln != nil {
-		s.ln.Close()
+		_ = s.ln.Close()
 	}
 	// Force-close every live connection so blocked handle goroutines return.
 	s.mu.Lock()
 	for c := range s.conns {
-		c.Close()
+		_ = c.Close()
 	}
 	s.conns = map[net.Conn]bool{}
 	s.mu.Unlock()

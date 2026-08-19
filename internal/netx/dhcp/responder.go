@@ -91,7 +91,7 @@ func (r *Responder) Stop() {
 		close(r.stop)
 	}
 	if r.conn != nil {
-		r.conn.Close()
+		_ = r.conn.Close()
 	}
 	<-r.done
 }

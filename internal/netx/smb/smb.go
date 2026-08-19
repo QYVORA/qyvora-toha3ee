@@ -55,8 +55,8 @@ func Probe(addr string, timeout time.Duration) (*SigningResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(timeout))
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 
 	if _, err := conn.Write(buildNegotiate()); err != nil {
 		return nil, err

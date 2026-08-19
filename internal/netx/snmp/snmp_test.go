@@ -61,7 +61,7 @@ func TestDialNoServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if _, err := c.Get(oidSysName); err == nil {
 		t.Error("expected error against a dead port")
 	}

@@ -31,7 +31,7 @@ func makeBeacon(bssid net.HardwareAddr, ssid string, channel byte, wpa2 bool) []
 		tags = append(tags, tagBytes(48, []byte{0x30, 0x18, 0x01, 0x00})...)
 	}
 	buf := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true}, radioTap, dot11, beacon)
+	_ = gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true}, radioTap, dot11, beacon)
 	return append(buf.Bytes(), tags...)
 }
 

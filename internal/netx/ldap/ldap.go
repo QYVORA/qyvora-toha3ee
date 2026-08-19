@@ -46,9 +46,7 @@ type Client struct {
 	conn     net.Conn
 	msgID    int    // per-connection message counter for the messageID field
 	baseDN   string // DN used by bind and as the default search base
-	auth     string // empty => anonymous
 	password string
-	rootDSE  bool
 }
 
 // Dial opens a connection and performs a bind. A nil bindDN means an
@@ -61,13 +59,13 @@ func Dial(addr, bindDN, password string, timeout time.Duration) (*Client, error)
 	}
 	// One absolute deadline covers the whole handshake; individual operations
 	// replace it with their own deadlines afterwards.
-	conn.SetDeadline(time.Now().Add(timeout))
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 	c := &Client{conn: conn, baseDN: bindDN, password: password}
 	if bindDN != "" || password != "" {
 		// Only bind when credentials were supplied; an empty bindDN plus empty
 		// password stays anonymous and skips the round-trip.
 		if err := c.bind(); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, fmt.Errorf("ldap bind: %w", err)
 		}
 	}
@@ -144,7 +142,7 @@ type Entry struct {
 // empty it reads the root DSE (which requires no bind on most servers).
 func (c *Client) Search(baseDN string, scope int, filter string, timeout time.Duration) ([]*Entry, error) {
 	// Replace the handshake deadline with one for this search only.
-	c.conn.SetDeadline(time.Now().Add(timeout))
+	_ = c.conn.SetDeadline(time.Now().Add(timeout))
 	f, err := c.filterBytes(filter)
 	if err != nil {
 		return nil, err

@@ -552,7 +552,7 @@ func (s *Scanner) GrabBanners(ip net.IP, ports []uint16, timeout time.Duration) 
 		_ = conn.SetDeadline(time.Now().Add(timeout))
 		buf := make([]byte, 512)
 		n, _ := conn.Read(buf)
-		conn.Close()
+		_ = conn.Close()
 		banner := sanitize(string(buf[:n]))
 		out = append(out, Banner{Port: p, Banner: banner, Service: svc, Secure: isTLS(p)})
 	}

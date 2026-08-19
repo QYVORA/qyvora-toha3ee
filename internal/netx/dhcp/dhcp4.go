@@ -211,7 +211,7 @@ func (s *Starver) SendDiscover() error {
 // Close releases the socket.
 func (s *Starver) Close() {
 	if s.conn != nil {
-		s.conn.Close()
+		_ = s.conn.Close()
 		s.conn = nil
 	}
 }

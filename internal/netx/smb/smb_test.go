@@ -17,13 +17,13 @@ func mockServer(mode uint16) (addr string, close func(), err error) {
 	done := make(chan struct{})
 	stop := func() { done <- struct{}{} }
 	go func() {
-		defer ln.Close()
+		defer func() { _ = ln.Close() }()
 		defer stop()
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		// Consume the request.
 		req := make([]byte, 102)
 		if _, err := readFull(conn, req); err != nil {
@@ -37,10 +37,10 @@ func mockServer(mode uint16) (addr string, close func(), err error) {
 		binary.LittleEndian.PutUint16(body[0:], 65) // structure size
 		binary.LittleEndian.PutUint16(body[2:], mode)
 		binary.LittleEndian.PutUint16(body[4:], dialect202)
-		conn.Write(resp)
+		_, _ = conn.Write(resp)
 	}()
 	close = func() {
-		ln.Close()
+		_ = ln.Close()
 		<-done
 	}
 	return ln.Addr().String(), close, nil

@@ -55,7 +55,7 @@ func TestFormSwapServesTemplate(t *testing.T) {
 	// Backend "real" site.
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, "<html><head></head><body>real facebook login</body></html>")
+		_, _ = io.WriteString(w, "<html><head></head><body>real facebook login</body></html>")
 	}))
 	defer backend.Close()
 
@@ -78,7 +78,7 @@ func TestFormSwapServesTemplate(t *testing.T) {
 	resp.Header.Set("Content-Type", "text/html")
 	resp = p.onResponse(resp, proxyCtx)
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if !strings.Contains(string(body), "Facebook") || strings.Contains(string(body), "real facebook") {
 		t.Fatalf("form swap failed: %s", body)
 	}
@@ -113,7 +113,7 @@ func TestCookieHarvestAndInjector(t *testing.T) {
 	}
 	resp.Header.Add("Set-Cookie", "sid=abc123; Path=/")
 	resp = p.onResponse(resp, &goproxy.ProxyCtx{Req: req})
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	sess := db.Sessions()
 	if len(sess) != 1 || sess[0].VictimIP != "192.168.8.50" || sess[0].Cookies["sid"] != "abc123" {
 		t.Fatalf("session not captured: %+v", sess)
