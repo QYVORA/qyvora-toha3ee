@@ -134,10 +134,10 @@ func renderReport(st *store.Store, iface string, at time.Time) string {
 		b.WriteString("_none captured_\n\n")
 	}
 	for _, c := range creds {
-		fmt.Fprintf(&b, "- [%s] `%s`:%s host=%s victim=%s source=%s at %s\n",
-			c.Service, c.Username, c.Password, c.Host, c.VictimIP, c.Source, c.Time.Format(time.RFC3339))
+		fmt.Fprintf(&b, "- [%s] `%s`:`<redacted>` host=%s victim=%s source=%s at %s\n",
+			c.Service, c.Username, c.Host, c.VictimIP, c.Source, c.Time.Format(time.RFC3339))
 		if c.Extra != "" {
-			fmt.Fprintf(&b, "  - extra: `%s`\n", c.Extra)
+			fmt.Fprintf(&b, "  - extra: `<redacted>`\n")
 		}
 	}
 

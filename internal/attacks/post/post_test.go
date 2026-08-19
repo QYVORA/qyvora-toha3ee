@@ -39,7 +39,7 @@ func TestRenderReportSections(t *testing.T) {
 		"## Hosts",
 		"**10.0.0.5** `00:11:22:33:44:55` (Acme) name=\"web01\" os=\"Linux\" ports=[80,443]",
 		"## Credentials",
-		"[http.post] `admin`:s3cret",
+		"[http.post] `admin`:`<redacted>`",
 		"## Sessions",
 		"cookies=`sessionid=abc123`",
 		"## Event log",
@@ -73,5 +73,26 @@ func TestRenderReportSortsHosts(t *testing.T) {
 	}
 	if a > b {
 		t.Errorf("hosts not sorted: 10.0.0.2 appears after 10.0.0.9")
+	}
+}
+
+func TestRenderReportRedactsPasswords(t *testing.T) {
+	s := store.New(100)
+	s.AddCred(store.Cred{
+		Service:  "http",
+		Username: "admin",
+		Password: "s3cretP@ss",
+		Host:     "10.0.0.1",
+		VictimIP: "10.0.0.2",
+		Source:   "http.harvest",
+		Time:     time.Now(),
+	})
+
+	md := renderReport(s, "eth0", time.Now())
+	if strings.Contains(md, "s3cretP@ss") {
+		t.Error("markdown report contains plaintext password")
+	}
+	if !strings.Contains(md, "<redacted>") {
+		t.Error("markdown report should contain <redacted> placeholder")
 	}
 }
