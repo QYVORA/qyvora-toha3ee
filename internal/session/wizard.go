@@ -22,7 +22,7 @@ func (s *Session) WizardWithStdin() error {
 	if err != nil {
 		return err
 	}
-	defer rl.Close()
+	defer func() { _ = rl.Close() }()
 	return s.Wizard(rl)
 }
 

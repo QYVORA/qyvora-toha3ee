@@ -50,7 +50,7 @@ func TestCaptureServerHarvestsCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("expected redirect, got %d", resp.StatusCode)
 	}
@@ -83,7 +83,7 @@ func TestUnknownTemplate404(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
 	}
@@ -100,7 +100,7 @@ func TestNormalizeTemplateID(t *testing.T) {
 
 func readAll(t *testing.T, resp *http.Response) string {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var b strings.Builder
 	buf := make([]byte, 4096)
 	for {

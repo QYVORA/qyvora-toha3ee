@@ -140,12 +140,12 @@ func (u *UI) Section(title string) {
 	left := inner / 2
 	right := inner - left
 	line := strings.Repeat("─", left) + " " + label + " " + strings.Repeat("─", right)
-	fmt.Fprintf(u.w, "\n%s\n", u.DimWhite(line))
+	_, _ = fmt.Fprintf(u.w, "\n%s\n", u.DimWhite(line))
 }
 
 // Rule prints a full-width dim rule. Use it sparingly; Section is preferred.
 func (u *UI) Rule() {
-	fmt.Fprintln(u.w, u.DimWhite(strings.Repeat("─", sectionWidth)))
+	_, _ = fmt.Fprintln(u.w, u.DimWhite(strings.Repeat("─", sectionWidth)))
 }
 
 // Clear clears the terminal screen (a no-op when output is not a terminal,
@@ -154,13 +154,13 @@ func (u *UI) Clear() {
 	if isTerminal(u.w) {
 		// ANSI "erase display then move cursor home"; only meaningful on a
 		// live terminal.
-		fmt.Fprint(u.w, "\x1b[2J\x1b[H")
+		_, _ = fmt.Fprint(u.w, "\x1b[2J\x1b[H")
 	}
 }
 
 // KV prints a "  key: value" pair with the key emphasized.
 func (u *UI) KV(key, value string) {
-	fmt.Fprintf(u.w, "  %s %s\n", u.BoldWhite(key+":"), u.White(value))
+	_, _ = fmt.Fprintf(u.w, "  %s %s\n", u.BoldWhite(key+":"), u.White(value))
 }
 
 // KVf is KV with a formatted value.
@@ -184,13 +184,13 @@ func (u *UI) Status(glyph, format string, args ...any) {
 		return
 	}
 	sym := u.Glyph(glyph)
-	fmt.Fprintf(u.w, "  %s %s\n", sym, u.White(fmt.Sprintf(format, args...)))
+	_, _ = fmt.Fprintf(u.w, "  %s %s\n", sym, u.White(fmt.Sprintf(format, args...)))
 }
 
 // Err prints a hard-error line with a red [x] glyph. It is the console's one
 // red emphasis: warnings use [!], only failures and the prompt accent use red.
 func (u *UI) Err(format string, args ...any) {
-	fmt.Fprintf(u.w, "  %s %s\n", u.paint("[x]", Bold+Red), u.Red(fmt.Sprintf(format, args...)))
+	_, _ = fmt.Fprintf(u.w, "  %s %s\n", u.paint("[x]", Bold+Red), u.Red(fmt.Sprintf(format, args...)))
 }
 
 // Prompt builds the interactive prompt with the framework name in bold red
@@ -236,7 +236,7 @@ func (u *UI) HUD(left, right string) {
 	if pad < 1 {
 		pad = 1
 	}
-	fmt.Fprintf(u.w, "%s %s%s\n", u.paint("▮", Bold+Red), left, strings.Repeat(" ", pad)+right)
+	_, _ = fmt.Fprintf(u.w, "%s %s%s\n", u.paint("▮", Bold+Red), left, strings.Repeat(" ", pad)+right)
 }
 
 // TermWidth reports the terminal column count, or 0 when the writer is not an
@@ -286,7 +286,7 @@ func (u *UI) Table(headers []string, rows [][]string) {
 		}
 		b.WriteString(padTo(u.BoldWhite(h), widths[i]))
 	}
-	fmt.Fprintln(u.w, b.String())
+	_, _ = fmt.Fprintln(u.w, b.String())
 
 	// Data rows: missing cells render as empty, keeping columns aligned.
 	for _, r := range rows {
@@ -301,7 +301,7 @@ func (u *UI) Table(headers []string, rows [][]string) {
 			}
 			rb.WriteString(padTo(u.White(cell), widths[i]))
 		}
-		fmt.Fprintln(u.w, rb.String())
+		_, _ = fmt.Fprintln(u.w, rb.String())
 	}
 }
 
@@ -317,11 +317,11 @@ func (u *UI) Banner(tagline string) {
 			}
 			b.WriteString(u.paint(string(r), Red))
 		}
-		fmt.Fprintln(u.w, b.String())
+		_, _ = fmt.Fprintln(u.w, b.String())
 	}
-	fmt.Fprintln(u.w)
-	fmt.Fprintln(u.w, u.BoldWhite(strings.TrimSpace(tagline)))
-	fmt.Fprintln(u.w)
+	_, _ = fmt.Fprintln(u.w)
+	_, _ = fmt.Fprintln(u.w, u.BoldWhite(strings.TrimSpace(tagline)))
+	_, _ = fmt.Fprintln(u.w)
 }
 
 // BannerFoot prints the interface/version footer under the banner.
@@ -330,12 +330,9 @@ func (u *UI) BannerFoot(iface, version string) {
 		u.Status(">", "iface %s", iface)
 	}
 	u.Status(">", "v %s", version)
-	fmt.Fprintln(u.w, u.DimWhite("type 'help' for commands, 'modules' for the catalogue, 'quit' to exit"))
-	fmt.Fprintln(u.w)
+	_, _ = fmt.Fprintln(u.w, u.DimWhite("type 'help' for commands, 'modules' for the catalogue, 'quit' to exit"))
+	_, _ = fmt.Fprintln(u.w)
 }
-
-// width reports the visible width of a string (ANSI codes ignored).
-func (u *UI) width(s string) int { return runeLen(s) }
 
 // runeLen counts the display width of s, stripping ANSI escape sequences
 // first and counting wide (CJK/emoji) characters as two columns.

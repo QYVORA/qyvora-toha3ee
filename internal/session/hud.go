@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -53,20 +52,4 @@ func (s *Session) hud() {
 	right.WriteString(s.UI.White(strconv.Itoa(len(s.Store.Events()))))
 
 	s.UI.HUD(left.String(), right.String())
-}
-
-// statusSummary formats the HUD content as plain text for non-terminal output.
-func (s *Session) hudSummary() string {
-	iface := "none"
-	if s.Iface != nil {
-		iface = fmt.Sprintf("%s %s", s.Iface.Name, s.Iface.IP)
-	}
-	running := s.Running()
-	if len(running) == 0 {
-		// Keep the bracket list well-formed even when nothing is running.
-		running = []string{"none"}
-	}
-	hosts := len(s.Store.Hosts())
-	return fmt.Sprintf("iface %s running [%s] hosts %d creds %d",
-		iface, strings.Join(running, ","), hosts, len(s.Store.Creds()))
 }

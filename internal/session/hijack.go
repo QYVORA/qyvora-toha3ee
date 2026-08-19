@@ -32,7 +32,7 @@ func (s *Session) Injector() *hijack.Injector {
 //	session.hijack show
 func (s *Session) sessionHijack(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: session.hijack add|rm|show ...")
+		return fmt.Errorf("usage: session.hijack add|rm|show")
 	}
 	switch args[0] {
 	case "add":
@@ -42,15 +42,15 @@ func (s *Session) sessionHijack(args []string) error {
 			return fmt.Errorf("usage: session.hijack rm <victim-ip>")
 		}
 		s.Injector().Remove(args[1])
-		fmt.Fprintf(s.Out, "removed injection for %s\n", args[1])
+		_, _ = fmt.Fprintf(s.Out, "removed injection for %s\n", args[1])
 	case "show", "list":
 		// Render every rule with its optional host filter and injected
 		// cookies/headers so the operator can review active injections.
 		for _, r := range s.Injector().Rules() {
-			fmt.Fprintf(s.Out, "  %-18s host=%-24s cookies=%v headers=%v\n", r.VictimIP, r.Host, r.Cookies, r.Headers)
+			_, _ = fmt.Fprintf(s.Out, "  %-18s host=%-24s cookies=%v headers=%v\n", r.VictimIP, r.Host, r.Cookies, r.Headers)
 		}
 	default:
-		return fmt.Errorf("usage: session.hijack add|rm|show ...")
+		return fmt.Errorf("usage: session.hijack add|rm|show")
 	}
 	return nil
 }
@@ -84,7 +84,7 @@ func (s *Session) hijackAdd(args []string) error {
 		}
 	}
 	s.Injector().Add(rule)
-	fmt.Fprintf(s.Out, "injection added for %s\n", rule.VictimIP)
+	_, _ = fmt.Fprintf(s.Out, "injection added for %s\n", rule.VictimIP)
 	return nil
 }
 

@@ -85,9 +85,6 @@ func New(iface *netx.Iface, out io.Writer, log *slog.Logger) *Session {
 // SetColor forces colors on or off for the whole session.
 func (s *Session) SetColor(on bool) { s.UI.SetColor(on) }
 
-// section prints a section header through the console UI.
-func (s *Session) section(title string) { s.UI.Section(title) }
-
 // statusf prints a [*] status line through the console UI.
 func (s *Session) statusf(format string, args ...any) {
 	s.UI.Status("*", format, args...)
@@ -168,7 +165,7 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 		return fmt.Errorf("%s preflight: %w", id, err)
 	}
 	s.UI.Section("preflight " + id)
-	fmt.Fprint(ui.NewLineWriter(s.UI), rep.String())
+	_, _ = fmt.Fprint(ui.NewLineWriter(s.UI), rep.String())
 	if blk := rep.Blocked(); blk != "" {
 		s.warnf("%s blocked by %s; not started.", id, blk)
 		return fmt.Errorf("%s blocked (missing %s)", id, blk)

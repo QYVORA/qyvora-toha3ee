@@ -31,7 +31,7 @@ func (s *Session) REPL() error {
 	if err != nil {
 		return err
 	}
-	defer rl.Close()
+	defer func() { _ = rl.Close() }()
 
 	s.UI.Banner("network exploitation & MITM framework")
 	s.UI.BannerFoot(s.Iface.String(), versionString())
@@ -683,7 +683,7 @@ func (s *Session) printVectors(vecs []vectors.Vector, engine *vectors.Engine, pr
 	// index shown in the first column.
 	for i, v := range vecs {
 		if v.Impact != "" {
-			fmt.Fprintf(s.Out, "  %s %s\n", s.UI.DimWhite(strconv.Itoa(i+1)+"."), s.UI.White(v.Impact))
+			_, _ = fmt.Fprintf(s.Out, "  %s %s\n", s.UI.DimWhite(strconv.Itoa(i+1)+"."), s.UI.White(v.Impact))
 		}
 	}
 }
@@ -802,7 +802,7 @@ func (s *Session) echoCommand(line string) {
 	if s.UI.Quiet {
 		return
 	}
-	fmt.Fprintf(s.Out, "  %s %s\n", s.UI.Glyph(">"), s.UI.White(line))
+	_, _ = fmt.Fprintf(s.Out, "  %s %s\n", s.UI.Glyph(">"), s.UI.White(line))
 }
 
 // Eval runs a one-shot sequence of REPL commands separated by ';' or newlines,
