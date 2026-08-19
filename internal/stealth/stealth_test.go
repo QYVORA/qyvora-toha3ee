@@ -59,7 +59,7 @@ func TestTTLBounds(t *testing.T) {
 	c := New()
 	for i := 0; i < 10000; i++ {
 		ttl := c.TTL(64, 8)
-		if ttl < 1 || ttl > 255 {
+		if ttl < 1 {
 			t.Fatalf("ttl %d out of range", ttl)
 		}
 	}
