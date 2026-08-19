@@ -433,7 +433,7 @@ func (p *parser) parseIf() (Stmt, error) {
 
 func (p *parser) parseForEach() (Stmt, error) {
 	p.next() // for
-	if !(p.at(tkIdent) && p.peek().text == "each") {
+	if !p.at(tkIdent) || p.peek().text != "each" {
 		return nil, parseError(p.peek(), "expected 'each', found %s", p.peek())
 	}
 	p.next()
@@ -445,7 +445,7 @@ func (p *parser) parseForEach() (Stmt, error) {
 	if !strings.HasPrefix(v.text, "_") {
 		return nil, parseError(v, "loop variable must start with '_'")
 	}
-	if !(p.at(tkIdent) && p.peek().text == "in") {
+	if !p.at(tkIdent) || p.peek().text != "in" {
 		return nil, parseError(p.peek(), "expected 'in', found %s", p.peek())
 	}
 	p.next()
@@ -474,7 +474,7 @@ func (p *parser) parseRepeat() (Stmt, error) {
 		return nil, err
 	}
 	// The "times" keyword is mandatory: "repeat 3 times ...".
-	if !(p.at(tkIdent) && p.peek().text == "times") {
+	if !p.at(tkIdent) || p.peek().text != "times" {
 		return nil, parseError(p.peek(), "expected 'times', found %s", p.peek())
 	}
 	p.next()
@@ -679,7 +679,7 @@ func (p *parser) parsePrimaryCond() (Cond, error) {
 			neg = true
 			p.next()
 		}
-		if !(p.at(tkIdent) && p.peek().text == "running") {
+		if !p.at(tkIdent) || p.peek().text != "running" {
 			return nil, parseError(p.peek(), "expected 'running', found %s", p.peek())
 		}
 		p.next()

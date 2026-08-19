@@ -71,8 +71,6 @@ type token struct {
 	raw  bool // true: single-quoted literal, no interpolation
 }
 
-func (t token) is(s string) bool { return t.text == s }
-
 func (t token) String() string {
 	switch t.kind {
 	case tkEOF:

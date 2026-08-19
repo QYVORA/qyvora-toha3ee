@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -640,15 +639,4 @@ func numFromValue(v value) (float64, bool) {
 		return 0, false
 	}
 	return n, true
-}
-
-// sortedVars returns the script variable names in deterministic order (tests,
-// debug).
-func (e *Engine) sortedVars() []string {
-	names := make([]string, 0, len(e.vars))
-	for n := range e.vars {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
 }
