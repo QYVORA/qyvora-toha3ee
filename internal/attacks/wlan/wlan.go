@@ -374,7 +374,7 @@ func (*WLANHandshake) Run(ctx *attacks.AttackCtx, opts map[string]string) error 
 			deauthInterval++
 			if bssid != nil && deauthInterval >= 4 {
 				deauthInterval = 0
-				sender.Flood(bssid, nil, 3, layers.Dot11ReasonDeauthStLeaving)
+				_, _ = sender.Flood(bssid, nil, 3, layers.Dot11ReasonDeauthStLeaving)
 				ctx.Printf("[wlan.handshake] deauth broadcast to %s to force reassociation\n", bssid)
 			}
 		}
@@ -441,9 +441,8 @@ func (*WLANEvilTwin) Meta() attacks.ModuleMeta {
 
 // eviltwinState tracks the scanner, the restore hook and the capture count.
 type eviltwinState struct {
-	scanner  *wlan.Scanner
-	restore  func() error
-	captured int
+	scanner *wlan.Scanner
+	restore func() error
 }
 
 // Preflight checks for a monitor-mode interface and a known phish template.
