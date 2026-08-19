@@ -5,7 +5,6 @@
 package enum
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 
@@ -34,17 +33,6 @@ func requireRoot(rep *attacks.PreflightReport) error {
 	}
 	rep.AddOK("root", "raw packet injection available")
 	return nil
-}
-
-// hostsReport summarizes the store host population for a preflight report.
-// It is a shared helper so every enum module reports the identical "run
-// net.scan first" guidance when the inventory is empty.
-func hostsReport(ctx *attacks.AttackCtx, rep *attacks.PreflightReport) {
-	if len(ctx.Store.Hosts()) == 0 {
-		rep.AddFixable("targets", "no hosts discovered; run net.scan first")
-		return
-	}
-	rep.AddOK("targets", fmt.Sprintf("%d host(s) discovered", len(ctx.Store.Hosts())))
 }
 
 // emit logs a finding through the session.

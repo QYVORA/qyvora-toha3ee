@@ -92,7 +92,7 @@ func (*LDAPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 		// accepted the (empty) bind — that IS the anonymous bind.
 		c2, err := ldap.Dial(addr, "", "", timeout)
 		if err == nil {
-			c2.Close()
+			_ = c2.Close()
 			res.Bind = "anonymous"
 		} else {
 			emit(ctx, "log", fmt.Sprintf("ldap.enum: %s:%s anonymous bind rejected", h.IP, port))
@@ -113,7 +113,7 @@ func (*LDAPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 				}
 			}
 		}
-		c.Close()
+		_ = c.Close()
 		emit(ctx, "finding", fmt.Sprintf("ldap.enum: %s:%s bind=%s rootDN=%q objects=%d",
 			h.IP, port, res.Bind, res.RootDN, res.Objects))
 		out = append(out, res)

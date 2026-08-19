@@ -89,7 +89,7 @@ func (*SNMPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 				break
 			}
 		}
-		c.Close()
+		_ = c.Close()
 		if community == "" {
 			emit(ctx, "log", fmt.Sprintf("snmp.enum: %s:%s no accepted community string", h.IP, port))
 			continue
@@ -100,7 +100,7 @@ func (*SNMPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 			continue
 		}
 		sys, err := c.System()
-		c.Close()
+		_ = c.Close()
 		if err != nil {
 			continue
 		}

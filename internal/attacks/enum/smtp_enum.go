@@ -88,10 +88,10 @@ func smtpProbe(host string, users []string, timeout time.Duration) (*smtpResult,
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	// A hard deadline bounds the whole conversation so a chatty or hung
 	// server cannot stall the module forever.
-	conn.SetDeadline(time.Now().Add(timeout))
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 	rd := bufio.NewReader(conn)
 
 	res := &smtpResult{Host: host}
@@ -102,7 +102,7 @@ func smtpProbe(host string, users []string, timeout time.Duration) (*smtpResult,
 
 	// cmd sends one SMTP command and reads the (possibly multi-line) reply.
 	cmd := func(line string) string {
-		conn.Write([]byte(line + "\r\n"))
+		_, _ = conn.Write([]byte(line + "\r\n"))
 		reply, _ := rd.ReadString('\n')
 		// Multi-line replies end with " " after 3-digit code: "250-..." lines
 		// continue, a "250 ..." line terminates. Position 3 holds the dash.
