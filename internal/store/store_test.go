@@ -122,3 +122,61 @@ func TestModuleRunsSnapshotIsIsolated(t *testing.T) {
 		t.Errorf("store mutated via snapshot: status = %q", got)
 	}
 }
+
+func TestAddCredDeduplicates(t *testing.T) {
+	s := New(0)
+	c1 := Cred{
+		Service:  "http",
+		Username: "admin",
+		Password: "pass123",
+		Host:     "10.0.0.1",
+		VictimIP: "10.0.0.2",
+		Source:   "http.harvest",
+	}
+	c2 := c1 // identical credential
+
+	r1 := s.AddCred(c1)
+	r2 := s.AddCred(c2)
+
+	if r1.ID != r2.ID {
+		t.Errorf("duplicate credential got different IDs: %d vs %d", r1.ID, r2.ID)
+	}
+	creds := s.Creds()
+	if len(creds) != 1 {
+		t.Errorf("expected 1 credential after dedup, got %d", len(creds))
+	}
+}
+
+func TestAddCredDifferentNotDeduped(t *testing.T) {
+	s := New(0)
+	c1 := Cred{Service: "http", Username: "admin", Host: "10.0.0.1", VictimIP: "10.0.0.2"}
+	c2 := Cred{Service: "http", Username: "root", Host: "10.0.0.1", VictimIP: "10.0.0.2"}
+
+	s.AddCred(c1)
+	s.AddCred(c2)
+
+	creds := s.Creds()
+	if len(creds) != 2 {
+		t.Errorf("expected 2 different credentials, got %d", len(creds))
+	}
+}
+
+func TestAddSessionDeduplicates(t *testing.T) {
+	s := New(0)
+	sess := Session{
+		Host:     "10.0.0.1",
+		VictimIP: "10.0.0.2",
+		Cookies:  map[string]string{"session": "abc"},
+	}
+
+	r1 := s.AddSession(sess)
+	r2 := s.AddSession(sess)
+
+	if r1.ID != r2.ID {
+		t.Errorf("duplicate session got different IDs: %d vs %d", r1.ID, r2.ID)
+	}
+	sessions := s.Sessions()
+	if len(sessions) != 1 {
+		t.Errorf("expected 1 session after dedup, got %d", len(sessions))
+	}
+}
