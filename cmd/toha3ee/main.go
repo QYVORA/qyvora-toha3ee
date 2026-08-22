@@ -1,4 +1,4 @@
-// Command toha3ee is the network exploitation framework's CLI: an
+// Command toha3ee is the local & network security assessment framework's CLI: an
 // interactive REPL, a guided wizard, a caplet runner and a one-shot -eval
 // mode. All attack functionality lives in self-registering modules under
 // internal/attacks; this binary only wires them up.
@@ -130,22 +130,22 @@ func main() {
 
 	root := &cobra.Command{
 		Use:           "toha3ee",
-		Short:         "network exploitation & MITM framework",
+		Short:         "local & network security assessment framework",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare "toha3ee" drops straight into the interactive console;
 		// "--eval \"net.scan; net.show\"" runs without a subcommand too.
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Reject an unknown -o value before any command runs so the exit
 			// status is the documented 2 (usage) rather than a runtime error.
 			if output != "" && !isValidOutput(output) {
 				return usageError{fmt.Errorf("invalid output format %q (terminal, json, markdown)", output)}
 			}
 			// Any invocation (subcommand or not) escalates to root before it
-			// touches the network stack.
-			return maybeElevate()
+			// touches the network stack; read-only verbs are exempt.
+			return maybeElevate(cmd)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			// With no subcommand, --eval runs a one-shot sequence; otherwise
 			// fall into the interactive REPL.
 			if eval != "" {
@@ -180,7 +180,7 @@ func main() {
 		Use:     "interactive",
 		Aliases: []string{"repl", "shell"},
 		Short:   "start the interactive console",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.REPL()
 			})
@@ -191,7 +191,7 @@ func main() {
 	wizardCmd := &cobra.Command{
 		Use:   "wizard",
 		Short: "guided attack setup",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return runWizard(s)
 			})
@@ -201,7 +201,7 @@ func main() {
 	evalCmd := &cobra.Command{
 		Use:   "eval",
 		Short: "run a one-shot command sequence and exit",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			// The sequence comes from --eval first, then the positional arg,
 			// so both "toha3ee eval --eval 'net.show'" and
 			// "toha3ee eval 'net.show'" work.
@@ -224,7 +224,7 @@ func main() {
 		Use:   "run",
 		Short: "execute a script or caplet non-interactively",
 		Args:  exactArgsUsage(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				if strings.HasSuffix(args[0], ".toha3ee") {
 					return s.RunScript(args[0])
@@ -238,7 +238,7 @@ func main() {
 		Use:   "script",
 		Short: "execute a .toha3ee script file",
 		Args:  exactArgsUsage(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.RunScript(args[0])
 			})
@@ -251,7 +251,7 @@ func main() {
 		Use:   "build",
 		Short: "validate a .toha3ee script and print a dry-run plan",
 		Args:  exactArgsUsage(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
 				return s.BuildScript(args[0])
 			})
@@ -263,10 +263,10 @@ func main() {
 	modulesCmd := &cobra.Command{
 		Use:   "modules",
 		Short: "list all registered modules",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			u := ui.New(os.Stdout)
 			u.SetColor(!noColor && u.Enabled())
-			u.Banner("network exploitation & MITM framework")
+			u.Banner("local & network security assessment framework")
 			u.BannerFoot("", session.Version)
 			printModules(u, attacks.List())
 			return nil
@@ -276,7 +276,7 @@ func main() {
 	versionCmd := &cobra.Command{
 		Use:   "version",
 		Short: "print the version",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			switch output {
 			case "json":
 				data, err := json.MarshalIndent(map[string]string{
@@ -292,7 +292,7 @@ func main() {
 			default:
 				u := ui.New(os.Stdout)
 				u.SetColor(!noColor && u.Enabled())
-				u.Banner("network exploitation & MITM framework")
+				u.Banner("local & network security assessment framework")
 				u.BannerFoot("", session.Version)
 			}
 			return nil
@@ -306,7 +306,7 @@ func main() {
 		Use:   "report",
 		Short: "render a saved session report (default toha3ee-report.json)",
 		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			path := "toha3ee-report.json"
 			if len(args) == 1 {
 				path = args[0]
@@ -341,7 +341,7 @@ func main() {
 		Use:   "completion bash|zsh|fish|powershell",
 		Short: "generate a shell completion script",
 		Args:  exactArgsUsage(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			switch args[0] {
 			case "bash":
 				return root.GenBashCompletionV2(os.Stdout, true)
@@ -542,10 +542,28 @@ func shouldElevate(euid int, noSudo, windows bool) bool {
 	return euid != 0 && !noSudo && !windows
 }
 
+// isReadOnlyVerb reports whether the resolved command only reads local state.
+// These verbs work identically with or without privileges and must not force
+// an interactive sudo prompt (automation calls them constantly).
+func isReadOnlyVerb(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		switch c.Name() {
+		case "version", "modules", "completion", "help":
+			return true
+		}
+	}
+	return false
+}
+
 // maybeElevate re-runs the current executable under sudo when it is not root.
-// Use --no-sudo or TOHA3EE_NO_SUDO=1 to skip the prompt (e.g. for a plain
-// `version` or `modules` listing).
-func maybeElevate() error {
+// Read-only verbs (version, modules, completion, help) never escalate: they
+// inspect no network state and must stay usable by automation without a
+// password prompt. Use --no-sudo or TOHA3EE_NO_SUDO=1 to skip the prompt for
+// the remaining verbs.
+func maybeElevate(cmd *cobra.Command) error {
+	if isReadOnlyVerb(cmd) {
+		return nil
+	}
 	if os.Getenv("TOHA3EE_NO_SUDO") == "1" {
 		return nil
 	}
@@ -563,11 +581,11 @@ func maybeElevate() error {
 	// Re-exec with the exact same args so flags are preserved under sudo.
 	// sudo inherits our stdio so the password prompt and output stay attached
 	// to the same terminal.
-	cmd := exec.Command("sudo", append([]string{self}, os.Args[1:]...)...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	sudoCmd := exec.Command("sudo", append([]string{self}, os.Args[1:]...)...)
+	sudoCmd.Stdin = os.Stdin
+	sudoCmd.Stdout = os.Stdout
+	sudoCmd.Stderr = os.Stderr
+	if err := sudoCmd.Run(); err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			// The child already printed its error; mirror only its exit code.
 			os.Exit(ee.ExitCode())
