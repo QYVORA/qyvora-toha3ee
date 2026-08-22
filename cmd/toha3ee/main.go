@@ -357,7 +357,7 @@ func main() {
 		},
 	}
 
-	root.AddCommand(replCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd, reportCmd, completionCmd)
+	root.AddCommand(replCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
 	root.SetArgs(os.Args[1:])
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toha3ee:", err)
@@ -545,10 +545,15 @@ func shouldElevate(euid int, noSudo, windows bool) bool {
 // isReadOnlyVerb reports whether the resolved command only reads local state.
 // These verbs work identically with or without privileges and must not force
 // an interactive sudo prompt (automation calls them constantly).
+//
+// "updates" belongs here even though it can install: the updater performs
+// its own permission handling and refuses cleanly when the install location
+// is not writable, so re-executing the whole framework as root would be both
+// unnecessary and surprising.
 func isReadOnlyVerb(cmd *cobra.Command) bool {
 	for c := cmd; c != nil; c = c.Parent() {
 		switch c.Name() {
-		case "version", "modules", "completion", "help":
+		case "version", "modules", "completion", "help", "updates":
 			return true
 		}
 	}

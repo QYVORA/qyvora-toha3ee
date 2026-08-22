@@ -3,6 +3,43 @@
 How to update to the latest version, reinstall, and keep your configuration
 and collected data between updates.
 
+## Self-update (recommended)
+
+```sh
+toha3ee updates        # `toha3ee update` works as an alias
+```
+
+The command never escalates privileges on its own (it is a read-only verb for
+the sudo re-exec logic) and requires no Go toolchain, Git, or source checkout.
+
+What it does:
+
+1. Reads the installed version — the same value `toha3ee version` reports.
+2. Queries the official QYVORA GitHub releases
+   (`github.com/QYVORA/qyvora-toha3ee/releases`); no other source is ever contacted.
+3. Compares versions semantically (`v1.10.0 > v1.9.0`) and reports whether an
+   update exists.
+4. Downloads the release artifact built for your platform
+   (`toha3ee_linux_amd64.tar.gz`, `toha3ee_darwin_arm64.tar.gz`,
+   `toha3ee_windows_amd64.zip`; windows-on-arm64 runs the x64 build).
+5. Verifies its SHA-256 against the per-artifact `.sha256` checksum published
+   with the release; installation never proceeds on a mismatch.
+6. Extracts only the `toha3ee` binary from the archive, swaps it in
+   atomically, and preserves the original file permissions.
+7. Cleans up all temporary files and confirms the new version.
+
+Notes:
+
+- If the binary lives somewhere like `/usr/local/bin` that your user cannot
+  write to, the updater stops with clear guidance instead of escalating on its
+  own. Re-run with the appropriate permissions or reinstall into `~/.local/bin`.
+- Downgrades are refused: an installed version newer than the latest release is
+  left alone.
+- Offline or GitHub unreachable? The command fails cleanly; your installed
+  binary stays exactly as it was.
+
+Use `-o json` or `-o markdown` for machine-readable output.
+
 ## Check your current version
 
 ```sh
@@ -13,7 +50,8 @@ toha3ee --no-sudo version
 
 Re-run the installer; it always fetches the latest release, so an existing
 install is upgraded in place. Your binary is replaced, your config and
-session data are untouched.
+session data are untouched. Use this instead of `toha3ee updates` when you
+also want the desktop entry/icon refreshed.
 
 ```sh
 # user install (defaults to ~/.local/bin)

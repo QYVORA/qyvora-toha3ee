@@ -71,6 +71,20 @@ icon so the installer can register it from the same verified artifact.
 Uninstall: delete the binary and the PATH line the installer added to your
 shell rc (or `%LOCALAPPDATA%\Programs\toha3ee` on Windows).
 
+## Updating
+
+Once installed, update with:
+
+```sh
+toha3ee updates        # `toha3ee update` works as an alias
+```
+
+Checks the installed version against the latest official QYVORA GitHub
+release, verifies the download's SHA-256 against the published checksum,
+and swaps the binary in atomically. Downgrades are refused and any failure
+leaves your current binary untouched — no Go toolchain or Git required.
+See [docs/update.md](docs/update.md) for details.
+
 ## Build
 
 Requires Go 1.26+ and libpcap.
