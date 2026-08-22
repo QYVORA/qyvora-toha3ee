@@ -16,8 +16,6 @@ import (
 	"io"
 	"os"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 // ANSI style codes. Red is reserved for hard errors; warnings use Amber and
@@ -247,12 +245,7 @@ func (u *UI) TermWidth() int {
 		// Only real files can carry a terminal geometry.
 		return 0
 	}
-	ws, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
-	if err != nil {
-		// Not a tty (or ioctl denied): report zero so callers fall back.
-		return 0
-	}
-	return int(ws.Col)
+	return termWidth(f)
 }
 
 // Table prints a header and aligned rows. Header cells are bold white and
