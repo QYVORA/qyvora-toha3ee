@@ -40,7 +40,7 @@ func TestEmitterWritesCanonicalJSONL(t *testing.T) {
 	}
 }
 
-func TestEmitterNilSafe(t *testing.T) {
+func TestEmitterNilSafe(_ *testing.T) {
 	var e *Emitter
 	e.Info("toha3ee", RunStarted, nil) // must not panic
 }

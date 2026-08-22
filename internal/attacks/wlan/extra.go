@@ -42,7 +42,7 @@ type pmkidState struct {
 }
 
 // Preflight checks for a wireless interface that can enter monitor mode.
-func (*WLANPMKID) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*WLANPMKID) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
 		rep.AddOK("monitor_iface", name)
@@ -55,7 +55,7 @@ func (*WLANPMKID) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 
 // Run starts the PMKID scanner in monitor mode and reports every captured
 // PMKID until stopped.
-func (*WLANPMKID) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WLANPMKID) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
 		return fmt.Errorf("wlan.pmkid: no wireless interface found")
@@ -147,7 +147,7 @@ func (*WLANBeaconFlood) Meta() attacks.ModuleMeta {
 }
 
 // Preflight checks for a wireless interface that can enter monitor mode.
-func (*WLANBeaconFlood) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*WLANBeaconFlood) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
 		rep.AddOK("monitor_iface", name)
@@ -158,7 +158,7 @@ func (*WLANBeaconFlood) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRep
 }
 
 // Run broadcasts pre-built phantom beacons in a loop until stopped.
-func (*WLANBeaconFlood) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WLANBeaconFlood) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
 		return fmt.Errorf("wlan.beaconflood: no wireless interface found")
@@ -286,7 +286,7 @@ type karmaState struct {
 }
 
 // Preflight checks for a wireless interface that can enter monitor mode.
-func (*WLANKarma) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*WLANKarma) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
 		rep.AddOK("monitor_iface", name)
@@ -297,7 +297,7 @@ func (*WLANKarma) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run logs client probe requests in monitor mode until stopped.
-func (*WLANKarma) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WLANKarma) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
 		return fmt.Errorf("wlan.karma: no wireless interface found")

@@ -52,7 +52,7 @@ func (*SNMPEnum) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 }
 
 // Run probes every discovered host (or those with port 161 open).
-func (*SNMPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*SNMPEnum) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	communities := ctx.Conf.Get("snmp.enum", "communities")
 	var comms []string
 	if communities == "" {
@@ -128,7 +128,7 @@ func (*SNMPEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*SNMPEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*SNMPEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // truncate shortens s to n bytes plus an ellipsis for report friendliness.
 func truncate(s string, n int) string {

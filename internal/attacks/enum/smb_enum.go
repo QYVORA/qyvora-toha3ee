@@ -54,7 +54,7 @@ func (*SMBEnum) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 }
 
 // Run negotiates with each SMB host.
-func (*SMBEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*SMBEnum) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	timeout := ctx.Conf.GetDuration("smb.enum", "timeout", 4*time.Second)
 	var out []smbResult
 	for _, h := range openHosts(ctx) {
@@ -99,7 +99,7 @@ func (*SMBEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*SMBEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*SMBEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that SMBEnum satisfies the Module contract.
 var _ attacks.Module = (*SMBEnum)(nil)

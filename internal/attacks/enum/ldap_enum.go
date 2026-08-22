@@ -55,7 +55,7 @@ func (*LDAPEnum) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 }
 
 // Run probes each LDAP host.
-func (*LDAPEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*LDAPEnum) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	port := ctx.Conf.Get("ldap.enum", "port")
 	if port == "" {
 		port = "389"
@@ -138,7 +138,7 @@ func (*LDAPEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*LDAPEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*LDAPEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that LDAPEnum satisfies the Module contract.
 var _ attacks.Module = (*LDAPEnum)(nil)

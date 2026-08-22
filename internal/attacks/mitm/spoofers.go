@@ -55,7 +55,7 @@ func (*LLMNRSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 }
 
 // Run starts the responder.
-func (*LLMNRSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*LLMNRSpoof) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	r := llmnr.New(ctx.Iface.IP, ctx.Bus, ctx.Store)
 	if err := r.Start(); err != nil {
 		return fmt.Errorf("llmnr.poison: %w", err)
@@ -130,7 +130,7 @@ type wpadState struct {
 }
 
 // Preflight warns about dependencies.
-func (*WPADSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*WPADSpoof) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	rep.AddOK("bind", "HTTP :80 served from this host")
 	rep.AddFixable("wpad", "victims must resolve 'wpad.localdomain' or 'wpad'; run dns.spoof with domain 'wpad' or llmnr.poison to assist")
@@ -138,7 +138,7 @@ func (*WPADSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run serves the PAC file and blocks.
-func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	// The PAC script tells the browser to send everything through
 	// this host:proxy_port except localhost and this host itself, so our own
 	// traffic stays direct and does not loop back into the proxy.

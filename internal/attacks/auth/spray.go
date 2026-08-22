@@ -208,7 +208,7 @@ func (*PasswordSpray) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*PasswordSpray) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*PasswordSpray) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that PasswordSpray satisfies the Module contract.
 var _ attacks.Module = (*PasswordSpray)(nil)

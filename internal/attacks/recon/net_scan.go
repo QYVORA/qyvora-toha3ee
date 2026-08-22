@@ -72,7 +72,7 @@ func (*NetScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 }
 
 // Run sweeps the interface subnet until ctx.Done is closed.
-func (*NetScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*NetScan) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	sc, err := arp.NewScanner(ctx.Iface, ctx.Bus, ctx.Store, oui.New())
 	if err != nil {
 		return fmt.Errorf("net.scan: %w", err)

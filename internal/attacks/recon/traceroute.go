@@ -58,7 +58,7 @@ type hopResult struct {
 }
 
 // Run traces the path to the target (default: the interface gateway).
-func (*NetTraceroute) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*NetTraceroute) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	target := ctx.Conf.Get("net.traceroute", "target")
 	if target == "" {
 		gw, err := ctx.Iface.Gateway()
@@ -249,6 +249,6 @@ func (*NetTraceroute) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*NetTraceroute) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*NetTraceroute) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*NetTraceroute)(nil)

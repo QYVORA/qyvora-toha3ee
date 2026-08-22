@@ -128,6 +128,6 @@ func (*Shodan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*Shodan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*Shodan) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*Shodan)(nil)

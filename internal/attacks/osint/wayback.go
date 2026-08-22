@@ -125,6 +125,6 @@ func (*WaybackEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*WaybackEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*WaybackEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*WaybackEnum)(nil)

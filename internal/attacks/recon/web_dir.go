@@ -220,7 +220,7 @@ func (*WebDir) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*WebDir) Cleanup(ctx *attacks.AttackCtx) error {
+func (*WebDir) Cleanup(_ *attacks.AttackCtx) error {
 	return nil
 }
 

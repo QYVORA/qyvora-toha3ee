@@ -55,7 +55,7 @@ func (*DHCP6Spoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 }
 
 // Run starts the responder.
-func (*DHCP6Spoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*DHCP6Spoof) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	if ctx.Iface.IPv6 == nil {
 		return fmt.Errorf("dhcp6.spoof: no IPv6 address on %s", ctx.Iface.Name)
 	}

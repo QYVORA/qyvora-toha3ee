@@ -51,7 +51,7 @@ func get(t *testing.T, srv *httptest.Server, path string) (*http.Response, []byt
 }
 
 func TestCheckHeadersFlagsMissingSecurityHeaders(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Server", "nginx/1.24.0")
 	}))
 	defer srv.Close()
@@ -76,7 +76,7 @@ func TestCheckHeadersFlagsMissingSecurityHeaders(t *testing.T) {
 }
 
 func TestCheckHeadersPresentHeadersNotFlagged(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -91,7 +91,7 @@ func TestCheckHeadersPresentHeadersNotFlagged(t *testing.T) {
 }
 
 func TestCheckServerVersionDisclosure(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Server", "nginx/1.24.0")
 		w.Header().Set("Via", "1.1 varnish")
 	}))
@@ -107,7 +107,7 @@ func TestCheckServerVersionDisclosure(t *testing.T) {
 }
 
 func TestCheckServerBareProductNameNotVersion(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Server", "nginx")
 	}))
 	defer srv.Close()
@@ -118,7 +118,7 @@ func TestCheckServerBareProductNameNotVersion(t *testing.T) {
 }
 
 func TestCheckDirectoryListing(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = io.WriteString(w, "<h1>Index of /var/www</h1><ul><li>secret.tgz</li></ul>")
 	}))
@@ -134,7 +134,7 @@ func TestCheckDirectoryListing(t *testing.T) {
 }
 
 func TestCheckDirectoryListingNonHTMLIgnored(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = io.WriteString(w, "Index of / (Apache/2.4.41 (Ubuntu) Server at 10.0.0.1)")
 	}))
@@ -146,7 +146,7 @@ func TestCheckDirectoryListingNonHTMLIgnored(t *testing.T) {
 }
 
 func TestCheckVerboseErrorStackTrace(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "<pre>Exception in thread \"main\" java.lang.NullPointerException\n        at com.example.App.run(App.java:42)</pre>")
 	}))
 	defer srv.Close()
@@ -162,7 +162,7 @@ func TestCheckVerboseErrorStackTrace(t *testing.T) {
 }
 
 func TestCheckVerboseErrorCleanPage(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "<html><body>404 Not Found</body></html>")
 	}))
 	defer srv.Close()

@@ -347,7 +347,7 @@ func (*CVESuggest) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*CVESuggest) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*CVESuggest) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // suggestForHost runs every open port's banner and the OS guess through the
 // rule tables, returning the matched CVEs sorted by severity.

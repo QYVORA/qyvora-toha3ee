@@ -59,7 +59,7 @@ func (*ReportGenerate) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepo
 }
 
 // Run renders the report and writes it to the configured path.
-func (*ReportGenerate) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*ReportGenerate) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	path := ctx.Conf.GetDefault("report.generate", "out", "toha3ee-report.md")
 	md := renderReport(ctx.Store, ctx.Iface.String(), time.Now())
 	if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
@@ -90,7 +90,7 @@ func (*ReportGenerate) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op: the report file is left on disk on purpose.
-func (*ReportGenerate) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*ReportGenerate) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // renderReport builds the Markdown document from store state.
 func renderReport(st *store.Store, iface string, at time.Time) string {
@@ -256,7 +256,7 @@ func (*SessionReplay) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*SessionReplay) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*SessionReplay) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // PcapExport copies the harvest pcap (from http.harvest) to an export path so
 // the capture survives session shutdown.
@@ -288,7 +288,7 @@ func (*PcapExport) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 }
 
 // Run copies the capture to the export path.
-func (*PcapExport) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*PcapExport) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	src := ctx.Conf.GetDefault("http.harvest", "pcap", "toha3ee.pcap")
 	dst := ctx.Conf.GetDefault("pcap.export", "out", "toha3ee-export.pcap")
 	in, err := os.Open(src)
@@ -328,4 +328,4 @@ func (*PcapExport) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op: the exported pcap stays on disk.
-func (*PcapExport) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*PcapExport) Cleanup(_ *attacks.AttackCtx) error { return nil }

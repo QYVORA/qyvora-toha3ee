@@ -172,7 +172,7 @@ func (s *Scanner) recordBeacon(packet gopacket.Packet, rssi int8, ts time.Time) 
 
 // recordProbe records a station that sent a probe request. Probe requests
 // carry the station's MAC in Address2 regardless of the request's content.
-func (s *Scanner) recordProbe(dot11 *layers.Dot11, rssi int8, ts time.Time) {
+func (s *Scanner) recordProbe(dot11 *layers.Dot11, _ int8, ts time.Time) {
 	s.mu.Lock()
 	c, found := s.clients[string(dot11.Address2)]
 	if !found {
@@ -186,7 +186,7 @@ func (s *Scanner) recordProbe(dot11 *layers.Dot11, rssi int8, ts time.Time) {
 
 // recordData links a station to the BSSID it is exchanging data with. ToDS
 // frames come from the station (Address2); FromDS frames go to it.
-func (s *Scanner) recordData(dot11 *layers.Dot11, rssi int8, ts time.Time) {
+func (s *Scanner) recordData(dot11 *layers.Dot11, _ int8, ts time.Time) {
 	var sta, bssid net.HardwareAddr
 	if dot11.Flags.ToDS() {
 		bssid, sta = dot11.Address1, dot11.Address2
@@ -258,7 +258,7 @@ func isWPAOUI(v []byte) bool {
 // CountEAPOL inspects a data frame for EAPOL key messages and updates the
 // handshake table. It returns the BSSID/station pair and whether the observed
 // exchange is complete.
-func (s *Scanner) CountEAPOL(data []byte, ci gopacket.CaptureInfo) (bssid, sta net.HardwareAddr, complete bool) {
+func (s *Scanner) CountEAPOL(data []byte, _ gopacket.CaptureInfo) (bssid, sta net.HardwareAddr, complete bool) {
 	packet := gopacket.NewPacket(data, layers.LayerTypeRadioTap, gopacket.NoCopy)
 	dot11Layer := packet.Layer(layers.LayerTypeDot11)
 	if dot11Layer == nil {

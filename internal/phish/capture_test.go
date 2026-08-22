@@ -43,7 +43,7 @@ func TestCaptureServerHarvestsCredentials(t *testing.T) {
 	form.Set("username", "alice@example.com")
 	form.Set("password", "s3cret")
 	form.Set("orig", "/home")
-	client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
 	resp, err := client.PostForm(ts.URL+"/phish/facebook/submit", form)

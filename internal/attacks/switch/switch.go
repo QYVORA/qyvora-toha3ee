@@ -104,7 +104,7 @@ func (*MACFlood) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 }
 
 // Run floods random-source ARP frames until the attack is stopped.
-func (*MACFlood) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*MACFlood) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	s, err := newRawSender(ctx.Iface)
 	if err != nil {
 		return err
@@ -199,7 +199,7 @@ func (*PortSteal) Meta() attacks.ModuleMeta {
 }
 
 // Preflight checks for raw-socket access and notes the victim MAC requirement.
-func (*PortSteal) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*PortSteal) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
 		rep.AddOK("root", "raw sockets available")
@@ -212,7 +212,7 @@ func (*PortSteal) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 
 // Run continuously advertises the victim's MAC as belonging to this port
 // until the attack is stopped.
-func (*PortSteal) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*PortSteal) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	victimStr := ctx.Conf.GetDefault("switch.portsteal", "victim_mac", "")
 	if victimStr == "" {
 		return fmt.Errorf("switch.portsteal: set switch.portsteal.victim_mac to the victim MAC")
@@ -314,7 +314,7 @@ func (*VLANHop) Meta() attacks.ModuleMeta {
 }
 
 // Preflight checks for raw-socket access and notes the target IP/VLAN config.
-func (*VLANHop) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*VLANHop) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
 		rep.AddOK("root", "raw sockets available")
@@ -326,7 +326,7 @@ func (*VLANHop) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 }
 
 // Run sends double-tagged ARP probes toward the target VLAN until stopped.
-func (*VLANHop) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*VLANHop) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	targetStr := ctx.Conf.GetDefault("switch.vlanhop", "target_ip", "")
 	if targetStr == "" {
 		return fmt.Errorf("switch.vlanhop: set switch.vlanhop.target_ip")
@@ -440,7 +440,7 @@ func (*CDPInject) Meta() attacks.ModuleMeta {
 }
 
 // Preflight checks for raw-socket access.
-func (*CDPInject) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*CDPInject) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
 		rep.AddOK("root", "raw sockets available")
@@ -451,7 +451,7 @@ func (*CDPInject) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run injects forged CDP and LLDP frames every second until stopped.
-func (*CDPInject) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*CDPInject) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	s, err := newRawSender(ctx.Iface)
 	if err != nil {
 		return err
@@ -603,7 +603,7 @@ func (*STPTakeover) Meta() attacks.ModuleMeta {
 }
 
 // Preflight checks for the raw-socket privileges needed to emit BPDUs.
-func (*STPTakeover) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*STPTakeover) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if err := safety.RequireRoot(); err == nil {
 		rep.AddOK("root", "raw sockets available")
@@ -614,7 +614,7 @@ func (*STPTakeover) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport,
 }
 
 // Run floods superior BPDUs until this host is elected root bridge.
-func (*STPTakeover) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*STPTakeover) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	s, err := newRawSender(ctx.Iface)
 	if err != nil {
 		return err

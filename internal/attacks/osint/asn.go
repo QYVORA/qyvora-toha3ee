@@ -237,12 +237,12 @@ func (*ASNEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*ASNEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*ASNEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // emit pushes a message onto the shared log topic. topic is currently unused
 // beyond documentation, but keeping it lets callers express intent and allows
 // a future routed emission without changing call sites.
-func emit(ctx *attacks.AttackCtx, topic, msg string) {
+func emit(ctx *attacks.AttackCtx, _, msg string) {
 	ctx.Emit(events.TopicLog, msg, nil)
 }
 

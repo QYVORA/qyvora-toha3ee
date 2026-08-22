@@ -51,7 +51,7 @@ type certEntry struct {
 }
 
 // Run fetches and dedupes the certificate names for the domain.
-func (*CTLogs) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*CTLogs) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	domain, err := target(ctx, "osint.ct", "domain")
 	if err != nil {
 		return err
@@ -127,6 +127,6 @@ func (*CTLogs) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*CTLogs) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*CTLogs) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*CTLogs)(nil)

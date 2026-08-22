@@ -51,7 +51,7 @@ var recordTypes = map[string]uint16{
 }
 
 // Run queries each record type and tries an AXFR.
-func (*DNSEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*DNSEnum) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	domain, err := target(ctx, "osint.dns", "domain")
 	if err != nil {
 		return err
@@ -245,6 +245,6 @@ func (*DNSEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*DNSEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*DNSEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*DNSEnum)(nil)

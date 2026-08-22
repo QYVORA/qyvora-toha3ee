@@ -106,7 +106,7 @@ func (*SSHBrowse) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run tests the cartesian product of users and passwords on each SSH host.
-func (*SSHBrowse) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*SSHBrowse) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	users, err := listConf(ctx, "auth.brute", "users", "wordlist")
 	if err != nil {
 		return fmt.Errorf("auth.brute: %w", err)
@@ -188,7 +188,7 @@ func (*SSHBrowse) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*SSHBrowse) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*SSHBrowse) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // SSHUserEnum enumerates SSH usernames using the timing behavior of OpenSSH's
 // password hashing: a server must compute SHA256(password) to return a
@@ -232,7 +232,7 @@ func (*SSHUserEnum) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport,
 }
 
 // Run measures the auth-failure latency for each candidate username.
-func (*SSHUserEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*SSHUserEnum) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	users, err := listConf(ctx, "auth.userenum", "users", "wordlist")
 	if err != nil {
 		return fmt.Errorf("auth.userenum: %w", err)
@@ -324,7 +324,7 @@ func (*SSHUserEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*SSHUserEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*SSHUserEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // listConf loads a list from the named comma-knob or a wordlist file. The
 // inline comma list takes precedence; both are optional but one must be set,

@@ -56,7 +56,7 @@ func (*ServiceScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport,
 }
 
 // Run scans each discovered host on the common ports.
-func (*ServiceScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*ServiceScan) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	scanner, err := ports.NewScanner(ctx.Iface)
 	if err != nil {
 		return fmt.Errorf("service.synscan: %w", err)
@@ -117,7 +117,7 @@ func (*ServiceScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op (scanner is closed in Run).
-func (*ServiceScan) Cleanup(ctx *attacks.AttackCtx) error {
+func (*ServiceScan) Cleanup(_ *attacks.AttackCtx) error {
 	return nil
 }
 
@@ -168,7 +168,7 @@ func (*ServiceFingerprint) Preflight(ctx *attacks.AttackCtx) (*attacks.Preflight
 }
 
 // Run fingerprints open ports on discovered hosts.
-func (*ServiceFingerprint) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*ServiceFingerprint) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	scanner, err := ports.NewScanner(ctx.Iface)
 	if err != nil {
 		return fmt.Errorf("service.fingerprint: %w", err)
@@ -241,7 +241,7 @@ func (*ServiceFingerprint) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, erro
 }
 
 // Cleanup is a no-op.
-func (*ServiceFingerprint) Cleanup(ctx *attacks.AttackCtx) error {
+func (*ServiceFingerprint) Cleanup(_ *attacks.AttackCtx) error {
 	return nil
 }
 

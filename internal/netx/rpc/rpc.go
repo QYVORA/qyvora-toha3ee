@@ -35,7 +35,7 @@ const (
 
 // Call performs an ONC RPC call to prog/vers/proc at addr, sending args and
 // returning the raw accepted-reply payload. prot selects tcp(6)/udp(17).
-func Call(addr string, prog, vers, proc uint32, prot int, args []byte, timeout time.Duration) ([]byte, error) {
+func Call(addr string, prog, vers, proc uint32, _ int, args []byte, timeout time.Duration) ([]byte, error) {
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return nil, err

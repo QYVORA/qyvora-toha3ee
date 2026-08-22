@@ -61,7 +61,7 @@ func (*IPv6RouterAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepor
 }
 
 // Run floods Router Advertisements every few seconds until stopped.
-func (*IPv6RouterAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*IPv6RouterAdv) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	s, err := ndp.NewSender(ctx.Iface.Name)
 	if err != nil {
 		return fmt.Errorf("ipv6.ra: %w", err)
@@ -161,7 +161,7 @@ func (*IPv6NeighborAdv) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRep
 
 // Run poisons the victim's neighbor cache with forged Neighbor Advertisements
 // until stopped.
-func (*IPv6NeighborAdv) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*IPv6NeighborAdv) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	if ctx.Iface.IPv6 == nil {
 		return fmt.Errorf("ipv6.ndp: no IPv6 address on %s", ctx.Iface.Name)
 	}

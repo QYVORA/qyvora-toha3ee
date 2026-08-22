@@ -210,7 +210,7 @@ func (*NetPing) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*NetPing) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*NetPing) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that NetPing implements attacks.Module.
 var _ attacks.Module = (*NetPing)(nil)
@@ -221,7 +221,7 @@ var tcpPingPorts = []uint16{22, 25, 80, 443, 445, 8080, 3389}
 // runTCPPing discovers hosts by sending SYN probes to common service ports.
 // A host is alive if any port replies with SYN-ACK (open) or RST (closed);
 // filtered ports alone mean the host may still be up but the probe was dropped.
-func runTCPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
+func runTCPPing(ctx *attacks.AttackCtx, _ map[string]string) error {
 	portsToScan := tcpPingPorts
 	if p := ctx.Conf.Get("net.ping", "ports"); p != "" {
 		portsToScan = parsePorts(splitList(p))
@@ -271,7 +271,7 @@ func runTCPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
 // runUDPPing discovers hosts by sending a UDP datagram to a likely-closed port
 // and listening for the ICMP port-unreachable reply, which is proof the host
 // is up even when it drops ICMP echo.
-func runUDPPing(ctx *attacks.AttackCtx, opts map[string]string) error {
+func runUDPPing(ctx *attacks.AttackCtx, _ map[string]string) error {
 	port := ctx.Conf.GetInt("net.ping", "udpport", 40125)
 	timeout := ctx.Conf.GetDuration("net.ping", "timeout", 1500*time.Millisecond)
 	st := stealth.FromConfig(ctx.Conf, "net.ping")

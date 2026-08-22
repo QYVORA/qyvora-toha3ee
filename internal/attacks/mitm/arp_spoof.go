@@ -106,7 +106,7 @@ func (*ARPSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 }
 
 // Run starts the poisoning loop and blocks until ctx.Done is closed.
-func (m *ARPSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (m *ARPSpoof) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	internal := ctx.Conf.GetBool("arp.spoof", "internal", false)
 	gw, _ := ctx.Iface.Gateway()
 

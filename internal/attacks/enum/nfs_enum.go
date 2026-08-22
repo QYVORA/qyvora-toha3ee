@@ -54,7 +54,7 @@ func (*NFSEnum) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 }
 
 // Run enumerates NFS on each candidate host.
-func (*NFSEnum) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*NFSEnum) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	timeout := ctx.Conf.GetDuration("nfs.enum", "timeout", 3*time.Second)
 	var out []nfsResult
 	for _, h := range openHosts(ctx) {
@@ -114,7 +114,7 @@ func (*NFSEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*NFSEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*NFSEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that NFSEnum satisfies the Module contract.
 var _ attacks.Module = (*NFSEnum)(nil)

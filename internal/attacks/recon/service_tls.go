@@ -57,7 +57,7 @@ func (*ServiceTLS) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 }
 
 // Run dials TLS on HTTPS ports of each discovered host.
-func (*ServiceTLS) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*ServiceTLS) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	st := stealth.FromConfig(ctx.Conf, "service.tls")
 	timeout := ctx.Conf.GetDuration("service.tls", "timeout", 2*time.Second)
 	portsToScan := parsePorts(strings.Split(ctx.Conf.Get("service.tls", "ports"), ","))
@@ -176,7 +176,7 @@ func (*ServiceTLS) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*ServiceTLS) Cleanup(ctx *attacks.AttackCtx) error {
+func (*ServiceTLS) Cleanup(_ *attacks.AttackCtx) error {
 	return nil
 }
 

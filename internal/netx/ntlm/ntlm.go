@@ -51,7 +51,7 @@ type securityBuffer struct {
 
 // parse extracts the buffer's bytes from a full NTLM packet. base is unused
 // because NTLM offsets are absolute from the message start.
-func (s securityBuffer) parse(pkt []byte, base int) []byte {
+func (s securityBuffer) parse(pkt []byte, _ int) []byte {
 	// Guard the [offset, offset+length) window against both overflow past the
 	// packet end and a malformed negative offset.
 	end := int(s.offset) + int(s.length)

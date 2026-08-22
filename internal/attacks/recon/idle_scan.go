@@ -112,7 +112,7 @@ func (*IdleScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*IdleScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*IdleScan) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that IdleScan implements attacks.Module.
 var _ attacks.Module = (*IdleScan)(nil)

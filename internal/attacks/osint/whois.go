@@ -69,7 +69,7 @@ func whoisQuery(server, query string, timeout time.Duration) (string, error) {
 }
 
 // Run walks the IANA referral chain and extracts the record's key fields.
-func (*WHOIS) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WHOIS) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	query, err := target(ctx, "osint.whois", "query")
 	if err != nil {
 		return err
@@ -193,6 +193,6 @@ func (*WHOIS) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*WHOIS) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*WHOIS) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*WHOIS)(nil)

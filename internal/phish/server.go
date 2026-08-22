@@ -45,7 +45,7 @@ func NewCaptureServer(listen string, db *store.Store, bus *events.Bus, log *slog
 	s.routes.HandleFunc("/phish/", s.handlePhish)
 	// /health answers for load balancers, proxies and orchestrators that
 	// poll the capture listener for liveness.
-	s.routes.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	s.routes.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})

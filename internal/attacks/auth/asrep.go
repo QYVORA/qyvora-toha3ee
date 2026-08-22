@@ -51,7 +51,7 @@ func (*ASREP) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error
 }
 
 // Run scans for Kerberos-enabled hosts.
-func (*ASREP) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*ASREP) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	var kdcs []asrepCandidate
 	for _, h := range ctx.Store.Hosts() {
 		// Port 88 (TCP/UDP) is Kerberos. A host listening there is a KDC
@@ -89,7 +89,7 @@ func (*ASREP) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*ASREP) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*ASREP) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that ASREP satisfies the Module contract.
 var _ attacks.Module = (*ASREP)(nil)

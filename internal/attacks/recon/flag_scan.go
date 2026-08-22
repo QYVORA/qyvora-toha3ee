@@ -109,7 +109,7 @@ func (*FlagScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*FlagScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*FlagScan) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that FlagScan implements attacks.Module.
 var _ attacks.Module = (*FlagScan)(nil)

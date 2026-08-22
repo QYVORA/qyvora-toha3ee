@@ -68,7 +68,7 @@ func (*DNSSpoof) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 }
 
 // Run starts the DNS server and blocks until ctx.Done.
-func (m *DNSSpoof) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (m *DNSSpoof) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	all := ctx.Conf.GetBool("dns.spoof", "all", false)
 	// The target IP is what spoofed domains resolve to; it defaults to this
 	// host so victims' connections come back to us.
@@ -196,7 +196,7 @@ func (*DNSRebind) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run starts the alternating-answer DNS server and serves until stopped.
-func (*DNSRebind) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*DNSRebind) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	domains := splitCSV(ctx.Conf.Get("dns.rebind", "domains"))
 	if len(domains) == 0 {
 		return fmt.Errorf("dns.rebind: set dns.rebind.domains (comma-separated)")

@@ -95,7 +95,7 @@ func New(cfg Config) *MITMProxy {
 			TLSConfig: goproxy.TLSConfigFromCA(tlsCA),
 		}
 	}
-	p.gop.OnRequest().HandleConnect(goproxy.FuncHttpsHandler(func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
+	p.gop.OnRequest().HandleConnect(goproxy.FuncHttpsHandler(func(host string, _ *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
 		return connectAction, host
 	}))
 	p.gop.OnRequest().DoFunc(p.onRequest)
@@ -245,7 +245,7 @@ func (p *MITMProxy) onResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http
 // redirects from https:// to http:// so the browser never learns about HSTS
 // (sslstrip's core mechanic). HPKP pin headers are removed too so pinned
 // sites do not reject our forged certificates.
-func (p *MITMProxy) stripHSTS(resp *http.Response, req *http.Request) {
+func (p *MITMProxy) stripHSTS(resp *http.Response, _ *http.Request) {
 	if loc := resp.Header.Get("Location"); strings.HasPrefix(strings.ToLower(loc), "https://") {
 		resp.Header.Set("Location", "http://"+loc[len("https://"):])
 	}

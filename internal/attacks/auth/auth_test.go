@@ -132,7 +132,7 @@ func TestDefaultCredsFindsDefault(t *testing.T) {
 }
 
 func TestDefaultCredsRejectsWrong(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="router"`)
 		w.WriteHeader(http.StatusUnauthorized)
 	}))

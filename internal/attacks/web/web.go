@@ -77,7 +77,7 @@ func (*Misconfig) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run probes each discovered HTTP(S) service.
-func (*Misconfig) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*Misconfig) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	st := stealth.FromConfig(ctx.Conf, "web.misconfig")
 	timeout := ctx.Conf.GetDuration("web.misconfig", "timeout", 3*time.Second)
 	client := &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -231,6 +231,6 @@ func (*Misconfig) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*Misconfig) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*Misconfig) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*Misconfig)(nil)

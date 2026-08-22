@@ -73,7 +73,7 @@ func (m *mockRunner) IsRunning(id string) bool {
 	defer m.mu.Unlock()
 	return m.running[id]
 }
-func (m *mockRunner) Show(id string) error { return nil }
+func (m *mockRunner) Show(_ string) error { return nil }
 func (m *mockRunner) Report(path string) error {
 	m.mu.Lock()
 	m.reports = append(m.reports, path)

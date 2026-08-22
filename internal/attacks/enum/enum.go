@@ -36,7 +36,7 @@ func requireRoot(rep *attacks.PreflightReport) error {
 }
 
 // emit logs a finding through the session.
-func emit(ctx *attacks.AttackCtx, topic, msg string) {
+func emit(ctx *attacks.AttackCtx, _, msg string) {
 	ctx.Emit(events.TopicLog, msg, nil)
 }
 

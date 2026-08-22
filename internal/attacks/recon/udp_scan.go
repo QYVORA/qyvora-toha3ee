@@ -52,7 +52,7 @@ func (*UDPScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 }
 
 // Run probes each UDP port with a connected socket.
-func (*UDPScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*UDPScan) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	portsToScan := UDPCommonPorts
 	if p := ctx.Conf.Get("service.udpscan", "ports"); p != "" {
 		portsToScan = parsePorts(splitList(p))
@@ -153,6 +153,6 @@ func (*UDPScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*UDPScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*UDPScan) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*UDPScan)(nil)

@@ -96,7 +96,7 @@ type osVerdict struct {
 }
 
 // Run fingerprints each discovered host.
-func (*NetOSDetect) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*NetOSDetect) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	scanner, err := ports.NewScanner(ctx.Iface)
 	if err != nil {
 		return fmt.Errorf("net.osdetect: %w", err)
@@ -237,6 +237,6 @@ func (*NetOSDetect) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*NetOSDetect) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*NetOSDetect) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*NetOSDetect)(nil)

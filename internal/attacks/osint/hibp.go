@@ -42,7 +42,7 @@ func (*HIBP) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error)
 }
 
 // Run checks each candidate password against the range API.
-func (*HIBP) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*HIBP) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	timeout := ctx.Conf.GetDuration("osint.hibp", "timeout", 15*time.Second)
 	// Whitespace-separated list of literal candidate passwords from config.
 	passwords := strings.Fields(ctx.Conf.Get("osint.hibp", "password"))
@@ -138,6 +138,6 @@ func (*HIBP) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*HIBP) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*HIBP) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*HIBP)(nil)

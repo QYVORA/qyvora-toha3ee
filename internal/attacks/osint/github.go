@@ -187,6 +187,6 @@ func totalItems(res []ghResult) int {
 }
 
 // Cleanup is a no-op.
-func (*GitHubDork) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*GitHubDork) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*GitHubDork)(nil)

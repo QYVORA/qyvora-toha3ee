@@ -140,6 +140,6 @@ func (*Dork) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*Dork) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*Dork) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*Dork)(nil)

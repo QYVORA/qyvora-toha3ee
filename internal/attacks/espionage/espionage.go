@@ -61,7 +61,7 @@ func (*HTTPHarvest) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport,
 }
 
 // Run starts the sniffer and blocks until ctx.Done.
-func (*HTTPHarvest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*HTTPHarvest) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	out := ctx.Conf.Get("http.harvest", "pcap")
 	sniffer, err := sniff.New(ctx.Iface, ctx.Bus, ctx.Store, slog.Default())
 	if err != nil {
@@ -177,7 +177,7 @@ func (*HTTPProxy) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run starts the proxy and blocks.
-func (m *HTTPProxy) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (m *HTTPProxy) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	mp, err := startProxy(ctx, false)
 	if err != nil {
 		return err
@@ -213,7 +213,7 @@ func (*HTTPSProxy) Meta() attacks.ModuleMeta {
 }
 
 // Preflight warns about CA trust.
-func (*HTTPSProxy) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*HTTPSProxy) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	rep.AddOK("ca", "framework CA loaded")
 	rep.AddOK("listen", "TCP proxy port is non-privileged")
@@ -222,7 +222,7 @@ func (*HTTPSProxy) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 }
 
 // Run starts the MITM proxy with the CA.
-func (m *HTTPSProxy) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (m *HTTPSProxy) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	mp, err := startProxy(ctx, true)
 	if err != nil {
 		return err
@@ -265,7 +265,7 @@ func (*SSLStrip) Meta() attacks.ModuleMeta {
 }
 
 // Preflight mirrors http.proxy plus the strip readiness check.
-func (*SSLStrip) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*SSLStrip) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	rep.AddOK("listen", "TCP proxy port is non-privileged (default 8080)")
 	rep.AddOK("strip", "HSTS header stripping and https:// link rewriting enabled")
@@ -279,7 +279,7 @@ func (*SSLStrip) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 }
 
 // Run starts the HTTP proxy with SSL strip forced on.
-func (*SSLStrip) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*SSLStrip) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	cfg := proxyConfig(ctx, false)
 	// Force the strip behaviour regardless of the generic sslstrip config
 	// knobs — the module IS the strip.
@@ -345,7 +345,7 @@ func (*PhishInject) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport,
 }
 
 // Run starts the proxy (form swap enabled) plus the capture server.
-func (m *PhishInject) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (m *PhishInject) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	brand := ctx.Conf.GetDefault("phish.inject", "brand", "generic")
 	domains := brandDomains(brand, ctx.Conf.Get("phish.inject", "domains"))
 

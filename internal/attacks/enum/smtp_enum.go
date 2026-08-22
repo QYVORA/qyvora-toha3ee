@@ -167,7 +167,7 @@ func (*SMTPEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*SMTPEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*SMTPEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // hasPort reports whether a HostRef has the given port open.
 func hasPort(h *HostRef, want uint16) bool {

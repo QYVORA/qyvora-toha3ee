@@ -119,6 +119,6 @@ func (*Harvest) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*Harvest) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*Harvest) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*Harvest)(nil)

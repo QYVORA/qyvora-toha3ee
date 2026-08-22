@@ -42,7 +42,7 @@ func TestBusTopicIsolation(t *testing.T) {
 	}
 }
 
-func TestBusNonBlockingEmit(t *testing.T) {
+func TestBusNonBlockingEmit(_ *testing.T) {
 	b := NewBus()
 	ch := make(chan Event, 1)
 	b.Subscribe("x", ch)
@@ -94,7 +94,7 @@ func TestBusCloseClosesChannels(t *testing.T) {
 	}
 }
 
-func TestBusEmitAfterClose(t *testing.T) {
+func TestBusEmitAfterClose(_ *testing.T) {
 	b := NewBus()
 	ch := make(chan Event, 4)
 	b.Subscribe("t", ch)

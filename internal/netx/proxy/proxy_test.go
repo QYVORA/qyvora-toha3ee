@@ -53,7 +53,7 @@ func TestFormSwapServesTemplate(t *testing.T) {
 	p := New(cfg)
 
 	// Backend "real" site.
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = io.WriteString(w, "<html><head></head><body>real facebook login</body></html>")
 	}))

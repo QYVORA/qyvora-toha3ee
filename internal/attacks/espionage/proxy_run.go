@@ -88,7 +88,7 @@ const proxyStateKey = "mitm.proxy"
 
 // blockProxy keeps a long-running proxy module alive: it beats the watchdog
 // every 2 seconds and returns when the session signals shutdown.
-func blockProxy(ctx *attacks.AttackCtx, mp *proxy.MITMProxy, name string) error {
+func blockProxy(ctx *attacks.AttackCtx, _ *proxy.MITMProxy, name string) error {
 	hb := safety.NewHeartbeat()
 	ctx.Heartbeat = hb.Beat
 	ctx.Safety.RegisterHeartbeat(name, hb)

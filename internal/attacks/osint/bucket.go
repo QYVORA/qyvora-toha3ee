@@ -200,6 +200,6 @@ func (*BucketEnum) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*BucketEnum) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*BucketEnum) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*BucketEnum)(nil)

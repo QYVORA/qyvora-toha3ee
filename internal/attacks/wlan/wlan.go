@@ -49,7 +49,7 @@ type scanState struct {
 }
 
 // Preflight checks for a wireless interface that can enter monitor mode.
-func (*WLANScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*WLANScan) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
 		rep.AddOK("monitor_iface", name)
@@ -61,7 +61,7 @@ func (*WLANScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 
 // Run listens for beacons in monitor mode and reports AP/client tallies
 // until stopped.
-func (*WLANScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WLANScan) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
 		return fmt.Errorf("wlan.scan: no wireless interface found")
@@ -159,7 +159,7 @@ type deauthState struct {
 }
 
 // Preflight checks for a monitor-mode interface and notes the BSSID config.
-func (*WLANDeauth) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*WLANDeauth) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
 		rep.AddOK("monitor_iface", name)
@@ -172,7 +172,7 @@ func (*WLANDeauth) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 
 // Run floods the target AP (and optionally a specific client) with forged
 // deauthentication frames until stopped.
-func (*WLANDeauth) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WLANDeauth) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
 		return fmt.Errorf("wlan.deauth: no wireless interface found")
@@ -289,7 +289,7 @@ type handshakeState struct {
 }
 
 // Preflight checks for a monitor-mode interface and notes the BSSID config.
-func (*WLANHandshake) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, error) {
+func (*WLANHandshake) Preflight(_ *attacks.AttackCtx) (*attacks.PreflightReport, error) {
 	rep := &attacks.PreflightReport{}
 	if name, ok := wlan.DetectWirelessIface(); ok {
 		rep.AddOK("monitor_iface", name)
@@ -302,7 +302,7 @@ func (*WLANHandshake) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepor
 
 // Run listens for EAPOL 4-way handshakes (optionally nudging clients with
 // deauth frames to force reassociation) until stopped.
-func (*WLANHandshake) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WLANHandshake) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
 		return fmt.Errorf("wlan.handshake: no wireless interface found")
@@ -466,7 +466,7 @@ func (*WLANEvilTwin) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport
 // Run prepares the monitor-mode scanner and the captive-phishing portal for
 // the impersonated SSID; AP beacon injection is delegated to an external
 // tool (e.g. hostapd-mana) while this module runs.
-func (*WLANEvilTwin) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*WLANEvilTwin) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	ifaceName, _ := wlan.DetectWirelessIface()
 	if ifaceName == "" {
 		return fmt.Errorf("wlan.eviltwin: no wireless interface found")

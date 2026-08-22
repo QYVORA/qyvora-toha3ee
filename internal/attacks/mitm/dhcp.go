@@ -55,7 +55,7 @@ func (*DHCPStarve) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 
 // Run floods spoofed-chaddr DISCOVER packets until ctx.Done is closed,
 // periodically beating the watchdog so the UI can report progress.
-func (*DHCPStarve) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*DHCPStarve) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	st, err := dhcp.NewStarver()
 	if err != nil {
 		return fmt.Errorf("dhcp.starve: %w", err)
@@ -159,7 +159,7 @@ func (*DHCPRogue) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 
 // Run starts the rogue responder and keeps beating the watchdog until the
 // attack is stopped.
-func (*DHCPRogue) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*DHCPRogue) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	if ctx.Iface == nil {
 		return fmt.Errorf("dhcp.rogue: no interface configured")
 	}

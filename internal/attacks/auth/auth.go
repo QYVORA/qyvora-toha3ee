@@ -88,7 +88,7 @@ func (*DefaultCreds) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport
 }
 
 // Run probes each web-enabled host with the default credential list.
-func (*DefaultCreds) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*DefaultCreds) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	timeout := ctx.Conf.GetDuration("default.creds", "timeout", 3*time.Second)
 	// Disable redirect following so a wrong credential cannot be masked by a
 	// redirect chain to a login page (which would also abort basic auth).
@@ -180,7 +180,7 @@ func (*DefaultCreds) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*DefaultCreds) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*DefaultCreds) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // SMBSigning probes discovered SMB servers for their message-signing policy
 // and flags servers that do not require signing (a common relay prerequisite).
@@ -217,7 +217,7 @@ func (*SMBSigning) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, 
 }
 
 // Run probes each SMB host.
-func (*SMBSigning) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*SMBSigning) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	timeout := ctx.Conf.GetDuration("smb.signing", "timeout", 4*time.Second)
 	port := ctx.Conf.GetInt("smb.signing", "port", 445)
 	results := map[string]bool{}
@@ -265,7 +265,7 @@ func (*SMBSigning) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*SMBSigning) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*SMBSigning) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // KerberoastSuggest identifies likely Active Directory domain controllers
 // (Kerberos :88 + LDAP :389) in the host inventory and advises on a
@@ -309,7 +309,7 @@ func (*KerberoastSuggest) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightR
 }
 
 // Run scans the inventory for DC-like hosts.
-func (*KerberoastSuggest) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*KerberoastSuggest) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	var dcs []dcCandidate
 	for _, h := range ctx.Store.Hosts() {
 		ports := h.OpenPorts()
@@ -350,7 +350,7 @@ func (*KerberoastSuggest) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error
 }
 
 // Cleanup is a no-op.
-func (*KerberoastSuggest) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*KerberoastSuggest) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // NTLMRelay listens for NTLM authentication attempts and captures NTLMv2
 // hash material into the store. The server issues its own random challenge,
@@ -387,7 +387,7 @@ func (*NTLMRelay) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, e
 }
 
 // Run starts the NTLM capture server and blocks until stopped.
-func (*NTLMRelay) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*NTLMRelay) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	port := ctx.Conf.GetInt("ntlm.relay", "port", 8445)
 	domain := ctx.Conf.Get("ntlm.relay", "domain")
 	if domain == "" {

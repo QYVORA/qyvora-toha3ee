@@ -52,7 +52,7 @@ func (*IP6Sweep) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, er
 }
 
 // Run performs the NS/NA sweep.
-func (*IP6Sweep) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*IP6Sweep) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	timeout := ctx.Conf.GetDuration("net.ip6sweep", "timeout", 1200*time.Millisecond)
 	candidates, err := ip6Candidates(ctx)
 	if err != nil {
@@ -143,7 +143,7 @@ func (*IP6Sweep) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*IP6Sweep) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*IP6Sweep) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that IP6Sweep satisfies the Module contract.
 var _ attacks.Module = (*IP6Sweep)(nil)

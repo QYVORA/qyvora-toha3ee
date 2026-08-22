@@ -44,7 +44,7 @@ func (*TCPConnectScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightRepo
 }
 
 // Run dials every configured port on every discovered host.
-func (*TCPConnectScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*TCPConnectScan) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	portsToScan := ports.CommonPorts
 	if p := ctx.Conf.Get("service.tcpconnect", "ports"); p != "" {
 		portsToScan = parsePorts(splitList(p))
@@ -119,7 +119,7 @@ func (*TCPConnectScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*TCPConnectScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*TCPConnectScan) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that TCPConnectScan implements attacks.Module.
 var _ attacks.Module = (*TCPConnectScan)(nil)

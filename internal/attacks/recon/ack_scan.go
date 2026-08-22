@@ -46,7 +46,7 @@ func (*ACKScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport, err
 }
 
 // Run sends ACK probes to each configured port.
-func (*ACKScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*ACKScan) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	portsToScan := ports.CommonPorts
 	if p := ctx.Conf.Get("service.ack", "ports"); p != "" {
 		portsToScan = parsePorts(splitList(p))
@@ -102,7 +102,7 @@ func (*ACKScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op (the scanner is closed inside Run).
-func (*ACKScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*ACKScan) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 // Compile-time assertion that ACKScan implements attacks.Module.
 var _ attacks.Module = (*ACKScan)(nil)

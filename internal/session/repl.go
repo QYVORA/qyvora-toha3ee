@@ -33,7 +33,7 @@ func (s *Session) REPL() error {
 	}
 	defer func() { _ = rl.Close() }()
 
-	s.UI.Banner("network exploitation & MITM framework")
+	s.UI.Banner("local & network security assessment framework")
 	s.UI.BannerFoot(s.Iface.String(), versionString())
 	s.hud()
 	s.statusf("session ready. type 'help' for commands.")
@@ -534,7 +534,7 @@ func (s *Session) showConfig(args []string) {
 	s.UI.Table([]string{"key", "value"}, rows)
 }
 
-func (s *Session) netShow(args []string) {
+func (s *Session) netShow(_ []string) {
 	hosts := s.Store.Hosts()
 	if len(hosts) == 0 {
 		s.UI.Section("net.show")
@@ -576,7 +576,7 @@ func (s *Session) eventsShow(args []string) {
 	s.UI.Table([]string{"time", "topic", "detail"}, rows)
 }
 
-func (s *Session) credsShow(args []string) {
+func (s *Session) credsShow(_ []string) {
 	creds := s.Store.Creds()
 	if len(creds) == 0 {
 		s.UI.Section("creds.show")

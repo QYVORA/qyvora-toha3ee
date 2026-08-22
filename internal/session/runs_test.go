@@ -25,11 +25,11 @@ func (m *stubModule) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{ID: m.id, Category: "test", Risk: attacks.RiskLow}
 }
 
-func (m *stubModule) Preflight(ctx *attacks.AttackCtx) (*safety.PreflightReport, error) {
+func (m *stubModule) Preflight(_ *attacks.AttackCtx) (*safety.PreflightReport, error) {
 	return &safety.PreflightReport{}, nil
 }
 
-func (m *stubModule) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (m *stubModule) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	if m.stop {
 		<-ctx.Done
 		return nil
@@ -40,7 +40,7 @@ func (m *stubModule) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
 	return m.err
 }
 
-func (m *stubModule) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
+func (m *stubModule) Verify(_ *attacks.AttackCtx) (*attacks.Impact, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -49,7 +49,7 @@ func (m *stubModule) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 	return imp, nil
 }
 
-func (m *stubModule) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (m *stubModule) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 func TestModuleRunRecordsAndEmitsCompleted(t *testing.T) {
 	s, _ := newTestSession(t)

@@ -45,7 +45,7 @@ func (*ProtocolScan) Preflight(ctx *attacks.AttackCtx) (*attacks.PreflightReport
 }
 
 // Run scans each discovered host for open IP protocols.
-func (*ProtocolScan) Run(ctx *attacks.AttackCtx, opts map[string]string) error {
+func (*ProtocolScan) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 	protocols := ports.ProtocolSet
 	if p := ctx.Conf.Get("service.protoscan", "protocols"); p != "" {
 		protocols = parseProtocols(splitList(p))
@@ -170,6 +170,6 @@ func (*ProtocolScan) Verify(ctx *attacks.AttackCtx) (*attacks.Impact, error) {
 }
 
 // Cleanup is a no-op.
-func (*ProtocolScan) Cleanup(ctx *attacks.AttackCtx) error { return nil }
+func (*ProtocolScan) Cleanup(_ *attacks.AttackCtx) error { return nil }
 
 var _ attacks.Module = (*ProtocolScan)(nil)

@@ -21,14 +21,14 @@ func TestInjectorLifecycle(t *testing.T) {
 	}
 
 	var cookies, headers []string
-	inj.Apply("10.0.0.5", "bank.com", func(n, v string) { cookies = append(cookies, n+"="+v) }, func(k, v string) { headers = append(headers, k) })
+	inj.Apply("10.0.0.5", "bank.com", func(n, v string) { cookies = append(cookies, n+"="+v) }, func(k, _ string) { headers = append(headers, k) })
 	if len(cookies) != 1 || len(headers) != 1 {
 		t.Fatalf("apply wrong: cookies=%v headers=%v", cookies, headers)
 	}
 
 	// Host filter: different host -> no injection.
 	cookies = nil
-	inj.Apply("10.0.0.5", "other.com", func(n, v string) { cookies = append(cookies, n) }, func(k, v string) {})
+	inj.Apply("10.0.0.5", "other.com", func(n, _ string) { cookies = append(cookies, n) }, func(_, _ string) {})
 	if len(cookies) != 0 {
 		t.Fatal("host filter failed")
 	}
