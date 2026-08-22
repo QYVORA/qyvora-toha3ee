@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  golangci:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install libpcap headers
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+
   lint:
     name: fmt + vet + build
     runs-on: ubuntu-latest
