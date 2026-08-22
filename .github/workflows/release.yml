@@ -84,7 +84,7 @@ jobs:
           fi
           ls -la toha3ee_*
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.*
