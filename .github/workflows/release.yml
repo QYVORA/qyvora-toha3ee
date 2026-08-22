@@ -60,7 +60,10 @@ jobs:
           CGO_ENABLED: ${{ matrix.goos == 'windows' && '0' || '1' }}
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -trimpath -ldflags="-s -w" -o toha3ee${{ matrix.goos == 'windows' && '.exe' || '' }} ./cmd/toha3ee
+        # Stamp the tag into internal/session.Version so `toha3ee version`
+        # and the console banner report the released version instead of the
+        # hardcoded default.
+        run: go build -trimpath -ldflags="-s -w -X github.com/QYVORA/qyvora-toha3ee/internal/session.Version=${{ github.ref_name }}" -o toha3ee${{ matrix.goos == 'windows' && '.exe' || '' }} ./cmd/toha3ee
 
       - name: package
         shell: bash
