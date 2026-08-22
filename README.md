@@ -6,11 +6,17 @@
 ![Release](https://img.shields.io/github/v/release/qyvora/qyvora-toha3ee?sort=semver)
 [![Documentation](https://img.shields.io/badge/docs-docs%2F-blue)](/docs)
 
-A network exploitation & MITM framework written in Go. It is a research and
-authorised-penetration-testing tool that demonstrates classic layer-2/3/7
-attacks: ARP/DHCP/DNS/IPv6 poisoning, inline HTTP/HTTPS interception, wireless
-attacks and switch-layer exploitation — all driven from an interactive REPL,
-a guided wizard, or one-shot command sequences.
+A local & network security assessment framework written in Go. It is a
+research and authorised-penetration-testing tool that covers the network
+assessment pipeline — host and service discovery, enumeration, credential
+auditing, vulnerability identification and authorised exploitation. Its ten
+module categories span recon, enumeration, OSINT, MITM (ARP/DHCP/DNS/IPv6
+poisoning and inline HTTP/HTTPS interception), wireless, switch-layer,
+web, auth, espionage and post-exploitation — all driven from an interactive
+REPL, a guided wizard, or one-shot command sequences.
+
+MITM is one capability within this broader domain: TOHA3EE is not limited to
+man-in-the-middle scenarios.
 
 > **WARNING**: toha3ee actively redirects, poisons, decrypts and intercepts
 > network traffic. Use it **only on networks you own or are explicitly
@@ -222,8 +228,7 @@ $ sudo ./toha3ee --iface eth0
                      @@@@@@@@
                         @@@
 
-network exploitation & MITM framework
-
+local & network security assessment framework
   [>] iface wlan0 (10.135.199.31, 8c:c8:4b:30:bf:91)
   [>] v 0.1.0
 type 'help' for commands, 'modules' for the catalogue, 'quit' to exit
