@@ -19,10 +19,10 @@ Describe what you verified and in which environment (lab network, VM, etc.).
 
 - [ ] Module blank-imported in `cmd/toha3ee/main.go` (if a new module)
 - [ ] ID added to `internal/attacks/registry_test.go`
-- [ ] `README.md` / `docs/module-reference.md` module tables updated
+- [ ] `README.md` / `docs/Module-Reference.md` module tables updated
 
 ## Responsible use
 
 I confirm this contribution operates within the scope defined in
-`docs/security.md` (recon, protocol/credential testing, network manipulation,
+`docs/Security.md` (recon, protocol/credential testing, network manipulation,
 reporting) and does not implement malware/APT tradecraft.

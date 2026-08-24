@@ -8,7 +8,7 @@ body:
     attributes:
       value: |
         Thanks for reporting. Please confirm you observed this on a network you
-        own or are authorised to test — see `docs/security.md`. Issues describing
+        own or are authorised to test — see `docs/Security.md`. Issues describing
         the tool's inherent, documented capabilities (e.g. "it ARP-spoofs") are
         out of scope and will be closed.
 

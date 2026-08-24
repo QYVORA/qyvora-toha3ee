@@ -9,7 +9,7 @@ body:
     attributes:
       value: |
         toha3ee is an authorised-engagement network security framework. Features
-        must fall within that scope — see `docs/security.md`. Contributions that
+        must fall within that scope — see `docs/Security.md`. Contributions that
         implement malware/APT tradecraft (EDR evasion, rootkits, persistence, C2,
         anti-forensics, weaponised exploit delivery) will be closed.
 
@@ -39,7 +39,7 @@ body:
         - medium
         - high
         - critical
-      description: The blast radius the module would have (see docs/security.md).
+      description: The blast radius the module would have (see docs/Security.md).
 
   - type: textarea
     id: notes

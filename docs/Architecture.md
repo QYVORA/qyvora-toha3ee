@@ -109,7 +109,7 @@ every category package so registration happens on `init`.
 Every module declares a `Risk` (`info` → `low` → `medium` → `high` →
 `critical`). The wizard shows the **blast radius** and requires explicit
 confirmation for High/Critical modules (persisted in `confirmed_risks`). See
-[Security & responsible use](security.md) for the full model.
+[Security & responsible use](Security.md) for the full model.
 
 ## Stealth engine
 
@@ -149,7 +149,7 @@ the defaults.
 `internal/script` is a small lexer/parser/engine for the `.toha3ee` language.
 Every script statement drives the *same* module lifecycle and risk gates as
 the REPL, so **a script cannot do anything the console cannot**. See
-[Scripting reference](scripting.md).
+[Scripting reference](Scripting.md).
 
 ## Layer reference
 
@@ -173,5 +173,5 @@ the REPL, so **a script cannot do anything the console cannot**. See
 
 ## Next steps
 
-- [Module reference](module-reference.md) — the 73 modules and their settings
-- [Contributing](contributing.md) — how to add a module to this architecture
+- [Module reference](Module-Reference.md) — the 73 modules and their settings
+- [Contributing](Contributing.md) — how to add a module to this architecture

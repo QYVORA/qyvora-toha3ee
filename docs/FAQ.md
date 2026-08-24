@@ -93,7 +93,7 @@ capture. Everything else lives in the in-memory store until the session ends.
 
 **Q: Is toha3ee illegal?**
 No — it's open-source software. Using it against networks you don't own is
-illegal. Read [Security & responsible use](security.md).
+illegal. Read [Security & responsible use](Security.md).
 
 **Q: Can toha3ee be detected?**
 Possibly. The stealth engine randomizes/jitters packet timing and fields, but

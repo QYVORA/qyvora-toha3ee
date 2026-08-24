@@ -112,4 +112,4 @@ report is written.
 
 The exported pcap and the report together form the deliverable package for a
 scoped engagement. Handle both as sensitive data (see
-[Security & responsible use](security.md)).
+[Security & responsible use](Security.md)).

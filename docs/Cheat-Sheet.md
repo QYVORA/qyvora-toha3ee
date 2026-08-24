@@ -344,6 +344,6 @@ panic or SIGINT — that is the safety contract, not a suggestion.
 | `web` | `web.misconfig` |
 | `wireless` | `wlan.beaconflood` `wlan.deauth` `wlan.eviltwin` `wlan.handshake` `wlan.karma` `wlan.pmkid` `wlan.scan` |
 
-See [Scripting reference](scripting.md) for the language, [Module
-reference](module-reference.md) for every module's settings, and [Declined
-techniques](declined-techniques.md) for what is deliberately not implemented.
+See [Scripting reference](Scripting.md) for the language, [Module
+reference](Module-Reference.md) for every module's settings, and [Declined
+techniques](Declined-Techniques.md) for what is deliberately not implemented.

@@ -2,7 +2,7 @@
 
 Thanks for wanting to contribute. This project is a **dual-use network security
 tool** — it is research and authorised-penetration-testing software. Before you
-do anything else, read [`docs/security.md`](docs/security.md) and agree that
+do anything else, read [`docs/Security.md`](docs/Security.md) and agree that
 your contribution will only be used on networks you own or are authorised to
 test.
 
@@ -58,7 +58,7 @@ them (the registry test pins IDs though).
 
 1. Pick a category package under `internal/attacks/` (create one if needed).
 2. Implement the `attacks.Module` contract — see
-   [`docs/architecture.md`](docs/architecture.md#module-contract):
+   [`docs/Architecture.md`](docs/Architecture.md#module-contract):
 
    ```go
    func init() { attacks.Register(&MyModule{}) }
@@ -78,9 +78,9 @@ them (the registry test pins IDs though).
 5. If your module should appear in the CLI, ensure `cmd/toha3ee/main.go` has a
    blank import for its package. Then update
    `internal/attacks/registry_test.go` and the module table in
-   `README.md` / `docs/module-reference.md`.
+   `README.md` / `docs/Module-Reference.md`.
 
-See [`docs/contributing.md`](docs/contributing.md) for the full developer guide.
+See [`docs/Contributing.md`](docs/Contributing.md) for the full developer guide.
 
 ## Coding conventions
 

@@ -98,5 +98,5 @@ confirm high/critical modules automatically on launch.
 
 ## Next steps
 
-- [Architecture](architecture.md) — how modules read configuration
-- [Module reference](module-reference.md) — the settings each module exposes
+- [Architecture](Architecture.md) — how modules read configuration
+- [Module reference](Module-Reference.md) — the settings each module exposes

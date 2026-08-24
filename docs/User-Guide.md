@@ -144,7 +144,7 @@ toha3eeλ> quit
 
 `wizard` walks you through module selection with **risk gates**: before a
 High/Critical module runs you are shown its blast radius and must confirm.
-The risk model is described in [Security & responsible use](security.md).
+The risk model is described in [Security & responsible use](Security.md).
 
 ## Caplets
 
@@ -185,10 +185,10 @@ script.
 - `$(iface.ip)`, `$(iface.cidr)`, `$(iface.mac)`, `$(iface.gateway)` — interface facts
 - `$(config.<module.key>)` — any config value
 
-See [Scripting reference](scripting.md) for the full language.
+See [Scripting reference](Scripting.md) for the full language.
 
 ## Next steps
 
-- [Scripting reference](scripting.md) — automate entire engagements
-- [Module reference](module-reference.md) — every module and its settings
-- [Reporting](reporting.md) — interpreting the assessment report
+- [Scripting reference](Scripting.md) — automate entire engagements
+- [Module reference](Module-Reference.md) — every module and its settings
+- [Reporting](Reporting.md) — interpreting the assessment report

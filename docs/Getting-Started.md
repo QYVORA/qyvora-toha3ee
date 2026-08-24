@@ -74,7 +74,7 @@ Windows remove `%LOCALAPPDATA%\Programs\toha3ee`.
 
 ### Updating / reinstalling
 
-See [Updating toha3ee](update.md) for upgrade, reinstall and rollback
+See [Updating toha3ee](Update.md) for upgrade, reinstall and rollback
 instructions. After a source install the man pages are available too:
 
 ```sh
@@ -159,6 +159,6 @@ sudo toha3ee script scripts/full-pipeline.toha3ee
 
 ## Next steps
 
-- [User guide](user-guide.md) — the console and command reference
-- [Security & responsible use](security.md) — read this before your first
+- [User guide](User-Guide.md) — the console and command reference
+- [Security & responsible use](Security.md) — read this before your first
   real engagement

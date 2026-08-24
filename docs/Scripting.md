@@ -113,5 +113,5 @@ safety manager tears everything down on panic, error or signal.
 
 ## Next steps
 
-- [User guide](user-guide.md) — console command reference
-- [Configuration](configuration.md) — where module keys come from
+- [User guide](User-Guide.md) — console command reference
+- [Configuration](Configuration.md) — where module keys come from

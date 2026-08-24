@@ -21,13 +21,13 @@ man-in-the-middle scenarios.
 > **WARNING**: toha3ee actively redirects, poisons, decrypts and intercepts
 > network traffic. Use it **only on networks you own or are explicitly
 > authorised to test**. Running these modules against third parties is illegal
-> in most jurisdictions. Read [`docs/security.md`](docs/security.md) first.
+> in most jurisdictions. Read [`docs/Security.md`](docs/Security.md) first.
 
 ## Documentation
 
-- **User** — [Getting started](docs/getting-started.md) · [User guide](docs/user-guide.md) · [Scripting](docs/scripting.md) · [Configuration](docs/configuration.md) · [FAQ](docs/faq.md)
-- **Reference** — [Module reference](docs/module-reference.md) (all 73 modules) · [Reporting](docs/reporting.md)
-- **Developer** — [Architecture](docs/architecture.md) · [Contributing](docs/contributing.md) · [Changelog](CHANGELOG.md)
+- **User** — [Getting started](docs/Getting-Started.md) · [User guide](docs/User-Guide.md) · [Scripting](docs/Scripting.md) · [Configuration](docs/Configuration.md) · [FAQ](docs/FAQ.md)
+- **Reference** — [Module reference](docs/Module-Reference.md) (all 73 modules) · [Reporting](docs/Reporting.md)
+- **Developer** — [Architecture](docs/Architecture.md) · [Contributing](docs/Contributing.md) · [Changelog](CHANGELOG.md)
 - **Governance** — [Security](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [License](LICENSE)
 
 ## Install
@@ -83,7 +83,7 @@ Checks the installed version against the latest official QYVORA GitHub
 release, verifies the download's SHA-256 against the published checksum,
 and swaps the binary in atomically. Downgrades are refused and any failure
 leaves your current binary untouched — no Go toolchain or Git required.
-See [docs/update.md](docs/update.md) for details.
+See [docs/Update.md](docs/Update.md) for details.
 
 ## Build
 
@@ -390,6 +390,6 @@ Dependency updates are handled by Dependabot.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/contributing.md](docs/contributing.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/Contributing.md](docs/Contributing.md)
 and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report security issues via
 [SECURITY.md](SECURITY.md) — not as public issues.

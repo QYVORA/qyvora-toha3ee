@@ -8,26 +8,26 @@ scripts or one-shot command sequences.
 
 > **Read this first.** toha3ee actively redirects, poisons, decrypts and
 > intercepts network traffic. Use it **only on networks you own or are
-> explicitly authorised to test.** See [Security & responsible use](security.md)
+> explicitly authorised to test.** See [Security & responsible use](Security.md)
 > before running anything.
 
 ## Documentation map
 
 | Guide | What it covers |
 |-------|----------------|
-| [Getting started](getting-started.md) | Install, build, prerequisites, first session |
-| [Updating toha3ee](update.md) | Upgrade, reinstall, rollback and what's preserved |
-| [User guide](user-guide.md) | The console, commands, wizard, caplets, common workflows |
-| [Scripting reference](scripting.md) | The full `.toha3ee` language |
-| [Cheat sheet](cheat-sheet.md) | Copy-paste workflows grouped by task (recon → MITM → report) |
-| [Configuration](configuration.md) | `toha3ee.json`, per-module settings, environment variables |
-| [Architecture](architecture.md) | Module contract, lifecycle, layers, stealth engine |
-| [Module reference](module-reference.md) | Every module, its risk, targets and settings |
-| [Reporting](reporting.md) | The `report.generate` output format and interpretation |
-| [Security & responsible use](security.md) | Risk model, blast radius, legal and ethical use |
-| [Declined techniques](declined-techniques.md) | What is deliberately not implemented and why (ethical + technical) |
-| [Contributing](contributing.md) | Developer setup, how to add a module, conventions |
-| [FAQ](faq.md) | Common questions and troubleshooting |
+| [Getting started](Getting-Started.md) | Install, build, prerequisites, first session |
+| [Updating toha3ee](Update.md) | Upgrade, reinstall, rollback and what's preserved |
+| [User guide](User-Guide.md) | The console, commands, wizard, caplets, common workflows |
+| [Scripting reference](Scripting.md) | The full `.toha3ee` language |
+| [Cheat sheet](Cheat-Sheet.md) | Copy-paste workflows grouped by task (recon → MITM → report) |
+| [Configuration](Configuration.md) | `toha3ee.json`, per-module settings, environment variables |
+| [Architecture](Architecture.md) | Module contract, lifecycle, layers, stealth engine |
+| [Module reference](Module-Reference.md) | Every module, its risk, targets and settings |
+| [Reporting](Reporting.md) | The `report.generate` output format and interpretation |
+| [Security & responsible use](Security.md) | Risk model, blast radius, legal and ethical use |
+| [Declined techniques](Declined-Techniques.md) | What is deliberately not implemented and why (ethical + technical) |
+| [Contributing](Contributing.md) | Developer setup, how to add a module, conventions |
+| [FAQ](FAQ.md) | Common questions and troubleshooting |
 
 ## Project files
 
@@ -58,7 +58,7 @@ sudo toha3ee --eval "net.scan; net.show" --iface eth0
 toha3ee --no-sudo build scripts/full-pipeline.toha3ee
 ```
 
-See [Getting started](getting-started.md) for details.
+See [Getting started](Getting-Started.md) for details.
 
 ## Command reference
 

@@ -90,7 +90,7 @@ essentially no legitimate lab use that a scoped engagement needs (an
 authorised test does not require bypassing the client's EDR — the client
 should know you are there). They also sharply increase the legal exposure of
 everyone who downloads the tool. The framework instead documents its traffic
-openly (see `docs/reporting.md`) and leaves endpoint attacks out entirely.
+openly (see `docs/Reporting.md`) and leaves endpoint attacks out entirely.
 
 ### 1.4 Rootkit / kernel-level hiding
 

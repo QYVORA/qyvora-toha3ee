@@ -109,7 +109,7 @@ writing.
 ## What toha3ee will not do
 
 Some attacks are excluded by design, not by omission. See
-[Declined techniques](declined-techniques.md) for the full list with
+[Declined techniques](Declined-Techniques.md) for the full list with
 implementation sketches and reasons: host persistence, C2/beaconing, EDR/AV
 evasion, rootkits, anti-forensics, payload/dropper generation, ransomware-style
 destruction, and third-party exfiltration are never implemented.

@@ -12,7 +12,7 @@ manipulation, reporting, docs, CI, tests.
 **Not accepted:** malware/APT tradecraft — EDR evasion, rootkits, host
 persistence, command-and-control, anti-forensics, or weaponised exploit
 delivery. Contributions must operate under the responsible-use policy in
-[Security & responsible use](security.md).
+[Security & responsible use](Security.md).
 
 ## Environment
 
@@ -97,7 +97,7 @@ Checklist:
 5. Unit test in the same package. Registry-test pinning: add your module ID to
    `internal/attacks/registry_test.go`.
 6. Make the module reachable: add a blank import in `cmd/toha3ee/main.go`,
-   update `README.md` and `docs/module-reference.md` tables.
+   update `README.md` and `docs/Module-Reference.md` tables.
 7. `gofmt`, `go vet`, `go test ./...` green.
 
 ## Conventions
@@ -108,7 +108,7 @@ Checklist:
 - New external dependencies must be justified; prefer stdlib + existing deps.
 - Keep the module catalogue in `attacks.Registry` as the single source of
   truth; the live listing is generated from it (`toha3ee modules`). The
-  human-readable `docs/module-reference.md` is maintained by hand, so keep
+  human-readable `docs/Module-Reference.md` is maintained by hand, so keep
   its module table in sync when adding or renaming a module.
 
 ## Testing

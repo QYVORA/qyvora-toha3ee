@@ -7,7 +7,7 @@ module, its risk, targets and the configuration keys it reads. Run
 **How to read the tables:**
 
 - **Risk** — the framework's severity classification (see
-  [Security & responsible use](security.md)).
+  [Security & responsible use](Security.md)).
 - **Targets** — what the module operates on: `host`, `gateway`, `subnet`,
   `ap`, `domain`, `service`.
 - **Settings** — `set <module.key> <value>` keys the module reads; defaults
@@ -439,7 +439,7 @@ Deliverables: reports, replay and pcap export.
 ### report.generate
 *info — targets: subnet*
 Generate a Markdown assessment report from the store (hosts, credentials,
-sessions, event log). See [Reporting](reporting.md).
+sessions, event log). See [Reporting](Reporting.md).
 
 | Setting | Default | Meaning |
 |---------|---------|---------|

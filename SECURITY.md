@@ -53,7 +53,7 @@ If you use private reporting, include:
 ## Responsible-use reminder
 
 toha3ee may only be used on networks you own or are explicitly authorised to
-test. See [`docs/security.md`](docs/security.md) for the full responsible-use
+test. See [`docs/Security.md`](docs/Security.md) for the full responsible-use
 policy. Evidence that a reporter is using the tool for unauthorised purposes
 may be referred to the appropriate authorities and the report closed.
 
