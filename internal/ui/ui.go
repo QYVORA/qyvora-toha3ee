@@ -138,9 +138,14 @@ func (u *UI) Clear() {
 	}
 }
 
-// KV prints a "  key: value" pair with the key emphasized.
+// kvLabelWidth is the fixed visible width used for "key: value" labels so the
+// values of consecutive KV lines always line up in a column.
+const kvLabelWidth = 22
+
+// KV prints a "  key: value" pair with the key emphasized and the value
+// aligned in a shared column, so consecutive KV blocks stay tidy.
 func (u *UI) KV(key, value string) {
-	_, _ = fmt.Fprintf(u.w, "  %s %s\n", u.BoldWhite(key+":"), u.White(value))
+	_, _ = fmt.Fprintf(u.w, "  %s %s\n", padTo(u.BoldWhite(key+":"), kvLabelWidth), u.White(value))
 }
 
 // KVf is KV with a formatted value.

@@ -51,7 +51,7 @@ func TestEvalOutputHasNoFormattingArtifacts(t *testing.T) {
 	if strings.Contains(out, "%!") || strings.Contains(out, "MISSING") {
 		t.Errorf("Eval output contains fmt verb artifacts:\n%s", out)
 	}
-	if !strings.Contains(out, `net.scan.ports: "80%s"`) {
+	if !strings.Contains(out, `"80%s"`) || !strings.Contains(out, `net.scan.ports:`) {
 		t.Errorf("Eval lost the percent-bearing value verbatim:\n%s", out)
 	}
 }
