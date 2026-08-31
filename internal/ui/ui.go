@@ -33,9 +33,6 @@ const (
 	OnWhite = "\x1b[107m"
 )
 
-// sectionWidth is the fixed visible width of every section rule.
-const sectionWidth = 60
-
 // UI renders styled output to one writer. Colors are enabled only when the
 // writer is a terminal and NO_COLOR is not set.
 type UI struct {
