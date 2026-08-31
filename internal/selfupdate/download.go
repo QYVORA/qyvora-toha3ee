@@ -43,7 +43,11 @@ func fetchVerified(ctx context.Context, cfg Config, binAsset, sumAsset *Asset, t
 	temps = append(temps, tmpArtifact.Name())
 
 	if derr := download(ctx, cfg, binAsset, tmpArtifact, maxArtifactSize, 10*time.Minute); derr != nil {
+		_ = tmpArtifact.Close()
 		return "", "", nil, derr
+	}
+	if cerr := tmpArtifact.Close(); cerr != nil {
+		return "", "", nil, installFailed(cfg, "cannot close the downloaded artifact", cerr)
 	}
 
 	tmpManifest, err := tempFile(dir, cfg.ToolName+".checksums")
@@ -53,7 +57,11 @@ func fetchVerified(ctx context.Context, cfg Config, binAsset, sumAsset *Asset, t
 	temps = append(temps, tmpManifest.Name())
 
 	if derr := download(ctx, cfg, sumAsset, tmpManifest, maxChecksumSize, 30*time.Second); derr != nil {
+		_ = tmpManifest.Close()
 		return "", "", nil, derr
+	}
+	if cerr := tmpManifest.Close(); cerr != nil {
+		return "", "", nil, installFailed(cfg, "cannot close the downloaded checksum file", cerr)
 	}
 	manifest, rerr := os.ReadFile(tmpManifest.Name())
 	if rerr != nil {
@@ -88,6 +96,9 @@ func fetchVerified(ctx context.Context, cfg Config, binAsset, sumAsset *Asset, t
 			tmpBin, terr := tempFile(dir, cfg.ToolName+".binary")
 			if terr != nil {
 				return "", "", nil, installFailed(cfg, "cannot create a temporary extraction file", terr)
+			}
+			if cerr := tmpBin.Close(); cerr != nil {
+				return "", "", nil, installFailed(cfg, "cannot close the temporary extraction file", cerr)
 			}
 			if xerr := extractEntry(tmpArtifact.Name(), entry, tmpBin.Name(), kind); xerr != nil {
 				return "", "", nil, installFailed(cfg, xerr.Error(), xerr)
