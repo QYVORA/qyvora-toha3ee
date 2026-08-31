@@ -89,3 +89,24 @@ jobs:
           files: |
             toha3ee_${{ matrix.goos }}_${{ matrix.goarch }}.*
           fail_on_unmatched_files: true
+
+  checksums:
+    name: publish checksums.txt
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          cd dist
+          gh release download "${{ github.ref_name }}" --repo QYVORA/qyvora-toha3ee -p 'toha3ee_*.tar.gz' -p 'toha3ee_*.zip'
+      - name: Generate and upload combined checksums.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+          gh release upload "${{ github.ref_name }}" --repo QYVORA/qyvora-toha3ee checksums.txt --clobber

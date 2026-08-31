@@ -130,10 +130,6 @@ else {
         Install-Icon
     }
 }
-else {
-    Build-FromSource
-    Install-Icon
-}
 
 # --- Start Menu ------------------------------------------------------------
 Install-StartMenuShortcut
