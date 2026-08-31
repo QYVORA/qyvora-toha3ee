@@ -1,0 +1,70 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+# TOHA3EE links gopacket against libpcap on linux/darwin via cgo, so those
+# builds require the libpcap headers at build time (CI installs libpcap-dev).
+# Windows uses gopacket's cgo-free pcap bindings and cross-compiles cleanly
+# with CGO_ENABLED=0, so it is declared as a separate build target.
+builds:
+  - id: unix
+    main: ./cmd/toha3ee
+    binary: toha3ee
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/QYVORA/qyvora-toha3ee/internal/session.Version={{ .Version }}
+    env:
+      - CGO_ENABLED=1
+    flags:
+      - -trimpath
+
+  - id: windows
+    main: ./cmd/toha3ee
+    binary: toha3ee
+    goos:
+      - windows
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w -X github.com/QYVORA/qyvora-toha3ee/internal/session.Version={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    hooks:
+      pre:
+        # Embed the app icon + version-info resource before the Windows build.
+        - cmd: go run github.com/tc-hib/go-winres@v0.3.3 make --in ../../winres/winres.json
+          dir: cmd/toha3ee
+
+archives:
+  - format: binary
+    # Ecosystem-style artifact names: macos (not darwin), and the .exe suffix
+    # on Windows, matching the CI release workflow so install.sh and the
+    # SelfUpdate resolver agree.
+    name_template: "{{ .ProjectName }}{{ if eq .Os \"windows\" }}.exe{{ end }}-{{ if eq .Os \"darwin\" }}macos{{ else }}{{ .Os }}{{ end }}-{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: QYVORA
+    name: qyvora-toha3ee
+  prerelease: auto
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
