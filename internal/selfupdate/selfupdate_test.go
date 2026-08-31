@@ -225,6 +225,12 @@ func writeInstalledBinary(t *testing.T, content string, mode fs.FileMode) (dir, 
 	if err := os.Chmod(path, mode); err != nil {
 		t.Fatal(err)
 	}
+	// The updater resolves the executable to its canonical path before install
+	// (staging happens beside it), so assertions must compare the same form:
+	// macOS symlinks TMPDIR through /private, Windows expands 8.3 short names.
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
 	return dir, path
 }
 
