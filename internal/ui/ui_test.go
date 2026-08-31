@@ -42,25 +42,29 @@ func TestTableAlignmentWithColor(t *testing.T) {
 	}
 }
 
-func TestSectionConstantWidth(t *testing.T) {
+func TestSectionCleanLayout(t *testing.T) {
 	var sb strings.Builder
 	u := New(&sb)
-	u.SetColor(true)
+	u.SetColor(false)
 	u.Section("hosts")
 	u.Section("ranked attack vectors")
 	lines := strings.Split(strings.TrimRight(sb.String(), "\n"), "\n")
-	n := 0
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		if l := runeLen(line); l != sectionWidth {
-			t.Fatalf("section line %d width = %d, want %d: %q", n, l, sectionWidth, line)
-		}
-		n++
+	if len(lines) != 4 {
+		t.Fatalf("sections produced %d lines, want 4 (2 labels + 2 blank separators):\n%s", len(lines), sb.String())
 	}
-	if n != 2 {
-		t.Fatalf("expected 2 section lines, got %d", n)
+	// Each section is a blank separator followed by an indented uppercase label.
+	if lines[0] != "" {
+		t.Fatalf("line 0 = %q, want blank separator", lines[0])
+	}
+	if lines[1] != "  HOSTS" {
+		t.Fatalf("line 1 = %q, want %q", lines[1], "  HOSTS")
+	}
+	if lines[3] != "  RANKED ATTACK VECTORS" {
+		t.Fatalf("line 3 = %q, want %q", lines[3], "  RANKED ATTACK VECTORS")
+	}
+	// Sections must never draw horizontal-line glyphs.
+	if strings.ContainsAny(sb.String(), "─═-=_") {
+		t.Fatalf("sections must not contain horizontal-line glyphs: %q", sb.String())
 	}
 }
 

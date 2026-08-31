@@ -1,13 +1,13 @@
 // Package ui renders the toha3ee console: an ANSI-styled, bettercap-inspired
-// output layer. It builds the banner, fixed-width sections, aligned tables and
+// output layer. It builds the banner, clean section headers, aligned tables and
 // status glyphs used by the REPL, the wizard and the one-shot commands. When
 // output is not a terminal (pipes, caplet logs, CI) every renderer falls back
 // to plain text.
 //
 // Glyph colouring is deliberate: green for success, amber for warnings, red
-// reserved for hard errors, and white/dim for information. Horizontal rules
-// are used sparingly and always span the full section width so the console
-// stays clean and aligned.
+// reserved for hard errors, and white/dim for information. Section headers are
+// emphasized with spacing and the heading style rather than horizontal rules,
+// so the console stays clean and aligned.
 package ui
 
 import (
@@ -114,36 +114,21 @@ func (u *UI) DimWhite(s string) string { return u.paint(s, Dim+White) }
 // Black paints a string black (on the default terminal background).
 func (u *UI) Black(s string) string { return u.paint(s, "\x1b[30m") }
 
-// Section prints a fixed-width horizontal rule carrying the title, e.g.
-// "──────────────────────── hosts ─────────────────────────". Every section
-// line is exactly sectionWidth visible columns wide regardless of the title,
-// so rules always line up. A blank line separates sections from prior output.
+// Section prints a clean section header. The title is emphasized with the
+// heading style (uppercase) and whitespace rather than a horizontal rule, so
+// the console stays scannable without full-width separator lines.
 func (u *UI) Section(title string) {
 	label := strings.TrimSpace(title)
 	if label == "" {
-		// No title: print a bare rule instead of a malformed section.
-		u.Rule()
+		_, _ = fmt.Fprintln(u.w)
 		return
 	}
-	// inner is the dash space available after reserving the title and its
-	// two surrounding spaces.
-	inner := sectionWidth - runeLen(label) - 2
-	if inner < 2 {
-		// Very long titles: keep at least a dash on each side so the rule
-		// still reads as a section boundary.
-		inner = 2
-	}
-	// Split the dash budget so an odd total leaves the extra on the right,
-	// which reads more naturally for LTR text.
-	left := inner / 2
-	right := inner - left
-	line := strings.Repeat("─", left) + " " + label + " " + strings.Repeat("─", right)
-	_, _ = fmt.Fprintf(u.w, "\n%s\n", u.DimWhite(line))
+	_, _ = fmt.Fprintf(u.w, "\n  %s\n", u.BoldWhite(strings.ToUpper(label)))
 }
 
-// Rule prints a full-width dim rule. Use it sparingly; Section is preferred.
+// Rule prints a soft section break — a blank line, never a rule line.
 func (u *UI) Rule() {
-	_, _ = fmt.Fprintln(u.w, u.DimWhite(strings.Repeat("─", sectionWidth)))
+	_, _ = fmt.Fprintln(u.w)
 }
 
 // Clear clears the terminal screen (a no-op when output is not a terminal,

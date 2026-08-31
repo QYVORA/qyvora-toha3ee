@@ -135,8 +135,7 @@ func (r *Report) RenderJSON() ([]byte, error) {
 // redacted: the JSON format is the only one that carries plaintext loot.
 func (r *Report) RenderTerminal() string {
 	var b strings.Builder
-	b.WriteString("toha3ee session report\n")
-	b.WriteString("=====================\n")
+	b.WriteString("TOHA3EE SESSION REPORT\n")
 	fmt.Fprintf(&b, "generated: %s\n", r.Generated.Format(time.RFC3339))
 	fmt.Fprintf(&b, "running modules: %s\n", strings.Join(r.Running, ", "))
 	b.WriteString("\n")
