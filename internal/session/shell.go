@@ -42,9 +42,10 @@ func (s *Session) shellKind(line string) string {
 	return ""
 }
 
-// changeDir updates the console's working directory. A leading "/" is taken
-// as an absolute path, everything else resolves relative to the current
-// console cwd (which stays across commands, mirroring a real shell).
+// changeDir updates the console's working directory. A platform absolute path
+// (leading "/" on unix, a drive or UNC path on Windows) is taken as-is;
+// everything else resolves relative to the current console cwd (which stays
+// across commands, mirroring a real shell).
 func (s *Session) changeDir(arg string) error {
 	base := s.cwd
 	if base == "" {
@@ -56,7 +57,7 @@ func (s *Session) changeDir(arg string) error {
 	}
 	target := base
 	if arg != "" {
-		if strings.HasPrefix(arg, "/") {
+		if filepath.IsAbs(arg) {
 			target = filepath.Clean(arg)
 		} else {
 			target = filepath.Join(base, arg)
