@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -24,7 +25,7 @@ func TestGenerateAndLoadCA(t *testing.T) {
 
 	// Key file must be 0600.
 	info, _ := os.Stat(keyPath)
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("key permissions = %v", info.Mode().Perm())
 	}
 

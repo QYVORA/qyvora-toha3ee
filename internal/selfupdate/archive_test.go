@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -56,8 +57,10 @@ func TestExtractTarGzExactEntry(t *testing.T) {
 	if string(got) != payload {
 		t.Fatalf("got %q, want %q", got, payload)
 	}
-	if info, err := os.Stat(dest); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("dest mode = %v (err %v), want 0600", info.Mode(), err)
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(dest); err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("dest mode = %v (err %v), want 0600", info.Mode(), err)
+		}
 	}
 }
 

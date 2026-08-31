@@ -21,7 +21,7 @@ set net.scan.timeout -> "3s"
 echo -> "framework $(version) iface $(iface.name)"
 _hosts -> [$(net.hosts)]
 echo -> "hosts=$(_hosts.size) running=$(running.count)"
-report "` + reportPath + `"
+report '` + reportPath + `'
 `
 
 	if err := s.RunScript(writeScript(t, script)); err != nil {

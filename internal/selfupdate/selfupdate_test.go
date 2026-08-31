@@ -290,7 +290,7 @@ func TestRunNewVersionInstallsVerifiedArtifact(t *testing.T) {
 		t.Fatalf("installed %q, want %q", got, want)
 	}
 	info, _ := os.Stat(bin)
-	if info.Mode().Perm() != wantMode {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != wantMode {
 		t.Fatalf("mode = %v, want preserved %v", info.Mode().Perm(), wantMode)
 	}
 	for _, phrase := range []string{
@@ -565,8 +565,10 @@ func TestReplaceBinaryAtomicity(t *testing.T) {
 	if got, _ := os.ReadFile(target); string(got) != "brand-new" {
 		t.Fatalf("target = %q", got)
 	}
-	if info, _ := os.Stat(target); info.Mode().Perm() != 0o755 {
-		t.Fatalf("mode not preserved: %v", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		if info, _ := os.Stat(target); info.Mode().Perm() != 0o755 {
+			t.Fatalf("mode not preserved: %v", info.Mode().Perm())
+		}
 	}
 
 	// Tampered staged bytes abort before the swap.
