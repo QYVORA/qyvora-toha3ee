@@ -69,8 +69,19 @@ func (s *Session) Wizard(rl *readline.Instance) error {
 		}
 	}
 
+	// Step 3: deep, procedural service recon. The wizard's default path now
+	// progresses beyond host discovery into service.synscan → service.fingerprint
+	// and then into protocol enumeration for whatever services it finds, so the
+	// profile and vectors below are built from real service knowledge rather
+	// than host presence alone.
+	if ans := strings.ToLower(ask("Run deep service recon (synscan → fingerprint → enum)? [Y/n]: ", "y")); !strings.HasPrefix(ans, "n") {
+		if err := s.runReconChain(); err != nil {
+			s.warnf("deep recon: %v", err)
+		}
+	}
+
 	// Build the network profile and ranked attack vectors from the loot
-	// gathered in the two recon steps above.
+	// gathered in the recon steps above.
 	profile := vectors.BuildProfile(s.Store, s.Iface)
 	engine := vectors.NewEngine(s.metaResolver())
 	vectorsList := engine.Analyze(profile)

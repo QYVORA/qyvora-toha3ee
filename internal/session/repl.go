@@ -188,7 +188,7 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 	case "net.show", "hosts":
 		s.netShow(args)
 	case "net.recon":
-		return false, s.startModuleByName("http.harvest", args)
+		return false, s.runReconChain()
 	case "net.profile":
 		s.netProfile()
 	case "vectors.show", "vectors":
@@ -332,7 +332,7 @@ func (s *Session) help() {
 		}},
 		{"Recon", [][2]string{
 			{"net.show", "discovered hosts"},
-			{"net.recon", "start passive HTTP/credential sniffing"},
+			{"net.recon", "procedural recon: synscan → fingerprint → service enum"},
 			{"net.profile", "network profile + ranked attack vectors"},
 			{"vectors.show", "show ranked attack vectors for the current profile"},
 		}},
@@ -610,11 +610,6 @@ func (s *Session) sessionsShow() {
 		rows = append(rows, []string{strconv.Itoa(ss.ID), ss.VictimIP, ss.Host, strings.Join(cookies, " ")})
 	}
 	s.UI.Table([]string{"id", "victim", "host", "cookies"}, rows)
-}
-
-// startModuleByName is a helper to start a module with optional args.
-func (s *Session) startModuleByName(id string, args []string) error {
-	return s.StartModule(id, parseOpts(args))
 }
 
 // netProfile builds and displays the current network profile and ranked attack vectors.
