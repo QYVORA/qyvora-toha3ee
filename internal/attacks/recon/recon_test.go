@@ -1,6 +1,7 @@
 package recon
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
@@ -62,5 +63,32 @@ func TestServiceFingerprintMeta(t *testing.T) {
 	meta := m.Meta()
 	if meta.Risk != attacks.RiskLow {
 		t.Errorf("risk = %v, want low", meta.Risk)
+	}
+}
+
+// TestDefaultWordlistIsMeaningful guards the web.dir asset that the audit
+// flagged as under-delivered: the embedded common list must be a curated
+// subset, not a 47-line smoke test, and must be clean (no blanks, spaces or
+// duplicates) so every line is an addressable path.
+func TestDefaultWordlistIsMeaningful(t *testing.T) {
+	entries, err := loadWordlist("common")
+	if err != nil {
+		t.Fatalf("loadWordlist(common): %v", err)
+	}
+	if len(entries) < 200 {
+		t.Fatalf("embedded wordlist too small: %d entries (expect a curated subset)", len(entries))
+	}
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if e == "" {
+			t.Fatalf("wordlist contains a blank entry")
+		}
+		if strings.ContainsAny(e, " \t") {
+			t.Fatalf("wordlist entry %q contains whitespace and is not addressable", e)
+		}
+		if seen[e] {
+			t.Fatalf("wordlist contains duplicate %q", e)
+		}
+		seen[e] = true
 	}
 }
