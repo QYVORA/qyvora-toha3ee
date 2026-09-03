@@ -610,6 +610,11 @@ services.
 | `web.dir.extensions` | (module) | extensions to append |
 | `web.dir.timeout` | (module) | timeout |
 
+The embedded `common` wordlist is a curated subset (~700 entries) covering
+source-control and config exposure, admin panels, CMS paths and common
+directories. Set `web.dir.wordlist` to a path to supply your own list; SecLists
+`Discovery/Web-Content/*` is a good source for larger, operator-chosen lists.
+
 ### cve.suggest
 *info — targets: host, service*
 Map captured service banners to known CVEs from an embedded table, or look up

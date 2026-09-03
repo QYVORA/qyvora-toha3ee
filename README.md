@@ -116,6 +116,9 @@ sudo ./toha3ee wizard --iface eth0
 # One-shot: scan the subnet, then show what was found
 sudo ./toha3ee --eval "net.scan; net.show" --iface eth0
 
+# One-shot: procedural deep recon (synscan -> fingerprint -> service enum)
+sudo ./toha3ee --eval "net.recon; net.profile" --iface eth0
+
 # Non-interactive caplet script
 sudo ./toha3ee run --iface eth0 caplets/basic.cap
 

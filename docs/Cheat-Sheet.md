@@ -98,9 +98,10 @@ on web.misconfig
 wait for web.misconfig
 ```
 
-`web.dir` accepts a `wordlist` argument (`common` / `big` / `raft` — see
-`show web.dir`). `web.misconfig` reports missing security headers and
-directory listing.
+`web.dir` uses the embedded `common` wordlist by default (a curated ~700-entry
+subset) or a path to a larger operator-supplied list (e.g. a SecLists
+`Discovery/Web-Content` file). `web.misconfig` reports missing security headers
+and directory listing.
 
 ## 4. OSINT (no packets to the target)
 
