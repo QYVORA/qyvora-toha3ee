@@ -28,6 +28,7 @@ import (
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
 	"github.com/QYVORA/qyvora-toha3ee/internal/session"
 	"github.com/QYVORA/qyvora-toha3ee/internal/ui"
+	"github.com/QYVORA/qyvora-toha3ee/internal/version"
 
 	// Register all attack modules and vector rules.
 	// Each package runs an init() that self-registers its modules (and, for
@@ -277,23 +278,26 @@ func main() {
 		Use:   "version",
 		Short: "print the version",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			info := version.GetInfo()
 			switch output {
 			case "json":
-				data, err := json.MarshalIndent(map[string]string{
-					"framework": "toha3ee",
-					"version":   session.Version,
-				}, "", "  ")
+				data, err := json.MarshalIndent(info, "", "  ")
 				if err != nil {
 					return err
 				}
 				_, _ = fmt.Fprintln(os.Stdout, string(data))
 			case "markdown":
-				_, _ = fmt.Fprintf(os.Stdout, "**toha3ee** %s\n", session.Version)
+				_, _ = fmt.Fprintf(os.Stdout, "**toha3ee** %s\n", info.Version)
 			default:
-				u := ui.New(os.Stdout)
-				u.SetColor(!noColor && u.Enabled())
-				u.Banner("local & network security assessment framework")
-				u.BannerFoot("", session.Version)
+				_, _ = fmt.Fprintf(os.Stdout, "toha3ee %s\n", info.Version)
+				_, _ = fmt.Fprintf(os.Stdout, "  framework:  %s\n", info.Framework)
+				_, _ = fmt.Fprintf(os.Stdout, "  commit:     %s\n", info.Commit)
+				_, _ = fmt.Fprintf(os.Stdout, "  built:      %s\n", info.Date)
+				_, _ = fmt.Fprintf(os.Stdout, "  by:         %s\n", info.BuildUser)
+				_, _ = fmt.Fprintf(os.Stdout, "  go:         %s %s/%s\n", info.GoVersion, info.OS, info.Arch)
+				_, _ = fmt.Fprintf(os.Stdout, "  website:    %s\n", info.Website)
+				_, _ = fmt.Fprintf(os.Stdout, "  support:    %s\n", info.Support)
+				_, _ = fmt.Fprintf(os.Stdout, "  built in:   %s\n", info.BuiltIn)
 			}
 			return nil
 		},

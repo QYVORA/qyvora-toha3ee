@@ -17,11 +17,13 @@ import (
 	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 	"github.com/QYVORA/qyvora-toha3ee/internal/ui"
+	"github.com/QYVORA/qyvora-toha3ee/internal/version"
 )
 
 // Version is the framework version reported by the console banner and the
-// `version` subcommand. The CLI overrides it via -ldflags at release builds.
-var Version = "0.1.0"
+// `version` subcommand. It mirrors internal/version so release builds stamp a
+// single source of truth via -ldflags.
+var Version = version.Version
 
 // Session is one interactive framework instance bound to an interface.
 type Session struct {

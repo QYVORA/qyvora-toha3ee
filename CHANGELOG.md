@@ -28,6 +28,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `CHANGELOG.md`, a full `docs/` tree, and GitHub Actions CI/CodeQL workflows.
 
 ### Changed
+- **Unified version system** — build identity moved from `internal/session`
+  to a canonical `internal/version` package (framework, version, commit,
+  date, build user, Go version/arch/os) stamped via `-ldflags`; release and
+  Makefile builds target the new path.
+- **Quiet `version` command** — `toha3ee version` now prints a clean
+  structured identity block (terminal/markdown/JSON) instead of the full
+  banner, keeping output deterministic and machine-friendly; the console also
+  gained a `version` command that renders the same identity block.
+- **Contact details** — the `version` command, README, and `SECURITY.md`
+  surface official QYVORA contact: https://qyvora.netlify.app ·
+  qyvorasec@gmail.com · Tamale, Ghana.
 - `golang.org/x/crypto` added as a dependency for SSH auth.
 - Registry test now pins the complete module catalogue, including the new
   enum/osint/auth/recon modules.

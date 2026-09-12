@@ -396,3 +396,8 @@ Dependency updates are handled by Dependabot.
 See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/Contributing.md](docs/Contributing.md)
 and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report security issues via
 [SECURITY.md](SECURITY.md) — not as public issues.
+
+## Contact
+
+QYVORA OffSec — Tamale, Ghana
+Website: https://qyvora.netlify.app · Security/Support: qyvorasec@gmail.com

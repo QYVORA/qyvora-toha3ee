@@ -17,6 +17,7 @@ import (
 	"github.com/QYVORA/qyvora-toha3ee/internal/phish"
 	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 	"github.com/QYVORA/qyvora-toha3ee/internal/vectors"
+	"github.com/QYVORA/qyvora-toha3ee/internal/version"
 )
 
 // REPL runs the interactive console. It returns when the user quits.
@@ -136,6 +137,8 @@ func (s *Session) exec(rl *readline.Instance, line string) (bool, error) {
 	switch cmd {
 	case "help", "?":
 		s.help()
+	case "version", "show version":
+		s.printVersion()
 	case "quit", "exit", "bye":
 		// Quitting stops every module and restores the network first.
 		s.Shutdown()
@@ -303,6 +306,26 @@ func parseOpts(args []string) map[string]string {
 	return out
 }
 
+// printVersion renders the framework identity block through the UI.
+func (s *Session) printVersion() {
+	info := version.GetInfo()
+	s.UI.Section("identity")
+	s.UI.KV("framework", info.Framework)
+	s.UI.KV("version", info.Version)
+	if info.Commit != "" && info.Commit != "none" {
+		s.UI.KV("commit", info.Commit)
+	}
+	if info.Date != "" {
+		s.UI.KV("built", info.Date)
+	}
+	s.UI.KV("go", fmt.Sprintf("%s %s/%s", info.GoVersion, info.OS, info.Arch))
+	s.UI.KV("website", info.Website)
+	s.UI.KV("support", info.Support)
+	// The built-in module count is the cheapest available signal of what the
+	// binary ships, mirroring the CLI `version` output.
+	s.UI.Status("+", "%s %s (%d modules registered)", info.Framework, info.Version, len(attacks.List()))
+}
+
 func (s *Session) help() {
 	// Static help text grouped by theme; command/description pairs are kept
 	// as fixed [2]string tuples so the rows render as a two-column table.
@@ -312,6 +335,7 @@ func (s *Session) help() {
 	}
 	groups := []grp{
 		{"Core", [][2]string{
+			{"version", "print the framework version and QYVORA contact"},
 			{"on <module> [k v ...]", "start a module (e.g. \"on arp.spoof\")"},
 			{"off <module>", "stop a running module"},
 			{"status", "list running modules"},

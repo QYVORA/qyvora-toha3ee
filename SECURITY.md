@@ -20,10 +20,17 @@ best-effort basis for high-severity issues.
 Please **do not open a public GitHub issue** for security problems. Instead,
 email the maintainers and allow time for a coordinated fix:
 
-- **Contact**: open a GitHub issue titled `security` with the label `security`
-  disabled, or use GitHub's private vulnerability reporting (Security →
-  *Report a vulnerability*) if enabled on the repository.
+- **Contact**: email the QYVORA OffSec team at **qyvorasec@gmail.com**, use
+  GitHub's private vulnerability reporting (Security → *Report a
+  vulnerability*) if enabled on the repository, or open a restricted GitHub
+  issue titled `security` with the label `security` disabled.
 - **Response**: acknowledgement within **72 hours**, a fix plan within **7 days**.
+
+## Contact
+
+- **Website:** https://qyvora.netlify.app
+- **Security contact:** qyvorasec@gmail.com
+- **Organisation:** QYVORA OffSec — Tamale, Ghana
 
 If you use private reporting, include:
 
