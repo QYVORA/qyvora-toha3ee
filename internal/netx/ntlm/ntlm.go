@@ -18,6 +18,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Signature is the NTLMSSP message header that every NTLM message begins
@@ -243,8 +244,16 @@ type Server struct {
 	target    string // domain name advertised in the type 2 message
 	challenge []byte // fixed challenge for all handshakes, or nil for random
 
+	// Timeout bounds an entire handshake per connection so a stalled or
+	// malicious client cannot pin a goroutine forever.
+	Timeout time.Duration
+	// MaxConns caps concurrent handshakes; excess connections are closed
+	// immediately.
+	MaxConns int
+
 	Accepted atomic.Uint64 // handshakes completed
 	Captured atomic.Uint64 // hashes captured
+	active   atomic.Int64  // live handler goroutines
 	mu       sync.Mutex
 	conns    map[net.Conn]bool // live connections, closed on Stop
 	done     chan struct{}     // closed once to signal shutdown
@@ -257,6 +266,8 @@ func NewServer(handler Handler, target string) *Server {
 	s := &Server{handler: handler, target: target}
 	s.conns = map[net.Conn]bool{}
 	s.done = make(chan struct{})
+	s.Timeout = 15 * time.Second
+	s.MaxConns = 256
 	return s
 }
 
@@ -274,7 +285,8 @@ func (s *Server) Start(addr string) (net.Addr, error) {
 
 // acceptLoop accepts connections until Stop closes the listener. Each client
 // is tracked in s.conns so Stop can force them closed, then handled in its
-// own goroutine so one slow victim cannot stall the others.
+// own goroutine so one slow victim cannot stall the others. Connections are
+// given an absolute handshake deadline and the active set is bounded.
 func (s *Server) acceptLoop() {
 	for {
 		conn, err := s.ln.Accept()
@@ -288,9 +300,17 @@ func (s *Server) acceptLoop() {
 			}
 			continue
 		}
+		if s.MaxConns > 0 && s.active.Load() >= int64(s.MaxConns) {
+			_ = conn.Close()
+			continue
+		}
+		if s.Timeout > 0 {
+			_ = conn.SetDeadline(time.Now().Add(s.Timeout))
+		}
 		s.mu.Lock()
 		s.conns[conn] = true
 		s.mu.Unlock()
+		s.active.Add(1)
 		go s.handle(conn)
 	}
 }
@@ -299,6 +319,7 @@ func (s *Server) acceptLoop() {
 func (s *Server) handle(conn net.Conn) {
 	// Always deregister and close the connection, on both success and error.
 	defer func() {
+		s.active.Add(-1)
 		s.mu.Lock()
 		delete(s.conns, conn)
 		s.mu.Unlock()

@@ -163,7 +163,14 @@ func (m *WPADSpoof) Run(ctx *attacks.AttackCtx, _ map[string]string) error {
 		http.NotFound(w, r)
 	})
 
-	srv := &http.Server{Handler: handler}
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 	ln, err := net.Listen("tcp", ctx.Iface.IP.String()+":80")
 	if err != nil {
 		return fmt.Errorf("wpad.poison: %w", err)

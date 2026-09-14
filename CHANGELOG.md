@@ -32,6 +32,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to a canonical `internal/version` package (framework, version, commit,
   date, build user, Go version/arch/os) stamped via `-ldflags`; release and
   Makefile builds target the new path.
+- **NTLM capture server hardening** — each accepted connection gets an
+  absolute handshake deadline (default 15s, `Server.Timeout`) and the number
+  of concurrent handshakes is bounded (`Server.MaxConns`, default 256) so a
+  stalled or malicious victim cannot pin connections or goroutines forever.
+- **WPAD PAC server hardening** — the `/wpad.dat` HTTP server now sets
+  `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, `IdleTimeout` and a
+  capped `MaxHeaderBytes` to resist slow-loris and stalled connections.
 - **Quiet `version` command** — `toha3ee version` now prints a clean
   structured identity block (terminal/markdown/JSON) instead of the full
   banner, keeping output deterministic and machine-friendly; the console also
