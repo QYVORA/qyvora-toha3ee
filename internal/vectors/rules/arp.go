@@ -32,7 +32,10 @@ func arpRules(p *v.Profile) []v.Vector {
 
 	// Internal host-to-host spoofing when at least two client hosts exist.
 	// The two-host floor matters: with a single client there is no second
-	// party whose traffic could be redirected.
+	// party whose traffic could be redirected. Internal mode is the same
+	// registered "arp.spoof" module driven with its "internal" option, so the
+	// suggestion is always runnable (previously this referenced a module ID
+	// that was never registered).
 	clientCount := 0
 	for _, h := range p.Hosts {
 		// Count only hosts with a MAC: an ARP-spoofable target must be
@@ -43,11 +46,11 @@ func arpRules(p *v.Profile) []v.Vector {
 	}
 	if clientCount >= 2 {
 		out = append(out, v.Vector{
-			ModuleID:   "arp.spoof.internal",
+			ModuleID:   "arp.spoof",
 			Target:     "host-to-host",
 			Confidence: 0.85,
 			Risk:       "medium",
-			Impact:     "ARP MITM between two internal hosts without touching the gateway",
+			Impact:     "ARP MITM between two internal hosts without touching the gateway (run arp.spoof with internal=true)",
 		})
 	}
 

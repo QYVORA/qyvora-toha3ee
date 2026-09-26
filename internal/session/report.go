@@ -113,6 +113,13 @@ func buildReport(db *store.Store, running []string) *Report {
 	return rep
 }
 
+// Report returns the current session state as a serializable report. It is
+// used both by the `report` command (file output) and by machine-format CLI
+// runs (`eval/run -o json|markdown` dump the live session to stdout).
+func (s *Session) Report() *Report {
+	return buildReport(s.Store, s.Running())
+}
+
 // writeReport serializes rep as indented JSON to path.
 func writeReport(path string, rep *Report) error {
 	data, err := rep.RenderJSON()

@@ -33,7 +33,6 @@ func mustMAC(s string) net.HardwareAddr {
 func metaResolver(id string) (vectors.MetaInfo, bool) {
 	meta := map[string]vectors.MetaInfo{
 		"arp.spoof":           {Category: "mitm", Risk: "medium", Requires: []string{"cap.ip_forward", "cap.raw_socket"}},
-		"arp.spoof.internal":  {Category: "mitm", Risk: "medium", Requires: []string{"cap.raw_socket"}},
 		"http.harvest":        {Category: "http", Risk: "low", Requires: nil, Passive: true},
 		"dns.spoof":           {Category: "mitm", Risk: "medium", Requires: []string{"cap.ip_forward", "cap.raw_socket"}},
 		"http.proxy":          {Category: "http", Risk: "high", Requires: []string{"cap.ip_forward", "cap.raw_socket"}},

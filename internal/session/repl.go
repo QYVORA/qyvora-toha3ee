@@ -849,7 +849,7 @@ func (s *Session) report(args []string) error {
 	if len(args) > 0 {
 		path = args[0]
 	}
-	rep := buildReport(s.Store, s.Running())
+	rep := s.Report()
 	if err := writeReport(path, rep); err != nil {
 		return err
 	}

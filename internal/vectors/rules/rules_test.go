@@ -41,28 +41,26 @@ func TestARPSpoofInternalNeedsTwoClients(t *testing.T) {
 	gw := &v.Host{IP: []byte{192, 168, 1, 1}}
 	client := &v.Host{IP: []byte{192, 168, 1, 10}, MAC: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x0a}}
 
-	// Only one client -> no internal.
-	p := &v.Profile{Gateway: gw, Poisonable: true, Hosts: []*v.Host{client}}
-	vecs := arpRules(p)
-	for _, v := range vecs {
-		if v.ModuleID == "arp.spoof.internal" {
-			t.Fatal("arp.spoof.internal suggested with only 1 client")
+	foundInternal := func(vecs []v.Vector) bool {
+		for _, vec := range vecs {
+			if vec.ModuleID == "arp.spoof" && vec.Target == "host-to-host" {
+				return true
+			}
 		}
+		return false
 	}
 
-	// Two clients -> internal suggested.
+	// Only one client -> no internal mode.
+	p := &v.Profile{Gateway: gw, Poisonable: true, Hosts: []*v.Host{client}}
+	if foundInternal(arpRules(p)) {
+		t.Fatal("host-to-host arp.spoof suggested with only 1 client")
+	}
+
+	// Two clients -> internal mode suggested.
 	client2 := &v.Host{IP: []byte{192, 168, 1, 20}, MAC: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x14}}
 	p.Hosts = []*v.Host{client, client2}
-	vecs = arpRules(p)
-	found := false
-	for _, v := range vecs {
-		if v.ModuleID == "arp.spoof.internal" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("arp.spoof.internal not suggested with 2 clients")
+	if !foundInternal(arpRules(p)) {
+		t.Fatal("host-to-host arp.spoof not suggested with 2 clients")
 	}
 }
 

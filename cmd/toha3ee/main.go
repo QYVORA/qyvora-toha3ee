@@ -78,13 +78,18 @@ func exactArgsUsage(n int) cobra.PositionalArgs {
 	}
 }
 
-// isValidOutput reports whether -o names a supported report format.// isValidOutput reports whether -o names a supported report format.
+// isValidOutput reports whether -o names a supported report format.
 func isValidOutput(spec string) bool {
 	switch spec {
 	case "terminal", "json", "markdown":
 		return true
 	}
 	return false
+}
+
+// normalizeOutput lower-cases and trims a raw -o value for switch dispatch.
+func normalizeOutput(spec string) string {
+	return strings.ToLower(strings.TrimSpace(spec))
 }
 
 // exitCodeFor maps an execution error to the documented exit status: usage
@@ -150,11 +155,11 @@ func main() {
 			// With no subcommand, --eval runs a one-shot sequence; otherwise
 			// fall into the interactive REPL.
 			if eval != "" {
-				return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+				return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 					return s.Eval(eval)
 				})
 			}
-			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 				return s.REPL()
 			})
 		},
@@ -182,7 +187,7 @@ func main() {
 		Aliases: []string{"repl", "shell"},
 		Short:   "start the interactive console",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 				return s.REPL()
 			})
 		},
@@ -193,7 +198,7 @@ func main() {
 		Use:   "wizard",
 		Short: "guided attack setup",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 				return runWizard(s)
 			})
 		},
@@ -213,7 +218,7 @@ func main() {
 			if seq == "" {
 				return usageError{fmt.Errorf("eval: nothing to run (pass --eval or a quoted string)")}
 			}
-			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 				return s.Eval(seq)
 			})
 		},
@@ -226,7 +231,7 @@ func main() {
 		Short: "execute a script or caplet non-interactively",
 		Args:  exactArgsUsage(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 				if strings.HasSuffix(args[0], ".toha3ee") {
 					return s.RunScript(args[0])
 				}
@@ -240,7 +245,7 @@ func main() {
 		Short: "execute a .toha3ee script file",
 		Args:  exactArgsUsage(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 				return s.RunScript(args[0])
 			})
 		},
@@ -253,7 +258,7 @@ func main() {
 		Short: "validate a .toha3ee script and print a dry-run plan",
 		Args:  exactArgsUsage(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return run(ifaceName, configPath, verbose, noColor, func(s *session.Session) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 				return s.BuildScript(args[0])
 			})
 		},
@@ -448,11 +453,30 @@ func newEventsEmitter() (*events.Emitter, func(), error) {
 
 // run executes the session body (REPL, eval, script, build) against a live
 // session, wiring the optional JSONL event stream around it.
-func run(ifaceName, configPath string, verbose, noColor bool, body func(*session.Session) error) error {
+func run(ifaceName, configPath, outputFormat string, verbose, noColor bool, body func(*session.Session) error) error {
 	log := slog.Default()
 	if !verbose {
 		// Non-verbose: drop all log output so only the UI writes to stdout.
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+
+	// Machine formats render the structured session report to stdout, so
+	// every human line (tables, banners, status) routes to stderr and stdout
+	// carries exactly one machine stream. The same routing applies when the
+	// JSONL event stream owns stdout.
+	machineFmt := normalizeOutput(outputFormat)
+	humanW := os.Stdout
+	switch machineFmt {
+	case "json", "markdown":
+		humanW = os.Stderr
+	default:
+		if eventsStream == "stdout" {
+			humanW = os.Stderr
+		}
+	}
+	if eventsStream == "stdout" && (machineFmt == "json" || machineFmt == "markdown") {
+		// stdout cannot carry both the JSONL event stream and a machine report.
+		return usageError{fmt.Errorf("cannot combine --events stdout with report format -o %s; use --events stderr or --events <file>", machineFmt)}
 	}
 
 	var iface *netx.Iface
@@ -467,7 +491,7 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 		return fmt.Errorf("select interface: %w", err)
 	}
 
-	s := session.New(iface, os.Stdout, log)
+	s := session.New(iface, humanW, log)
 	if quiet {
 		s.UI.Quiet = true
 	}
@@ -527,6 +551,29 @@ func run(ifaceName, configPath string, verbose, noColor bool, body func(*session
 				"sessions": len(s.Store.Sessions()),
 				"events":   len(s.Store.Events()),
 			})
+		}
+	}
+	if runErr == nil && (machineFmt == "json" || machineFmt == "markdown") {
+		// The fixed contract: `eval/run -o json|markdown` emits the
+		// structured session report on stdout instead of only terminal
+		// tables. JSON carries plaintext loot by design (documented domain
+		// exception); the terminal renderer keeps it redacted.
+		rep := s.Report()
+		if machineFmt == "json" {
+			data, err := rep.RenderJSON()
+			if err != nil {
+				return fmt.Errorf("encoding session report: %w", err)
+			}
+			_, err = os.Stdout.Write(data)
+			if err != nil {
+				return fmt.Errorf("writing session report: %w", err)
+			}
+			_, _ = fmt.Fprintln(os.Stdout)
+		} else {
+			_, err := fmt.Fprint(os.Stdout, rep.RenderMarkdown())
+			if err != nil {
+				return fmt.Errorf("writing session report: %w", err)
+			}
 		}
 	}
 	return runErr
