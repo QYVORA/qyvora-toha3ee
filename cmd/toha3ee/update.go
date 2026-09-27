@@ -26,24 +26,31 @@ func releaseConfig() selfupdate.Config {
 			return session.Version
 		},
 		ArtifactName: func(goos, goarch string) string {
-			switch {
-			case goos == "windows" && (goarch == "amd64" || goarch == "arm64"):
-				// The pipeline ships windows/amd64 only; windows-on-arm64
-				// runs x64 binaries, matching the release workflow.
-				return "toha3ee_windows_amd64.zip"
-			case goos == "linux" || goos == "darwin":
-				return fmt.Sprintf("toha3ee_%s_%s.tar.gz", goos, goarch)
-			default:
-				return ""
+			// Release assets are bare executables named
+			// "{tool}-{os}-{arch}" with a ".exe" suffix on Windows. macOS is
+			// published as "macos", never "darwin".
+			//
+			// This previously resolved to a "toha3ee_{os}_{arch}.tar.gz"
+			// archive with a per-artifact ".sha256" sidecar. Both were wrong
+			// for the current pipeline: the release ships bare binaries and a
+			// single checksums.txt manifest, and a bare-digest sidecar does
+			// not match a manifest line of the form "<sha256>  <name>".
+			os := goos
+			if os == "darwin" {
+				os = "macos"
 			}
-		},
-		ChecksumAsset: func(artifact string) string { return artifact + ".sha256" },
-		ArchiveFor: func(goos, _ string) (selfupdate.ArchiveKind, string) {
+			name := fmt.Sprintf("toha3ee-%s-%s", os, goarch)
 			if goos == "windows" {
-				return selfupdate.ArchiveZip, "toha3ee.exe"
+				name += ".exe"
 			}
-			return selfupdate.ArchiveTarGz, "toha3ee"
+			return name
 		},
+		// One manifest for the whole release, not a per-artifact sidecar.
+		ChecksumAsset: func(string) string { return "checksums.txt" },
+		// The release publishes bare binaries, so nothing is unpacked. The
+		// engine's ArchiveFor support is left in place for tools that do ship
+		// archives; returning nil here is what disables it for toha3ee.
+		ArchiveFor: nil,
 	}
 }
 
