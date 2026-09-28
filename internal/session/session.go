@@ -52,10 +52,16 @@ type Session struct {
 type runningModule struct {
 	mod     attacks.Module // the running module implementation
 	ctx     *attacks.AttackCtx
-	done    chan struct{} // closed to signal Run to stop
+	done    chan struct{} // closed once to signal Run to stop
 	started time.Time
-	err     error // set by the Run goroutine
+	err     error // set by the Run goroutine, read only by finishModule
 	wg      sync.WaitGroup
+	// stopped is set under s.mu before done is closed, so a stop requested
+	// around the same moment Run returns still records as "stopped" rather
+	// than racing on the channel read.
+	stopped bool
+	// finished guards completion so finishModule runs exactly once.
+	finished bool
 	// baseline loot counters captured before Run so the run record can point
 	// at the evidence this execution produced.
 	baseCreds    int
@@ -180,25 +186,24 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 	}
 
 	// Register the running module before launching Run so IsRunning is true
-	// the moment the goroutine starts.
+	// the moment the goroutine starts. The counter is bumped before the map
+	// entry exists so a concurrent StopModule can never Wait on an Add that
+	// has not happened yet.
 	rm := &runningModule{mod: mod, ctx: ctx, done: done, started: time.Now(),
 		baseCreds: len(s.Store.Creds()), baseSessions: len(s.Store.Sessions())}
+	rm.wg.Add(1)
 	s.mu.Lock()
 	s.running[id] = rm
 	s.mu.Unlock()
 
-	// Run executes asynchronously; the WaitGroup lets StopModule join it.
-	rm.wg.Add(1)
+	// Run executes asynchronously; the WaitGroup lets StopModule join it. The
+	// goroutine is the single owner of the lifecycle: it always calls
+	// finishModule after Run returns, so a module that ends naturally and a
+	// module being stopped can never both record a completion.
 	go func() {
 		defer rm.wg.Done()
 		rm.err = mod.Run(ctx, opts)
-		select {
-		case <-done:
-			// Stop was requested: the caller finishes the lifecycle.
-		default:
-			// Run returned before being told to stop: bounded module done.
-			s.finishModule(id, rm)
-		}
+		s.finishModule(id, rm)
 	}()
 
 	s.Store.LogEvent(events.TopicModuleStarted, fmt.Sprintf("%s started", id))
@@ -208,12 +213,20 @@ func (s *Session) StartModule(id string, opts map[string]string) error {
 
 // finishModule runs Verify + Cleanup after Run returned, records the run as a
 // structured store.ModuleRun and emits the module.completed event so reports
-// and the JSONL stream carry the verified outcome.
+// and the JSONL stream carry the verified outcome. It is invoked by the Run
+// goroutine only, and guarded so a lifecycle is completed exactly once.
 func (s *Session) finishModule(id string, rm *runningModule) {
-	// Remove from the running set first so IsRunning stops reporting it
-	// before any remaining output appears.
+	// Remove from the running set first and claim the lifecycle: any second
+	// call (a hypothetical stop racing the goroutine) is then a no-op, so a
+	// module can never record two runs or emit two completions.
 	s.mu.Lock()
+	if rm.finished {
+		s.mu.Unlock()
+		return
+	}
+	rm.finished = true
 	delete(s.running, id)
+	stopped := rm.stopped
 	s.mu.Unlock()
 
 	run := store.ModuleRun{
@@ -228,12 +241,10 @@ func (s *Session) finishModule(id string, rm *runningModule) {
 		s.UI.Status("!", "%s finished with error: %v", id, rm.err)
 		s.Store.LogEvent(events.TopicModuleFailed, fmt.Sprintf("%s failed: %v", id, rm.err))
 	} else {
-		// A closed done channel means the operator stopped the module, not
-		// that it reached a natural end.
-		select {
-		case <-rm.done:
+		// A stop requested before Run returned means the operator halted the
+		// module, not that it reached a natural end.
+		if stopped {
 			run.Status = "stopped"
-		default:
 		}
 		// Verify only runs when Run succeeded; a nil impact report means the
 		// module has nothing to report.
@@ -275,20 +286,26 @@ func (s *Session) finishModule(id string, rm *runningModule) {
 	s.Bus.Emit(events.TopicModuleCompleted, run)
 }
 
-// StopModule halts a running module: closes its Done channel, waits for Run,
-// then Verify + Cleanup.
+// StopModule halts a running module: marks it stopped, closes its Done
+// channel, and waits for the Run goroutine to complete the lifecycle (verify,
+// cleanup, run record and events). Concurrent stops of the same module are
+// safe: only the first closes the channel, later calls report "not running".
 func (s *Session) StopModule(id string) error {
 	s.mu.Lock()
 	rm, ok := s.running[id]
+	if ok && !rm.stopped {
+		rm.stopped = true
+	} else {
+		ok = false
+	}
 	s.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("%s is not running", id)
 	}
 	// Closing done tells Run to tear itself down; wg.Wait blocks until the
-	// Run goroutine actually returns.
+	// Run goroutine has finished the whole lifecycle, not just Run.
 	close(rm.done)
 	rm.wg.Wait()
-	s.finishModule(id, rm)
 	return nil
 }
 
