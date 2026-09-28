@@ -11,7 +11,7 @@ toha3ee \- local and network security assessment framework
 .B toha3ee
 is an interactive network security console: it discovers hosts, enumerates
 services, profiles attack surfaces and carries out authorised MITM, wireless
-and credential-based testing from a single REPL. It ships 73 modules across
+and credential-based testing from a single session. It ships 73 modules across
 the recon, scan, enumeration, OSINT, authentication, MITM, wireless, switch
 and post-exploitation categories, plus a scripting engine for repeatable
 engagements.
@@ -83,8 +83,9 @@ Run a one-shot command sequence and exit (same as the
 .B \-\-eval
 flag).
 .TP
-.B interactive, repl, shell
-Start the interactive console (the default action when no command is given).
+.B tui, interactive, repl, shell
+Start the interactive session (the default action when no command is given).
+The older spellings remain as aliases.
 .TP
 .B modules
 List all registered modules with their risk level and description.
@@ -115,9 +116,15 @@ Generate the shell autocompletion script for the specified shell.
 .TP
 .B help
 Show help about any command.
-.SH THE CONSOLE
-Interactive mode drops you into a REPL with a status HUD that live-counts
-live hosts, ports, credentials and events.
+.SH THE SESSION
+Interactive mode drops you into the QYVORA terminal application. Commands are
+evaluated against one live session, so a scan's results are available to the
+commands that follow it. Ctrl+C stops the running command and Ctrl+D leaves.
+A machine report format is refused here; use
+.B report
+with
+.B \-o json
+inside the session instead.
 .SS Core commands
 .TP
 .B on <module>

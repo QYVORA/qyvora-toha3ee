@@ -1,10 +1,7 @@
 package session
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,83 +17,7 @@ import (
 	"github.com/QYVORA/qyvora-toha3ee/internal/version"
 )
 
-// REPL runs the interactive console. It returns when the user quits.
-func (s *Session) REPL() error {
-	rl, err := readline.NewEx(&readline.Config{
-		Prompt:      s.UI.Prompt("toha3ee"),
-		HistoryFile: s.historyPath(),
-		AutoComplete: readline.NewPrefixCompleter(
-			commandsCompleter()...,
-		),
-	})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rl.Close() }()
-
-	s.UI.Banner("local & network security assessment framework")
-	s.UI.BannerFoot(s.Iface.String(), versionString())
-	s.hud()
-	s.statusf("session ready. type 'help' for commands.")
-	s.Store.LogEvent(events.TopicLog, "console started")
-
-	for {
-		line, err := rl.Readline()
-		if err != nil {
-			// Ctrl-D (EOF) and Ctrl-C at the empty prompt leave the console
-			// cleanly; the caller's deferred Shutdown stops modules and
-			// restores the network.
-			if errors.Is(err, readline.ErrInterrupt) {
-				continue
-			}
-			return nil
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		quit, e := s.execWithPrompt(rl, line)
-		// Refresh the HUD after every command so the strip reflects the
-		// module/loot state just changed.
-		s.hud()
-		if e != nil {
-			if e == errQuit {
-				return nil
-			}
-			s.errorf("%v", e)
-		} else if quit {
-			return nil
-		}
-	}
-}
-
 var errQuit = fmt.Errorf("quit")
-
-// execWithPrompt runs one command. The readline prompt is left alone and
-// command output is the only writer during execution.
-//
-// An earlier implementation refreshed the readline prompt from a ticker
-// goroutine while blocking commands ran. That raced with readline's own
-// rendering and corrupted interactive sub-prompts (a typed answer in the
-// wizard or shell sub-prompt could be lost or misread), so the ticker is gone
-// entirely: the next Readline renders a fresh prompt when exec returns.
-func (s *Session) execWithPrompt(rl *readline.Instance, line string) (bool, error) {
-	return s.exec(rl, line)
-}
-
-// historyPath returns the console history file, kept under ~/.qyvora so it
-// survives sessions without cluttering the working directory.
-func (s *Session) historyPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".toha3ee_history"
-	}
-	dir := filepath.Join(home, ".qyvora")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return ".toha3ee_history"
-	}
-	return filepath.Join(dir, "toha3ee_history")
-}
 
 // versionString returns the build version (injected by the CLI at build time).
 func versionString() string {

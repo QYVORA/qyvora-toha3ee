@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,6 +104,18 @@ func exitCodeFor(err error) int {
 	if errors.As(err, &ue) {
 		return exitUsage
 	}
+	// An interrupt is not a failure. 130 is what a shell reports for a job
+	// stopped on SIGINT, and a wrapper script that cannot tell the two apart
+	// will treat a cancelled scan as a broken one.
+	if errors.Is(err, context.Canceled) {
+		return exitInterrupted
+	}
+	// The interface reports the last command's status through this type when
+	// the session ends after a failed or cancelled command.
+	var te *tuiExitError
+	if errors.As(err, &te) {
+		return te.code
+	}
 	// Cobra reports unknown subcommands ("unknown command \"x\" for
 	// \"toha3ee\"") as plain errors; treat them as usage mistakes too.
 	if msg := err.Error(); strings.HasPrefix(msg, "unknown command") && strings.Contains(msg, " for ") {
@@ -139,7 +152,7 @@ func main() {
 		Short:         "local & network security assessment framework",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Bare "toha3ee" drops straight into the interactive console;
+		// Bare "toha3ee" drops into the shared interactive session;
 		// "--eval \"net.scan; net.show\"" runs without a subcommand too.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Reject an unknown -o value before any command runs so the exit
@@ -151,17 +164,15 @@ func main() {
 			// touches the network stack; read-only verbs are exempt.
 			return maybeElevate(cmd)
 		},
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			// With no subcommand, --eval runs a one-shot sequence; otherwise
-			// fall into the interactive REPL.
+			// open the shared interactive session.
 			if eval != "" {
 				return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 					return s.Eval(eval)
 				})
 			}
-			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
-				return s.REPL()
-			})
+			return runTUI(cmd.Root(), cmd.Context(), ifaceName, configPath, output, verbose, noColor)
 		},
 	}
 
@@ -181,15 +192,24 @@ func main() {
 		return usageError{err}
 	})
 
-	// `toha3ee interactive` is the explicit spelling of the default REPL mode.
-	replCmd := &cobra.Command{
-		Use:     "interactive",
-		Aliases: []string{"repl", "shell"},
-		Short:   "start the interactive console",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
-				return s.REPL()
-			})
+	// `toha3ee interactive` is the explicit spelling of the default session.
+	//
+	// The old spellings stay as aliases. They named a readline console, and
+	// though the interface is a different program the words people and scripts
+	// already use to reach it should keep working.
+	tuiCmd := &cobra.Command{
+		Use:     "tui",
+		Aliases: []string{"interactive", "repl", "shell"},
+		Short:   "start the interactive session",
+		Long: `Start the interactive session.
+
+Commands are entered at the prompt and evaluated against one live session, so
+what an earlier command discovered is available to the next. The session renders
+from the same structured event stream as the one-shot CLI.
+
+Ctrl+C stops the running command; Ctrl+D leaves.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runTUI(cmd.Root(), cmd.Context(), ifaceName, configPath, output, verbose, noColor)
 		},
 	}
 
@@ -366,7 +386,7 @@ func main() {
 		},
 	}
 
-	root.AddCommand(replCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
+	root.AddCommand(tuiCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
 	root.SetArgs(os.Args[1:])
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toha3ee:", err)

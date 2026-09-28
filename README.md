@@ -13,7 +13,7 @@ auditing, vulnerability identification and authorised exploitation. Its ten
 module categories span recon, enumeration, OSINT, MITM (ARP/DHCP/DNS/IPv6
 poisoning and inline HTTP/HTTPS interception), wireless, switch-layer,
 web, auth, espionage and post-exploitation — all driven from an interactive
-REPL, a guided wizard, or one-shot command sequences.
+session, a guided wizard, or one-shot command sequences.
 
 MITM is one capability within this broader domain: TOHA3EE is not limited to
 man-in-the-middle scenarios.
@@ -104,11 +104,11 @@ libpcap with Xcode Command Line Tools.
 ## Quick start
 
 ```sh
-# Interactive console (bare command drops straight in)
+# Interactive session (bare command drops straight in)
 sudo ./toha3ee --iface eth0
 
-# Interactive console (explicit subcommand)
-sudo ./toha3ee interactive --iface eth0
+# Interactive session (explicit subcommand)
+sudo ./toha3ee tui --iface eth0
 
 # Guided wizard
 sudo ./toha3ee wizard --iface eth0
@@ -190,20 +190,26 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 | **wireless** | `wlan.scan`, `wlan.deauth`, `wlan.handshake`, `wlan.eviltwin`, `wlan.pmkid`, `wlan.beaconflood`, `wlan.karma` |
 | **post** | `report.generate`, `session.replay`, `pcap.export` |
 
-## Console
+## Interactive session
 
-Bare `toha3ee` (or `toha3ee interactive`) opens a bettercap/metasploit-style
-console: the `@@@` banner, a **red-accented `toha3eeλ > ` prompt** with
-tab-completion, and a persistent one-line **status HUD** above the prompt that
-shows the interface, running modules and live host/port/credential/event
-counts. Output is grouped and aligned in a green/amber/white palette — red is
-used deliberately, for the prompt accent, hard errors (`[x]`), the HUD edge
-mark and critical-risk modules (high risk is amber). Every command's output is
-sectioned (`─── modules ───`), tables are column-aligned (colors are ignored
-when computing alignment), and module messages are colorized centrally, so
-every module gets consistent status glyphs with no per-module work. Output
-falls back to plain text automatically when piped, and the prompt stays
-visible and live while any module runs, like bettercap.
+Bare `toha3ee` (or `toha3ee tui`, or the older `interactive`/`repl`/`shell`
+spellings) opens the shared QYVORA terminal application. Commands are entered at
+the prompt and evaluated against **one live session**, so a `net.scan` followed
+by `net.show` sees the same hosts, credentials and running modules: the
+assessment accumulates rather than being rebuilt per command.
+
+The interface renders from the same structured event stream as the one-shot CLI,
+so nothing is scraped from human-readable output. Each command becomes a
+labelled block in a scrolling transcript — findings, artifacts, progress and the
+command's own output — with a persistent header showing the interface state, a
+`Ctrl+O` view of the raw event log, tab-completion over the live module registry,
+and `Ctrl+C` to stop the running command or `Ctrl+D` to leave.
+
+Because the session is the product, two behaviours differ from the other
+frameworks: the store that holds discovered hosts and credentials lives in
+memory for the life of the process, and a machine report format is refused for
+the session itself (use `report -o json` inside it) so that stdout carries
+exactly one machine stream.
 
 ```
 $ sudo ./toha3ee --iface eth0
@@ -290,8 +296,8 @@ in-memory store.
 
 `.toha3ee` files drive the full recon → exploit → report pipeline with a
 Python-like language that reads like English. Execute one with `toha3ee script
-<file>`, from the REPL with `script <file>`, or run any `.toha3ee` file with
-`run <file>`. `toha3ee build <file>` (or REPL `build <file>`) validates the
+`<file>`, from the session with `script <file>`, or run any `.toha3ee` file with
+`run <file>`. `toha3ee build <file>` (or `build <file>` in the session) validates the
 file and prints a dry-run plan without touching the network. `scripts/full-
 pipeline.toha3ee` is a working end-to-end example.
 
@@ -311,7 +317,7 @@ end
 
 for each _h in $(_hosts)                      # loops
     repeat 3 times
-        exec -> net.show                      # run any REPL command once
+        exec -> net.show                      # run any session command once
         break
     end
 end
@@ -338,7 +344,7 @@ Language notes:
   numerically. `while` loops are capped so a bad condition can never hang the
   script.
 - **Modules** — every statement drives the exact same module lifecycle and
-  preflight/risk gates as the REPL, so a script cannot do anything the console
+  preflight/risk gates as the session, so a script cannot do anything the console
   cannot.
 
 ## Configuration
@@ -373,8 +379,8 @@ explicitly unsupported by the design intent.
   framework.
 
 Tunables are read per module, e.g. `set net.scan.stealth_jitter 5ms`,
-`set service.synscan.stealth_burst 128`. The REPL prompt stays visible and
-live while any module runs, like bettercap.
+`set service.synscan.stealth_burst 128`. The session stays responsive while any
+module runs, and a second command can be issued once the first finishes.
 
 ## Tests
 

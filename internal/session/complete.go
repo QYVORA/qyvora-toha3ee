@@ -1,6 +1,8 @@
 package session
 
 import (
+	"strings"
+
 	"github.com/chzyer/readline"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
@@ -79,4 +81,41 @@ func commandsCompleter() []readline.PrefixCompleterInterface {
 		readline.PcItem("plan"),
 		readline.PcItem("clear"),
 	}
+}
+
+// CommandNames returns every command the console accepts, as a flat list of
+// top-level names.
+//
+// It exists for the shared terminal application, which completes against a
+// command list rather than a readline tree. The names are taken from the same
+// completer the REPL uses, plus every registered module id, so tab-completion
+// in the two interfaces cannot drift apart: a module added to the registry
+// becomes completable in both without a second list to maintain.
+func CommandNames() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(names ...string) {
+		for _, n := range names {
+			if n == "" || seen[n] {
+				continue
+			}
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+
+	for _, c := range commandsCompleter() {
+		// GetName returns runes and readline terminates a completion item with
+		// a space, so the verb has to be trimmed back before it is useful as a
+		// command name.
+		if name := strings.TrimSpace(string(c.GetName())); name != "" {
+			add(name)
+		}
+	}
+	// Module ids are completable as whole tokens ("arp.spoof"), so they belong
+	// in the flat list the terminal application completes against.
+	for _, m := range attacks.List() {
+		add(m.Meta().ID)
+	}
+	return out
 }
