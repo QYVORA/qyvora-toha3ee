@@ -23,6 +23,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/QYVORA/qyvora-tui"
+
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 	"github.com/QYVORA/qyvora-toha3ee/internal/config"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
@@ -159,6 +161,13 @@ func main() {
 			// status is the documented 2 (usage) rather than a runtime error.
 			if output != "" && !isValidOutput(output) {
 				return usageError{fmt.Errorf("invalid output format %q (terminal, json, markdown)", output)}
+			}
+			// Escalation comes after the terminal check, not before it. A
+			// redirected run is not an interactive session, and asking for a
+			// password it can never receive turned `toha3ee > out` into a
+			// sudo failure instead of the help every other tool prints.
+			if opensInteractiveSession(cmd, eval != "") && !tui.IsInteractive(os.Stdout) {
+				return nil
 			}
 			// Any invocation (subcommand or not) escalates to root before it
 			// touches the network stack; read-only verbs are exempt.

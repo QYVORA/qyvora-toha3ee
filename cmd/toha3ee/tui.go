@@ -116,6 +116,28 @@ func tuiCommandMeta() []tui.Command {
 // instead of a readline loop, it draws the interface and evaluates each line
 // against the session it was handed.
 func runTUI(root *cobra.Command, ctx context.Context, ifaceName, configPath, output string, verbose, noColor bool) error {
+	// A TUI needs a terminal. When stdout is redirected, or when the binary is
+	// driven by something that is not a human, fall through to ordinary
+	// behaviour: printing the command list is useful, and it is what a piped
+	// or CI invocation needs. Launching a full-screen interface into a pipe
+	// would fill it with escape codes and destroy the machine-readable output
+	// the tool exists to produce.
+	//
+	// This is checked before the session is built, before the interface is
+	// chosen and before root is asked for, so a redirected run costs nothing
+	// and asks for no password.
+	if !tui.IsInteractive(os.Stdout) {
+		return root.Help()
+	}
+
+	// A machine event destination and the interface are contradictory: one
+	// screen cannot hand the same bytes to a renderer and to a file. The
+	// destination used to be ignored in silence, so a bare
+	// `--events out.jsonl` opened the session and wrote no file.
+	if root.Flags().Changed("events") && !eventsDisabled(eventsStream) {
+		return usageError{fmt.Errorf("cannot open the interactive session with a machine event destination (--events %s); the session transcript is already its event stream. Use --eval for machine output, or drop --events to use the session", eventsStream)}
+	}
+
 	// A machine report format writes the session report to standard output when
 	// the body returns, which inside the interface would be spliced into the
 	// event stream. The interface is the report; asking for a second one is a
@@ -159,4 +181,49 @@ type tuiExitError struct{ code int }
 
 func (e *tuiExitError) Error() string {
 	return fmt.Sprintf("last session command exited with status %d", e.code)
+}
+
+// eventsDisabled reports whether a --events value asks for no stream at all.
+//
+// It sits beside the other two preflights because they answer the same
+// question from different angles: is this invocation for a person at a terminal,
+// or for a program reading a stream? A value that turns the stream off must not
+// read as a request to send it somewhere, or `toha3ee --events off` would be
+// refused for asking for nothing.
+func eventsDisabled(spec string) bool {
+	switch strings.ToLower(spec) {
+	case "", "off", "none", "disable", "disabled":
+		return true
+	}
+	return false
+}
+
+// opensInteractiveSession reports whether this invocation would draw the
+// interface if it had a terminal.
+//
+// The question is asked in two parts, and both parts matter. Which commands draw
+// the interface decides whether root is needed; whether a terminal exists decides
+// whether there is anyone to ask for a password. PersistentPreRunE combines them
+// so a redirected run costs nothing, while a redirected --eval still escalates:
+// it touches the network stack whether or not anyone is watching.
+//
+// evalRequested is passed rather than read, because the flag targets a local in
+// newRootCmd. Widening it to a package var would put it back in reach of every
+// command built later, which is the leak the local exists to prevent.
+func opensInteractiveSession(cmd *cobra.Command, evalRequested bool) bool {
+	isRoot := cmd == cmd.Root()
+	// Only the bare root falls through to the session. A root invocation with
+	// --eval, or with a subcommand, is a one-shot run and needs root either way.
+	if isRoot && evalRequested {
+		return false
+	}
+	// `tui` and its aliases always draw it; any other subcommand is its own
+	// thing and maybeElevate decides what it needs.
+	// A named event destination means the operator wants machine output.
+	// The flag has to have been asked for: a tool that defaults --events
+	// to stderr would otherwise refuse every interactive run.
+	if cmd.Flags().Changed("events") && !eventsDisabled(eventsStream) {
+		return false
+	}
+	return isRoot || cmd.Name() == "tui"
 }

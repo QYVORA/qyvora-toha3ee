@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // The interface tokenises a typed line and hands the runner bare words, but the
@@ -82,5 +84,52 @@ func TestTUICommandMetaCoversConsoleCommands(t *testing.T) {
 		if !present[want] {
 			t.Errorf("tuiCommandMeta is missing %q", want)
 		}
+	}
+}
+
+// The disable words must not read as a request to send the stream somewhere.
+// `toha3ee --events off` asks for no stream at all, and refusing to open the
+// session for it would be refusing an ordinary interactive run.
+func TestEventsDisabledCoversTheDisableWords(t *testing.T) {
+	for _, spec := range []string{"", "off", "OFF", "none", "disable", "disabled", "Off"} {
+		if !eventsDisabled(spec) {
+			t.Errorf("eventsDisabled(%q) = false, want true", spec)
+		}
+	}
+	for _, spec := range []string{"stdout", "stderr", "session.jsonl", "/tmp/e.jsonl", "off.jsonl"} {
+		if eventsDisabled(spec) {
+			t.Errorf("eventsDisabled(%q) = true, want false", spec)
+		}
+	}
+}
+
+// Escalation happens before the interface can discover it has no terminal, so
+// this predicate is what stops a redirected run from asking for a password
+// nobody can type. A redirected --eval is a real run and must still escalate.
+func TestOpensInteractiveSession(t *testing.T) {
+	root := &cobra.Command{Use: "toha3ee"}
+	tuiCmd := &cobra.Command{Use: "tui", Aliases: []string{"repl"}, Run: func(*cobra.Command, []string) {}}
+	report := &cobra.Command{Use: "report", Run: func(*cobra.Command, []string) {}}
+	root.AddCommand(tuiCmd, report)
+
+	cases := []struct {
+		name string
+		cmd  *cobra.Command
+		eval bool
+		want bool
+	}{
+		{"bare root", root, false, true},
+		{"bare root with eval", root, true, false},
+		{"tui", tuiCmd, false, true},
+		{"tui with eval", tuiCmd, true, true},
+		{"unrelated subcommand", report, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := opensInteractiveSession(tc.cmd, tc.eval); got != tc.want {
+				t.Errorf("opensInteractiveSession(%s, eval=%v) = %v, want %v",
+					tc.cmd.Name(), tc.eval, got, tc.want)
+			}
+		})
 	}
 }
