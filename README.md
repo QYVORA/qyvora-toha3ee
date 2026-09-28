@@ -208,8 +208,9 @@ and `Ctrl+C` to stop the running command or `Ctrl+D` to leave.
 Because the session is the product, two behaviours differ from the other
 frameworks: the store that holds discovered hosts and credentials lives in
 memory for the life of the process, and a machine report format is refused for
-the session itself (use `report -o json` inside it) so that stdout carries
-exactly one machine stream.
+the session itself. Inside the session, `report <file>` writes the JSON report
+to that path instead, because the session's stdout belongs to the human
+interface rather than to a machine stream.
 
 ```
 $ sudo ./toha3ee --iface eth0

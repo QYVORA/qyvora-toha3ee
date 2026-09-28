@@ -120,11 +120,10 @@ Show help about any command.
 Interactive mode drops you into the QYVORA terminal application. Commands are
 evaluated against one live session, so a scan's results are available to the
 commands that follow it. Ctrl+C stops the running command and Ctrl+D leaves.
-A machine report format is refused here; use
+A machine report format is refused here; inside the session
 .B report
-with
-.B \-o json
-inside the session instead.
+takes a file path and writes the JSON report there, because the session's
+stdout belongs to the human interface.
 .SS Core commands
 .TP
 .B on <module>
