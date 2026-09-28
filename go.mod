@@ -3,7 +3,7 @@ module github.com/QYVORA/qyvora-toha3ee
 go 1.26.5
 
 require (
-	github.com/QYVORA/qyvora-tui v0.6.1
+	github.com/QYVORA/qyvora-tui v0.6.2
 	github.com/chzyer/readline v1.5.1
 	github.com/elazarl/goproxy v1.8.5
 	github.com/google/gopacket v1.1.19
