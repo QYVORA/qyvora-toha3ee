@@ -1,6 +1,6 @@
 # Module reference
 
-73 modules are registered across 10 categories. This reference documents every
+70 modules are registered across 10 categories. This reference documents every
 module, its risk, targets and the configuration keys it reads. Run
 `toha3ee modules` for the always-current catalogue.
 

@@ -26,7 +26,7 @@ man-in-the-middle scenarios.
 ## Documentation
 
 - **User** — [Getting started](docs/Getting-Started.md) · [User guide](docs/User-Guide.md) · [Scripting](docs/Scripting.md) · [Configuration](docs/Configuration.md) · [FAQ](docs/FAQ.md)
-- **Reference** — [Module reference](docs/Module-Reference.md) (all 73 modules) · [Reporting](docs/Reporting.md)
+- **Reference** — [Module reference](docs/Module-Reference.md) (all 70 modules) · [Reporting](docs/Reporting.md)
 - **Developer** — [Architecture](docs/Architecture.md) · [Contributing](docs/Contributing.md) · [Changelog](CHANGELOG.md)
 - **Governance** — [Security](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [License](LICENSE)
 

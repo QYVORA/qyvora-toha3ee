@@ -173,5 +173,5 @@ the REPL, so **a script cannot do anything the console cannot**. See
 
 ## Next steps
 
-- [Module reference](Module-Reference.md) — the 73 modules and their settings
+- [Module reference](Module-Reference.md) — the 70 modules and their settings
 - [Contributing](Contributing.md) — how to add a module to this architecture
