@@ -44,7 +44,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   banner, keeping output deterministic and machine-friendly; the console also
   gained a `version` command that renders the same identity block.
 - **Contact details** — the `version` command, README, and `SECURITY.md`
-  surface official QYVORA contact: https://qyvora.netlify.app ·
+  surface official QYVORA contact: https://qyvora.org ·
   qyvorasec@gmail.com · Tamale, Ghana.
 - `golang.org/x/crypto` added as a dependency for SSH auth.
 - Registry test now pins the complete module catalogue, including the new

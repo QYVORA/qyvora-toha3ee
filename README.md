@@ -407,4 +407,4 @@ and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report security issues via
 ## Contact
 
 QYVORA OffSec — Tamale, Ghana
-Website: https://qyvora.netlify.app · Security/Support: qyvorasec@gmail.com
+Website: https://qyvora.org · Security/Support: qyvorasec@gmail.com
