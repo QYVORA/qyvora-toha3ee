@@ -15,10 +15,22 @@ PREFIX ?=
 ICON    := assets/toha3ee.png
 DESKTOP := assets/toha3ee.desktop
 
+# install.sh already installs the menu entry and the icon as part of a normal
+# install, so `make install` does not call install-data: doing it twice wrote to
+# $(PREFIX) with PREFIX unset, which resolved to /share and failed the target
+# after the binary was already in place. This target stays for installing the
+# data on its own.
+#
+# PREFIX is deliberately left alone: `install` reads it empty to mean "let the
+# installer decide", and forcing it to a default here would pin a root install
+# to the wrong tree. The data targets get their own fallback instead, because an
+# empty prefix there resolves to /share, which is never what anyone meant.
+DATAPREFIX ?= $(if $(strip $(PREFIX)),$(PREFIX),$(HOME)/.local)
+
 # The ecosystem installs icons at 512x512; this tree's own uninstall lines named
 # 256x256, which matched nothing that was ever written.
-APPDIR  := $(DESTDIR)$(PREFIX)/share/applications
-ICONDIR := $(DESTDIR)$(PREFIX)/share/icons/hicolor/512x512/apps
+APPDIR  := $(DESTDIR)$(DATAPREFIX)/share/applications
+ICONDIR := $(DESTDIR)$(DATAPREFIX)/share/icons/hicolor/512x512/apps
 
 .PHONY: all build install install-data uninstall test vet fmt clean release winres man
 
@@ -30,18 +42,13 @@ build:
 install:
 	@if [ -z "$(PREFIX)" ]; then sh scripts/install.sh --from-source; \
 	 else sh scripts/install.sh --from-source --prefix "$(PREFIX)"; fi
-	@$(MAKE) --no-print-directory install-data
 
 # The menu entry and the icon are installed independently. A missing icon is
 # decoration; the entry is how the tool is found, so one must not cost the other.
-#
-# The entry passes --no-sudo. This tool escalates to root for its privileged
-# operations, but a menu launch has no one to answer a sudo prompt, so the
-# unprivileged interface is the only one that can actually start from a menu.
 install-data:
 	@if [ -f "$(DESKTOP)" ]; then \
 		install -d $(APPDIR); \
-		sed -e 's|@PREFIX@|$(PREFIX)|g' $(DESKTOP) > $(APPDIR)/$(BIN).desktop; \
+		sed -e 's|@PREFIX@|$(DATAPREFIX)|g' $(DESKTOP) > $(APPDIR)/$(BIN).desktop; \
 		chmod 0644 $(APPDIR)/$(BIN).desktop; \
 		update-desktop-database $(APPDIR) 2>/dev/null || true; \
 	else \
@@ -50,7 +57,7 @@ install-data:
 	@if [ -f "$(ICON)" ]; then \
 		install -d $(ICONDIR); \
 		install -m 0644 $(ICON) $(ICONDIR)/$(BIN).png; \
-		gtk-update-icon-cache -f $(DESTDIR)$(PREFIX)/share/icons/hicolor 2>/dev/null || true; \
+		gtk-update-icon-cache -f $(DESTDIR)$(DATAPREFIX)/share/icons/hicolor 2>/dev/null || true; \
 	else \
 		echo "toha3ee: $(ICON) missing; menu entry installed without an icon."; \
 	fi
