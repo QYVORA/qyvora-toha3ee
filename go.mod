@@ -3,11 +3,12 @@ module github.com/QYVORA/qyvora-toha3ee
 go 1.26.5
 
 require (
-	github.com/QYVORA/qyvora-tui v0.7.1
+	github.com/QYVORA/qyvora-tui v0.7.2
 	github.com/chzyer/readline v1.5.1
 	github.com/elazarl/goproxy v1.8.5
 	github.com/google/gopacket v1.1.19
 	github.com/miekg/dns v1.1.72
+	github.com/muesli/termenv v0.16.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
@@ -35,7 +36,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
