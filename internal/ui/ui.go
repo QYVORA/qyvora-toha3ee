@@ -16,6 +16,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/QYVORA/qyvora-toha3ee/internal/banner"
 )
 
 // ANSI style codes. Red is reserved for hard errors; warnings use Amber and
@@ -285,19 +287,19 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	}
 }
 
-// Banner prints the console banner art in the brand red (matching the toha3ee
-// logo) followed by the tagline.
+// Banner prints the console banner art in the QYVORA accent followed by the
+// tagline.
+//
+// The colour comes from banner.Colorize, which is the single place the accent
+// is defined, but the UI's own colour decision still wins: when colours are off
+// the plain art is printed even on a terminal that could show the accent, so a
+// SetColor(false) UI stays free of escape codes.
 func (u *UI) Banner(tagline string) {
-	for _, line := range bannerArt {
-		var b strings.Builder
-		for _, r := range line {
-			if r == ' ' {
-				b.WriteRune(r)
-				continue
-			}
-			b.WriteString(u.paint(string(r), Red))
+	for _, line := range strings.Split(strings.TrimRight(banner.Art, "\n"), "\n") {
+		if u.color {
+			line = banner.Colorize(line)
 		}
-		_, _ = fmt.Fprintln(u.w, b.String())
+		_, _ = fmt.Fprintln(u.w, line)
 	}
 	_, _ = fmt.Fprintln(u.w)
 	_, _ = fmt.Fprintln(u.w, u.BoldWhite(strings.TrimSpace(tagline)))

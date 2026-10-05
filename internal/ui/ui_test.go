@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/QYVORA/qyvora-toha3ee/internal/banner"
 )
 
 func TestStripANSI(t *testing.T) {
@@ -137,33 +139,39 @@ func TestLineWriterNoColorPassthrough(t *testing.T) {
 	}
 }
 
-func TestBannerBrandRed(t *testing.T) {
-	nGlyphs := 0
-	for _, line := range bannerArt {
-		for _, r := range line {
-			if r != ' ' {
-				nGlyphs++
-			}
-		}
-	}
-
-	var sb strings.Builder
-	u := New(&sb)
-	u.SetColor(true)
-	u.Banner("toha3ee 3.1.0")
-	out := sb.String()
-	if got := strings.Count(out, Red); got != nGlyphs {
-		t.Errorf("red glyph codes = %d, want %d (one per '@' glyph)", got, nGlyphs)
-	}
-	if strings.Contains(out, Red+" ") {
-		t.Error("spaces must not be wrapped in color codes")
-	}
-
+// TestBannerPlainWhenColorsDisabled guards the promise a SetColor(false) UI
+// makes everywhere else: no escape codes at all. The banner used to be painted
+// through the UI's own writer, so this stayed true by construction; drawing it
+// through banner.Colorize makes the UI's colour flag the thing that decides,
+// and it is worth pinning.
+func TestBannerPlainWhenColorsDisabled(t *testing.T) {
 	var plain strings.Builder
-	up := New(&plain)
-	up.SetColor(false)
-	up.Banner("toha3ee 3.1.0")
+	u := New(&plain)
+	u.SetColor(false)
+	u.Banner("toha3ee 3.1.0")
 	if strings.Contains(plain.String(), "\x1b") {
 		t.Error("banner must be plain when colors are disabled")
+	}
+}
+
+// TestBannerDrawsEveryArtRow checks each row of the canonical art reaches the
+// output. The art moved out of this package, so without this the banner could
+// silently stop being drawn at all and the console would just look emptier.
+func TestBannerDrawsEveryArtRow(t *testing.T) {
+	var sb strings.Builder
+	u := New(&sb)
+	u.SetColor(false)
+	u.Banner("toha3ee 3.1.0")
+	out := sb.String()
+	for _, line := range strings.Split(strings.TrimRight(banner.Art, "\n"), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.Contains(out, line) {
+			t.Errorf("banner output missing art row %q", line)
+		}
+	}
+	if !strings.Contains(out, "toha3ee 3.1.0") {
+		t.Error("banner output missing the tagline")
 	}
 }
