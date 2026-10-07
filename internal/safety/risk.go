@@ -11,6 +11,25 @@ import (
 // attacks package (which would create an import cycle).
 type RiskLevel int
 
+// NoiseLevel defines the OPSEC footprint of an operation
+type NoiseLevel string
+
+const (
+	NoiseLevelPassive    NoiseLevel = "passive"    // No active probing, analysis only
+	NoiseLevelLow        NoiseLevel = "low"        // Minimal interaction, basic enumeration
+	NoiseLevelModerate   NoiseLevel = "moderate"   // Active testing, noticeable
+	NoiseLevelAggressive NoiseLevel = "aggressive" // Exploitation attempts, highly visible
+)
+
+// Tier represents the capability tier that generated a finding
+type Tier string
+
+const (
+	TierRecon        Tier = "recon"        // Tier 1: Discovery and enumeration
+	TierTechnique    Tier = "technique"    // Tier 2: Vulnerability identification
+	TierExploitation Tier = "exploitation" // Tier 3: Active exploitation
+)
+
 // Risk levels, lowest to highest severity.
 const (
 	// RiskInfo is benign/no-impact activity.
