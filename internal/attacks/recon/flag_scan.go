@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
@@ -22,6 +23,7 @@ func (*FlagScan) Meta() attacks.ModuleMeta {
 		ID:       "service.finxmas",
 		Category: "recon",
 		Risk:     attacks.RiskLow,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:  []string{"host"},
 		// Crafting unusual-flag probes and sniffing replies requires raw
 		// sockets.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // Shodan looks up a host's pre-indexed banners, open ports and known
@@ -19,6 +20,7 @@ func (*Shodan) Meta() attacks.ModuleMeta {
 		ID:          "osint.shodan",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"ip"},
 		Description: "pre-indexed Shodan host lookup: open ports, banners and exposed CVEs without touching the target",
 		Limitations: "requires a Shodan API key (osint.shodan.key) and only shows data Shodan has already scanned",

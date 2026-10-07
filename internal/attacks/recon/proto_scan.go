@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
@@ -23,6 +24,7 @@ func (*ProtocolScan) Meta() attacks.ModuleMeta {
 		ID:          "service.protoscan",
 		Category:    "recon",
 		Risk:        attacks.RiskLow,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:     []string{"host"},
 		Requires:    []string{"cap.raw_socket"},
 		Description: "IP protocol scan: which network-layer protocols a host accepts",

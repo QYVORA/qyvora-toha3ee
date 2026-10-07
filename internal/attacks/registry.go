@@ -72,6 +72,8 @@ type ModuleMeta struct {
 	Category string
 	// Risk is the module's disruptiveness.
 	Risk Risk
+	// NoiseLevel is the OPSEC footprint of the module.
+	NoiseLevel safety.NoiseLevel
 	// Targets lists the target kinds the module operates on: "host",
 	// "gateway", "subnet", "ap", "domain", "service".
 	Targets []string

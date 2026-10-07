@@ -130,6 +130,7 @@ func (*DHCPRogue) Meta() attacks.ModuleMeta {
 		ID:       "dhcp.rogue",
 		Category: "mitm",
 		Risk:     attacks.RiskHigh,
+		NoiseLevel: safety.NoiseLevelAggressive,
 		Targets:  []string{"subnet"},
 		// Binding the DHCP server port 67 and crafting OFFERs on the wire needs
 		// root and raw socket access.

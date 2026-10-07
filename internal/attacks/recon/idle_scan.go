@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
@@ -23,6 +24,7 @@ func (*IdleScan) Meta() attacks.ModuleMeta {
 		ID:       "service.idle",
 		Category: "recon",
 		Risk:     attacks.RiskLow,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:  []string{"host"},
 		// Spoofing SYN packets from the zombie and sniffing its replies needs
 		// raw sockets.

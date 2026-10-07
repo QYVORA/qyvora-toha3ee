@@ -28,6 +28,7 @@ func (*IPv6RouterAdv) Meta() attacks.ModuleMeta {
 		ID:       "ipv6.ra",
 		Category: "mitm",
 		Risk:     attacks.RiskHigh,
+		NoiseLevel: safety.NoiseLevelAggressive,
 		Targets:  []string{"gateway", "host"},
 		// Forged RAs need raw IPv6 sockets to inject NDP frames on the link.
 		Requires:    []string{"cap.ipv6", "cap.raw_socket"},
@@ -130,6 +131,7 @@ func (*IPv6NeighborAdv) Meta() attacks.ModuleMeta {
 		ID:          "ipv6.ndp",
 		Category:    "mitm",
 		Risk:        attacks.RiskHigh,
+		NoiseLevel: safety.NoiseLevelAggressive,
 		Targets:     []string{"host"},
 		Requires:    []string{"cap.ipv6", "cap.raw_socket"},
 		Description: "IPv6 neighbor advertisement flood: poison neighbor caches so the victim's traffic flows to this host",

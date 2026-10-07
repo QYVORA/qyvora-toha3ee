@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // BucketEnum enumerates publicly readable cloud storage buckets (AWS S3, Google
@@ -21,6 +22,7 @@ func (*BucketEnum) Meta() attacks.ModuleMeta {
 		ID:          "osint.bucket",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"keyword"},
 		Description: "discover publicly listable S3 / GCS / Azure storage buckets matching an org naming pattern",
 		Limitations: "only probes public cloud endpoints; a 403/404 tells buckets apart but cannot read private ones",

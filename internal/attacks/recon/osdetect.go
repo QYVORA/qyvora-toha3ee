@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
@@ -23,6 +24,7 @@ func (*NetOSDetect) Meta() attacks.ModuleMeta {
 		ID:          "net.osdetect",
 		Category:    "recon",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:     []string{"host"},
 		Requires:    []string{"cap.raw_socket"},
 		Description: "passive-by-design OS fingerprinting of discovered hosts from TCP SYN-ACK stack quirks",

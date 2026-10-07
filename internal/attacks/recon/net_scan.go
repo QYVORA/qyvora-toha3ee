@@ -41,6 +41,7 @@ func (*NetScan) Meta() attacks.ModuleMeta {
 		ID:          "net.scan",
 		Category:    "recon",
 		Risk:        attacks.RiskLow,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:     []string{"subnet"},
 		Requires:    []string{"cap.raw_socket"},
 		Description: "ARP sweep of the subnet to discover live hosts and their MAC vendors",

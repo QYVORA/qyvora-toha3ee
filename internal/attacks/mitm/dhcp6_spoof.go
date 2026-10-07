@@ -24,6 +24,7 @@ func (*DHCP6Spoof) Meta() attacks.ModuleMeta {
 		ID:       "dhcp6.spoof",
 		Category: "mitm",
 		Risk:     attacks.RiskMedium,
+		NoiseLevel: safety.NoiseLevelAggressive,
 		Targets:  []string{"host"},
 		// An IPv6 address is required: it is the address we advertise as the
 		// DNS server and the source we must route victims' queries to.

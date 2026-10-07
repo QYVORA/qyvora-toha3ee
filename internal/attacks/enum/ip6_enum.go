@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ndp"
 	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
@@ -25,6 +26,7 @@ func (*IP6Sweep) Meta() attacks.ModuleMeta {
 		ID:          "net.ip6sweep",
 		Category:    "enum",
 		Risk:        attacks.RiskLow,
+		NoiseLevel: safety.NoiseLevelModerate,
 		Targets:     []string{"subnet"},
 		Requires:    []string{"cap.raw_socket"},
 		Description: "discover IPv6 hosts on the local link via Neighbor Discovery (NS/NA) sweep",

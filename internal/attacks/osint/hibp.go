@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // HIBP checks whether candidate passwords have appeared in public breach data
@@ -19,6 +20,7 @@ func (*HIBP) Meta() attacks.ModuleMeta {
 		ID:          "osint.hibp",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"password", "email"},
 		Description: "breach-exposure check via Pwned Passwords k-anonymity range API",
 		Limitations: "only proves historical exposure, not current use; the breach feed itself needs a HIBP key",

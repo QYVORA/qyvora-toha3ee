@@ -28,6 +28,7 @@ func (*NetTraceroute) Meta() attacks.ModuleMeta {
 		ID:          "net.traceroute",
 		Category:    "recon",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:     []string{"host"},
 		Requires:    []string{"cap.raw_socket"},
 		Description: "UDP-mode traceroute to map the network path and intermediate hops",

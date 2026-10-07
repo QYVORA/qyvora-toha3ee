@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 )
 
@@ -23,6 +24,7 @@ func (*ASNEnum) Meta() attacks.ModuleMeta {
 		ID:          "osint.asn",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"domain", "ip", "asn"},
 		Description: "map the org's entire IP estate via ASN/BGP lookups (RIPEstat ip-to-asn + announced prefixes)",
 		Limitations: "relies on the public RIPEstat API; results reflect current BGP announcements and may lag de-registrations",

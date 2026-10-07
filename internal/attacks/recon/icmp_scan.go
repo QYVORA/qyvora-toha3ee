@@ -30,6 +30,7 @@ func (*NetPing) Meta() attacks.ModuleMeta {
 		ID:       "net.ping",
 		Category: "recon",
 		Risk:     attacks.RiskLow,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:  []string{"subnet"},
 		// ICMP sweeps and the alternate TCP/UDP ping modes need raw sockets.
 		Requires:    []string{"cap.raw_socket"},

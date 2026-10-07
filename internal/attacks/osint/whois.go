@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 )
 
@@ -22,6 +23,7 @@ func (*WHOIS) Meta() attacks.ModuleMeta {
 		ID:          "osint.whois",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"domain"},
 		Passive:     true,
 		Description: "WHOIS lookup of domain ownership, registrar and registration dates via the IANA referral chain",

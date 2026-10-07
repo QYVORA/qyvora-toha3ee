@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // WaybackEnum lists every URL the Internet Archive has captured for a domain
@@ -21,6 +22,7 @@ func (*WaybackEnum) Meta() attacks.ModuleMeta {
 		ID:          "osint.wayback",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"domain"},
 		Description: "recover historical URLs and subdomains from the Wayback Machine CDX API",
 		Limitations: "only shows what the archive has crawled; limit caps rows per query",

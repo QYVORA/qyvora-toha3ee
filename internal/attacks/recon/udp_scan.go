@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
@@ -27,6 +28,7 @@ func (*UDPScan) Meta() attacks.ModuleMeta {
 		ID:          "service.udpscan",
 		Category:    "recon",
 		Risk:        attacks.RiskLow,
+		NoiseLevel: safety.NoiseLevelLow,
 		Targets:     []string{"host"},
 		Description: "UDP port scan via connected-socket ICMP unreachable detection; slow, often filtered",
 		Limitations: "UDP scanning is inherently unreliable: silence means open-or-filtered, and ICMP rate-limiting skews results",

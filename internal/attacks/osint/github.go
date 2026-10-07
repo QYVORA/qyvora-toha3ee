@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // GitHubDork searches GitHub code for leaked secrets and internal references
@@ -19,6 +20,7 @@ func (*GitHubDork) Meta() attacks.ModuleMeta {
 		ID:          "osint.github",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"org", "domain", "keyword"},
 		Description: "GitHub code-search for leaked secrets and internal references (token required)",
 		Limitations: "GitHub code search requires an authenticated token; results are capped at 100 per query",

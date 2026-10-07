@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
@@ -78,6 +79,7 @@ func (*SSHBrowse) Meta() attacks.ModuleMeta {
 		ID:          "auth.brute",
 		Category:    "auth",
 		Risk:        attacks.RiskMedium,
+		NoiseLevel: safety.NoiseLevelAggressive,
 		Targets:     []string{"host"},
 		Description: "paced SSH password brute-force against hosts with port 22 open",
 		Limitations: "slow by design to avoid lockouts; fails on key-only servers; noisy and only justified under authorization",

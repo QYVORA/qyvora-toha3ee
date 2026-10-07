@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // Dork runs search-engine queries to surface indexable results that expose
@@ -21,6 +22,7 @@ func (*Dork) Meta() attacks.ModuleMeta {
 		ID:          "osint.dork",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
+		NoiseLevel: safety.NoiseLevelPassive,
 		Targets:     []string{"query"},
 		Description: "run a search-engine dork and collect result URLs (DuckDuckGo HTML endpoint)",
 		Limitations: "results are limited to what the engine indexes; aggressive querying may trigger rate limiting",

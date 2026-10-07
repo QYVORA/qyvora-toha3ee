@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
@@ -31,6 +32,7 @@ func (*PasswordSpray) Meta() attacks.ModuleMeta {
 		ID:          "auth.spray",
 		Category:    "auth",
 		Risk:        attacks.RiskMedium,
+		NoiseLevel: safety.NoiseLevelAggressive,
 		Targets:     []string{"host"},
 		Description: "password spraying: one password across many usernames on HTTP basic-auth portals",
 		Limitations: "only tests HTTP basic auth; account-lockout policies and MFA can defeat or detect it; keep spray counts low and paced",
