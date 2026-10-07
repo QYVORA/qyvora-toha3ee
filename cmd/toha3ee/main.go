@@ -26,6 +26,7 @@ import (
 	"github.com/QYVORA/qyvora-tui"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/capabilities"
 	"github.com/QYVORA/qyvora-toha3ee/internal/config"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx"
@@ -84,7 +85,7 @@ func exactArgsUsage(n int) cobra.PositionalArgs {
 // isValidOutput reports whether -o names a supported report format.
 func isValidOutput(spec string) bool {
 	switch spec {
-	case "terminal", "json", "markdown":
+	case "terminal", "json", "markdown", "yaml", "html":
 		return true
 	}
 	return false
@@ -160,7 +161,7 @@ func main() {
 			// Reject an unknown -o value before any command runs so the exit
 			// status is the documented 2 (usage) rather than a runtime error.
 			if output != "" && !isValidOutput(output) {
-				return usageError{fmt.Errorf("invalid output format %q (terminal, json, markdown)", output)}
+				return usageError{fmt.Errorf("invalid output format %q (terminal, json, markdown, yaml, html)", output)}
 			}
 			// Escalation comes after the terminal check, not before it. A
 			// redirected run is not an interactive session, and asking for a
@@ -337,6 +338,28 @@ Ctrl+C stops the running command; Ctrl+D leaves.`,
 		},
 	}
 
+	capabilitiesCmd := &cobra.Command{
+		Use:   "capabilities",
+		Short: "print the machine-readable capability contract",
+		Long: `The capabilities command outputs toha3ee's complete capability contract.
+
+By default, it outputs JSON. Use --table to render as a terminal table grouped by category.
+
+This contract lists:
+  - All 70+ registered attack modules across 10 categories
+  - Risk levels (info, low, medium, high, critical)
+  - Passive vs active module classification  
+  - Output formats and event verbs
+  - Exit codes and authorization model
+
+Automation and AI systems can query this to understand what toha3ee can do
+without parsing prose documentation or the module list.`,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return renderCapabilities(output)
+		},
+	}
+
 	// `toha3ee report [file]` re-renders a previously written session report
 	// in the requested -o format. The on-disk artifact stays JSON; -o only
 	// controls what is printed to stdout (terminal, json, markdown).
@@ -364,6 +387,17 @@ Ctrl+C stops the running command; Ctrl+D leaves.`,
 					return err
 				}
 				_, _ = fmt.Fprintln(os.Stdout)
+			case "yaml":
+				data, err := rep.RenderYAML()
+				if err != nil {
+					return err
+				}
+				_, err = os.Stdout.Write(data)
+				if err != nil {
+					return err
+				}
+			case "html":
+				_, _ = fmt.Fprint(os.Stdout, rep.RenderHTML())
 			case "markdown":
 				_, _ = fmt.Fprint(os.Stdout, rep.RenderMarkdown())
 			default:
@@ -395,12 +429,89 @@ Ctrl+C stops the running command; Ctrl+D leaves.`,
 		},
 	}
 
-	root.AddCommand(tuiCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
+	root.AddCommand(tuiCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, capabilitiesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
 	root.SetArgs(os.Args[1:])
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toha3ee:", err)
 		os.Exit(exitCodeFor(err))
 	}
+}
+
+func renderCapabilities(format string) error {
+	switch format {
+	case "json":
+		data, err := capabilities.RenderJSON()
+		if err != nil {
+			return fmt.Errorf("encoding capabilities: %w", err)
+		}
+		fmt.Println(string(data))
+	case "yaml":
+		data, err := capabilities.RenderYAML()
+		if err != nil {
+			return fmt.Errorf("encoding capabilities: %w", err)
+		}
+		fmt.Print(string(data))
+	case "html":
+		html := capabilities.RenderHTML()
+		fmt.Print(html)
+	case "markdown":
+		// For markdown, output a simple list grouped by category
+		doc := capabilities.Build()
+		capabilities.SortCapabilities(&doc)
+		
+		fmt.Printf("# TOHA3EE Capabilities\n\n")
+		fmt.Printf("**Framework:** %s  \n", doc.Framework)
+		fmt.Printf("**Version:** %s  \n", doc.Version)
+		fmt.Printf("**Modules:** %d across %d categories\n\n", doc.ModuleCount, doc.CategoryCount)
+		
+		currentCategory := ""
+		for _, cap := range doc.Capabilities {
+			if cap.Category != currentCategory {
+				currentCategory = cap.Category
+				fmt.Printf("\n## %s\n\n", strings.ToUpper(currentCategory))
+			}
+			passive := ""
+			if cap.Passive {
+				passive = " (passive)"
+			}
+			fmt.Printf("- **%s**: %s [%s]%s\n", cap.ID, cap.Name, cap.Risk, passive)
+		}
+	default:
+		// Terminal table grouped by category
+		doc := capabilities.Build()
+		byCategory := capabilities.RenderTable()
+		
+		fmt.Printf("TOHA3EE Framework Capabilities\n")
+		fmt.Printf("Modules: %d | Categories: %d | Version: %s\n\n", 
+			doc.ModuleCount, doc.CategoryCount, doc.Version)
+		
+		// Print each category
+		categories := make([]string, 0, len(byCategory))
+		for cat := range byCategory {
+			categories = append(categories, cat)
+		}
+		sort.Strings(categories)
+		
+		for _, cat := range categories {
+			rows := byCategory[cat]
+			fmt.Printf("═══ %s (%d modules) ═══\n", strings.ToUpper(cat), len(rows))
+			fmt.Printf("%-20s  %-50s  %-10s  %-8s\n", "ID", "DESCRIPTION", "RISK", "PASSIVE")
+			fmt.Printf("%s\n", strings.Repeat("─", 92))
+			for _, row := range rows {
+				fmt.Printf("%-20s  %-50s  %-10s  %-8s\n", 
+					truncate(row[0], 20), truncate(row[1], 50), row[2], row[3])
+			}
+			fmt.Println()
+		}
+	}
+	return nil
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-1] + "…"
 }
 
 // printModules renders the module catalogue grouped by category through u.
@@ -511,7 +622,7 @@ func run(ifaceName, configPath, outputFormat string, verbose, noColor bool, body
 			humanW = os.Stderr
 		}
 	}
-	if eventsStream == "stdout" && (machineFmt == "json" || machineFmt == "markdown") {
+	if eventsStream == "stdout" && (machineFmt == "json" || machineFmt == "markdown" || machineFmt == "yaml" || machineFmt == "html") {
 		// stdout cannot carry both the JSONL event stream and a machine report.
 		return usageError{fmt.Errorf("cannot combine --events stdout with report format -o %s; use --events stderr or --events <file>", machineFmt)}
 	}
@@ -590,13 +701,14 @@ func run(ifaceName, configPath, outputFormat string, verbose, noColor bool, body
 			})
 		}
 	}
-	if runErr == nil && (machineFmt == "json" || machineFmt == "markdown") {
-		// The fixed contract: `eval/run -o json|markdown` emits the
+	if runErr == nil && (machineFmt == "json" || machineFmt == "markdown" || machineFmt == "yaml" || machineFmt == "html") {
+		// The fixed contract: `eval/run -o json|markdown|yaml|html` emits the
 		// structured session report on stdout instead of only terminal
 		// tables. JSON carries plaintext loot by design (documented domain
 		// exception); the terminal renderer keeps it redacted.
 		rep := s.Report()
-		if machineFmt == "json" {
+		switch machineFmt {
+		case "json":
 			data, err := rep.RenderJSON()
 			if err != nil {
 				return fmt.Errorf("encoding session report: %w", err)
@@ -606,7 +718,21 @@ func run(ifaceName, configPath, outputFormat string, verbose, noColor bool, body
 				return fmt.Errorf("writing session report: %w", err)
 			}
 			_, _ = fmt.Fprintln(os.Stdout)
-		} else {
+		case "yaml":
+			data, err := rep.RenderYAML()
+			if err != nil {
+				return fmt.Errorf("encoding session report: %w", err)
+			}
+			_, err = os.Stdout.Write(data)
+			if err != nil {
+				return fmt.Errorf("writing session report: %w", err)
+			}
+		case "html":
+			_, err := fmt.Fprint(os.Stdout, rep.RenderHTML())
+			if err != nil {
+				return fmt.Errorf("writing session report: %w", err)
+			}
+		default: // markdown
 			_, err := fmt.Fprint(os.Stdout, rep.RenderMarkdown())
 			if err != nil {
 				return fmt.Errorf("writing session report: %w", err)

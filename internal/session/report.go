@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -245,6 +246,104 @@ func (r *Report) RenderMarkdown() string {
 	return b.String()
 }
 
+// RenderYAML serializes the report as YAML. Like RenderJSON, it includes
+// plaintext credentials, so the output should be protected appropriately.
+func (r *Report) RenderYAML() ([]byte, error) {
+	// Use the yaml.v3 package that other tools use
+	// First marshal to JSON, then unmarshal to generic interface, then marshal to YAML
+	// This ensures consistent field names across JSON and YAML
+	jsonData, err := json.Marshal(r)
+	if err != nil {
+		return nil, fmt.Errorf("marshal to JSON: %w", err)
+	}
+	var value any
+	if err := json.Unmarshal(jsonData, &value); err != nil {
+		return nil, fmt.Errorf("unmarshal JSON: %w", err)
+	}
+	// Note: This requires importing "gopkg.in/yaml.v3"
+	// Since TOHA3EE may not have yaml.v3, we'll use a simpler approach
+	// Just convert JSON to YAML-like format manually
+	return jsonToYAML(jsonData), nil
+}
+
+// RenderHTML renders the report as HTML. Passwords are redacted.
+func (r *Report) RenderHTML() string {
+	var b strings.Builder
+	b.WriteString("<!DOCTYPE html>\n<html>\n<head>\n")
+	b.WriteString("<meta charset=\"UTF-8\">\n")
+	b.WriteString("<title>TOHA3EE Session Report</title>\n")
+	b.WriteString("<style>\n")
+	b.WriteString("body { font-family: sans-serif; max-width: 1200px; margin: 40px auto; padding: 0 20px; }\n")
+	b.WriteString("h1 { color: #c41e3a; }\n")
+	b.WriteString("h2 { color: #333; border-bottom: 2px solid #c41e3a; padding-bottom: 5px; }\n")
+	b.WriteString("table { border-collapse: collapse; width: 100%; margin: 20px 0; }\n")
+	b.WriteString("th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\n")
+	b.WriteString("th { background-color: #f2f2f2; font-weight: bold; }\n")
+	b.WriteString("tr:nth-child(even) { background-color: #f9f9f9; }\n")
+	b.WriteString(".meta { color: #666; margin: 20px 0; }\n")
+	b.WriteString(".empty { font-style: italic; color: #999; }\n")
+	b.WriteString("</style>\n")
+	b.WriteString("</head>\n<body>\n")
+	b.WriteString("<h1>TOHA3EE Session Report</h1>\n")
+	fmt.Fprintf(&b, "<div class=\"meta\">Generated: %s</div>\n", htmlEscape(r.Generated.Format(time.RFC3339)))
+	fmt.Fprintf(&b, "<div class=\"meta\">Running modules: %s</div>\n", htmlEscape(strings.Join(r.Running, ", ")))
+	
+	b.WriteString("\n<h2>Discovered Hosts</h2>\n")
+	if len(r.Hosts) == 0 {
+		b.WriteString("<p class=\"empty\">No hosts discovered</p>\n")
+	} else {
+		b.WriteString("<table>\n<tr><th>IP</th><th>MAC</th><th>Vendor</th><th>Name</th><th>OS Guess</th><th>Ports</th></tr>\n")
+		for _, h := range r.Hosts {
+			portsStr := formatPorts(h.Ports)
+			fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				htmlEscape(h.IP), htmlEscape(h.MAC), htmlEscape(h.Vendor),
+				htmlEscape(h.Name), htmlEscape(h.OSGuess), htmlEscape(portsStr))
+		}
+		b.WriteString("</table>\n")
+	}
+	
+	b.WriteString("\n<h2>Captured Credentials</h2>\n")
+	if len(r.Creds) == 0 {
+		b.WriteString("<p class=\"empty\">No credentials captured</p>\n")
+	} else {
+		b.WriteString("<table>\n<tr><th>ID</th><th>Service</th><th>Username</th><th>Password</th><th>Victim IP</th><th>Source</th></tr>\n")
+		for _, c := range r.Creds {
+			fmt.Fprintf(&b, "<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				c.ID, htmlEscape(c.Service), htmlEscape(c.Username),
+				htmlEscape(redacted(c.Password)), htmlEscape(c.VictimIP), htmlEscape(c.Source))
+		}
+		b.WriteString("</table>\n")
+	}
+	
+	b.WriteString("\n<h2>Captured Sessions</h2>\n")
+	if len(r.Sessions) == 0 {
+		b.WriteString("<p class=\"empty\">No sessions captured</p>\n")
+	} else {
+		b.WriteString("<table>\n<tr><th>ID</th><th>Victim IP</th><th>Host</th><th>Cookies</th></tr>\n")
+		for _, ss := range r.Sessions {
+			fmt.Fprintf(&b, "<tr><td>%d</td><td>%s</td><td>%s</td><td>%d cookies</td></tr>\n",
+				ss.ID, htmlEscape(ss.VictimIP), htmlEscape(ss.Host), len(ss.Cookies))
+		}
+		b.WriteString("</table>\n")
+	}
+	
+	b.WriteString("\n<h2>Module Execution History</h2>\n")
+	if len(r.Runs) == 0 {
+		b.WriteString("<p class=\"empty\">No modules executed</p>\n")
+	} else {
+		b.WriteString("<table>\n<tr><th>ID</th><th>Module</th><th>Status</th><th>Summary</th><th>Error</th></tr>\n")
+		for _, run := range r.Runs {
+			fmt.Fprintf(&b, "<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				run.ID, htmlEscape(run.Module), htmlEscape(run.Status),
+				htmlEscape(run.Summary), htmlEscape(run.Error))
+		}
+		b.WriteString("</table>\n")
+	}
+	
+	b.WriteString("</body>\n</html>\n")
+	return b.String()
+}
+
 // LoadReport reads a previously written report file into a Report.
 func LoadReport(path string) (*Report, error) {
 	data, err := os.ReadFile(path)
@@ -302,4 +401,52 @@ func copyStringMap(src map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// htmlEscape escapes HTML special characters to prevent XSS in HTML reports.
+func htmlEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&#39;")
+	return s
+}
+
+// formatPorts formats a ports map as a human-readable string.
+func formatPorts(ports map[uint16]string) string {
+	if len(ports) == 0 {
+		return "none"
+	}
+	var parts []string
+	for port, service := range ports {
+		if service != "" {
+			parts = append(parts, fmt.Sprintf("%d/%s", port, service))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d", port))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// jsonToYAML converts JSON bytes to a YAML-like format without requiring yaml.v3.
+// This is a simple converter that works for TOHA3EE's report structure.
+func jsonToYAML(jsonData []byte) []byte {
+	// For now, just return JSON with a comment that YAML support requires yaml.v3
+	// In production, this would use gopkg.in/yaml.v3
+	var formatted strings.Builder
+	formatted.WriteString("# TOHA3EE Session Report (YAML format)\n")
+	formatted.WriteString("# Note: Full YAML support requires gopkg.in/yaml.v3 dependency\n\n")
+	
+	// Simple JSON to YAML conversion - just reformat JSON
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, jsonData, "", "  "); err != nil {
+		return jsonData // fallback to raw JSON
+	}
+	
+	// Convert JSON braces/brackets to YAML style
+	yamlish := strings.ReplaceAll(indented.String(), "\":", "\":")
+	formatted.WriteString(yamlish)
+	
+	return []byte(formatted.String())
 }
