@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
@@ -22,11 +22,11 @@ type TCPConnectScan struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*TCPConnectScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "service.tcpconnect",
-		Category: "recon",
-		Risk:     attacks.RiskLow,
+		ID:         "service.tcpconnect",
+		Category:   "recon",
+		Risk:       attacks.RiskLow,
 		NoiseLevel: safety.NoiseLevelLow,
-		Targets:  []string{"host"},
+		Targets:    []string{"host"},
 		// No Requires: net.Dial completes real connections through the kernel
 		// stack, so no root or raw sockets are needed.
 		Description: "full TCP connect scan (three-way handshake) of well-known ports; no root needed, noisier than SYN",

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // CTLogs enumerates subdomains of a domain from public certificate
@@ -24,7 +24,7 @@ func (*CTLogs) Meta() attacks.ModuleMeta {
 		ID:          "osint.ct",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"domain"},
 		Passive:     true,
 		Description: "enumerate subdomains from certificate transparency logs (crt.sh)",

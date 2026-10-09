@@ -20,7 +20,7 @@ func (*HIBP) Meta() attacks.ModuleMeta {
 		ID:          "osint.hibp",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"password", "email"},
 		Description: "breach-exposure check via Pwned Passwords k-anonymity range API",
 		Limitations: "only proves historical exposure, not current use; the breach feed itself needs a HIBP key",

@@ -137,7 +137,7 @@ func testConfig(h *fakeHub, currentVersion, exePath string) Config {
 		Repo:           "qyvora-test",
 		ToolName:       "testtool",
 		CurrentVersion: func() string { return currentVersion },
-		ArtifactName: func(goos, goarch string) string {
+		ArtifactName: func(_, goos, goarch string) string {
 			name := fmt.Sprintf("tool-%s-%s", goos, goarch)
 			if goos == "windows" {
 				name += ".exe"
@@ -191,7 +191,7 @@ func TestRunArchivedArtifactInstallsEntry(t *testing.T) {
 	h.latestJSON = body
 
 	cfg := testConfig(h, "v1.0.0", bin)
-	cfg.ArtifactName = func(goos, goarch string) string {
+	cfg.ArtifactName = func(_, goos, goarch string) string {
 		return fmt.Sprintf("tool-%s-%s.tar.gz", goos, goarch)
 	}
 	cfg.ArchiveFor = func(_, _ string) (ArchiveKind, string) {
@@ -429,7 +429,7 @@ func TestRunUnsupportedPlatformReportsCleanly(t *testing.T) {
 
 	_, bin := writeInstalledBinary(t, "old", 0o755)
 	cfg := testConfig(h, "v1.2.0", bin)
-	cfg.ArtifactName = func(string, string) string { return "" }
+	cfg.ArtifactName = func(string, string, string) string { return "" }
 
 	_, err := Run(context.Background(), cfg, Options{})
 	var ue *UpdateError

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // WHOIS performs a WHOIS/RDAP query for a domain or IP address through the
@@ -23,7 +23,7 @@ func (*WHOIS) Meta() attacks.ModuleMeta {
 		ID:          "osint.whois",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"domain"},
 		Passive:     true,
 		Description: "WHOIS lookup of domain ownership, registrar and registration dates via the IANA referral chain",

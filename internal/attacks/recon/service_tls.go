@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
@@ -26,7 +26,7 @@ func (*ServiceTLS) Meta() attacks.ModuleMeta {
 		ID:          "service.tls",
 		Category:    "recon",
 		Risk:        attacks.RiskLow,
-		NoiseLevel: safety.NoiseLevelLow,
+		NoiseLevel:  safety.NoiseLevelLow,
 		Targets:     []string{"service"},
 		Description: "TLS handshake probe of HTTPS services: certificate, protocol, cipher and weak-config findings",
 		Limitations: "SNI-based virtual hosts may present a default certificate; only ports open per the scan are probed",

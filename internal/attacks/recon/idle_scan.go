@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
@@ -21,11 +21,11 @@ type IdleScan struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*IdleScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "service.idle",
-		Category: "recon",
-		Risk:     attacks.RiskLow,
+		ID:         "service.idle",
+		Category:   "recon",
+		Risk:       attacks.RiskLow,
 		NoiseLevel: safety.NoiseLevelLow,
-		Targets:  []string{"host"},
+		Targets:    []string{"host"},
 		// Spoofing SYN packets from the zombie and sniffing its replies needs
 		// raw sockets.
 		Requires:    []string{"cap.raw_socket"},

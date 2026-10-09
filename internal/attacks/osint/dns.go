@@ -10,8 +10,8 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 )
 
 // DNSEnum enumerates public DNS records for a domain and attempts an AXFR
@@ -24,7 +24,7 @@ func (*DNSEnum) Meta() attacks.ModuleMeta {
 		ID:          "osint.dns",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"domain"},
 		Passive:     true,
 		Description: "enumerate A/AAAA/MX/NS/TXT/SOA/CNAME records and attempt AXFR zone transfer for a domain",

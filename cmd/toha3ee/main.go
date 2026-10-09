@@ -458,12 +458,12 @@ func renderCapabilities(format string) error {
 		// For markdown, output a simple list grouped by category
 		doc := capabilities.Build()
 		capabilities.SortCapabilities(&doc)
-		
+
 		fmt.Printf("# TOHA3EE Capabilities\n\n")
 		fmt.Printf("**Framework:** %s  \n", doc.Framework)
 		fmt.Printf("**Version:** %s  \n", doc.Version)
 		fmt.Printf("**Modules:** %d across %d categories\n\n", doc.ModuleCount, doc.CategoryCount)
-		
+
 		currentCategory := ""
 		for _, cap := range doc.Capabilities {
 			if cap.Category != currentCategory {
@@ -480,25 +480,25 @@ func renderCapabilities(format string) error {
 		// Terminal table grouped by category
 		doc := capabilities.Build()
 		byCategory := capabilities.RenderTable()
-		
+
 		fmt.Printf("TOHA3EE Framework Capabilities\n")
-		fmt.Printf("Modules: %d | Categories: %d | Version: %s\n\n", 
+		fmt.Printf("Modules: %d | Categories: %d | Version: %s\n\n",
 			doc.ModuleCount, doc.CategoryCount, doc.Version)
-		
+
 		// Print each category
 		categories := make([]string, 0, len(byCategory))
 		for cat := range byCategory {
 			categories = append(categories, cat)
 		}
 		sort.Strings(categories)
-		
+
 		for _, cat := range categories {
 			rows := byCategory[cat]
 			fmt.Printf("═══ %s (%d modules) ═══\n", strings.ToUpper(cat), len(rows))
 			fmt.Printf("%-20s  %-50s  %-10s  %-8s\n", "ID", "DESCRIPTION", "RISK", "PASSIVE")
 			fmt.Printf("%s\n", strings.Repeat("─", 92))
 			for _, row := range rows {
-				fmt.Printf("%-20s  %-50s  %-10s  %-8s\n", 
+				fmt.Printf("%-20s  %-50s  %-10s  %-8s\n",
 					truncate(row[0], 20), truncate(row[1], 50), row[2], row[3])
 			}
 			fmt.Println()

@@ -287,7 +287,7 @@ func (r *Report) RenderHTML() string {
 	b.WriteString("<h1>TOHA3EE Session Report</h1>\n")
 	fmt.Fprintf(&b, "<div class=\"meta\">Generated: %s</div>\n", htmlEscape(r.Generated.Format(time.RFC3339)))
 	fmt.Fprintf(&b, "<div class=\"meta\">Running modules: %s</div>\n", htmlEscape(strings.Join(r.Running, ", ")))
-	
+
 	b.WriteString("\n<h2>Discovered Hosts</h2>\n")
 	if len(r.Hosts) == 0 {
 		b.WriteString("<p class=\"empty\">No hosts discovered</p>\n")
@@ -301,7 +301,7 @@ func (r *Report) RenderHTML() string {
 		}
 		b.WriteString("</table>\n")
 	}
-	
+
 	b.WriteString("\n<h2>Captured Credentials</h2>\n")
 	if len(r.Creds) == 0 {
 		b.WriteString("<p class=\"empty\">No credentials captured</p>\n")
@@ -314,7 +314,7 @@ func (r *Report) RenderHTML() string {
 		}
 		b.WriteString("</table>\n")
 	}
-	
+
 	b.WriteString("\n<h2>Captured Sessions</h2>\n")
 	if len(r.Sessions) == 0 {
 		b.WriteString("<p class=\"empty\">No sessions captured</p>\n")
@@ -326,7 +326,7 @@ func (r *Report) RenderHTML() string {
 		}
 		b.WriteString("</table>\n")
 	}
-	
+
 	b.WriteString("\n<h2>Module Execution History</h2>\n")
 	if len(r.Runs) == 0 {
 		b.WriteString("<p class=\"empty\">No modules executed</p>\n")
@@ -339,7 +339,7 @@ func (r *Report) RenderHTML() string {
 		}
 		b.WriteString("</table>\n")
 	}
-	
+
 	b.WriteString("</body>\n</html>\n")
 	return b.String()
 }
@@ -437,16 +437,16 @@ func jsonToYAML(jsonData []byte) []byte {
 	var formatted strings.Builder
 	formatted.WriteString("# TOHA3EE Session Report (YAML format)\n")
 	formatted.WriteString("# Note: Full YAML support requires gopkg.in/yaml.v3 dependency\n\n")
-	
+
 	// Simple JSON to YAML conversion - just reformat JSON
 	var indented bytes.Buffer
 	if err := json.Indent(&indented, jsonData, "", "  "); err != nil {
 		return jsonData // fallback to raw JSON
 	}
-	
+
 	// Convert JSON braces/brackets to YAML style
 	yamlish := strings.ReplaceAll(indented.String(), "\":", "\":")
 	formatted.WriteString(yamlish)
-	
+
 	return []byte(formatted.String())
 }

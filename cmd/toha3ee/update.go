@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -25,32 +26,32 @@ func releaseConfig() selfupdate.Config {
 		CurrentVersion: func() string {
 			return session.Version
 		},
-		ArtifactName: func(goos, goarch string) string {
-			// Release assets are bare executables named
-			// "{tool}-{os}-{arch}" with a ".exe" suffix on Windows. macOS is
-			// published as "macos", never "darwin".
-			//
-			// This previously resolved to a "toha3ee_{os}_{arch}.tar.gz"
-			// archive with a per-artifact ".sha256" sidecar. Both were wrong
-			// for the current pipeline: the release ships bare binaries and a
-			// single checksums.txt manifest, and a bare-digest sidecar does
-			// not match a manifest line of the form "<sha256>  <name>".
+		// The release pipeline publishes versioned archives
+		// (toha3ee_<version>_<os>_<arch>.tar.gz, .zip on windows), so the
+		// asset name embeds the tag. GoReleaser strips the leading "v" and
+		// names darwin assets "macos".
+		ArtifactName: func(version, goos, goarch string) string {
 			os := goos
 			if os == "darwin" {
 				os = "macos"
 			}
-			name := fmt.Sprintf("toha3ee-%s-%s", os, goarch)
+			ver := strings.TrimPrefix(strings.TrimPrefix(version, "v"), "V")
+			name := fmt.Sprintf("toha3ee_%s_%s_%s", ver, os, goarch)
 			if goos == "windows" {
-				name += ".exe"
+				return name + ".zip"
 			}
-			return name
+			return name + ".tar.gz"
 		},
 		// One manifest for the whole release, not a per-artifact sidecar.
 		ChecksumAsset: func(string) string { return "checksums.txt" },
-		// The release publishes bare binaries, so nothing is unpacked. The
-		// engine's ArchiveFor support is left in place for tools that do ship
-		// archives; returning nil here is what disables it for toha3ee.
-		ArchiveFor: nil,
+		// The asset is an archive, not the raw binary: extract the single
+		// executable entry before installing it.
+		ArchiveFor: func(goos, goarch string) (selfupdate.ArchiveKind, string) {
+			if goos == "windows" {
+				return selfupdate.ArchiveZip, "toha3ee.exe"
+			}
+			return selfupdate.ArchiveTarGz, "toha3ee"
+		},
 	}
 }
 

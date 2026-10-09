@@ -76,10 +76,14 @@ type Config struct {
 	// same value `tool version` prints so the two commands cannot disagree.
 	CurrentVersion func() string
 
-	// ArtifactName maps GOOS/GOARCH to the exact release asset name.
-	// An empty string means the release pipeline does not publish that
-	// platform; the update then fails cleanly instead of guessing.
-	ArtifactName func(goos, goarch string) string
+	// ArtifactName maps a release version (the tag, e.g. "v0.1.0") plus
+	// GOOS/GOARCH to the exact release asset name. The version is part of the
+	// name because the release pipeline publishes versioned archives
+	// ("<tool>_<version>_<os>_<arch>.tar.gz"), so the name cannot be derived
+	// from the platform alone. An empty string means the release pipeline does
+	// not publish that platform; the update then fails cleanly instead of
+	// guessing.
+	ArtifactName func(version, goos, goarch string) string
 
 	// ChecksumAsset returns the name of the release asset holding the
 	// SHA-256 entry for the given artifact, e.g. "SHA256SUMS" or
@@ -151,7 +155,7 @@ func Run(ctx context.Context, cfg Config, opts Options) (Result, error) {
 	fmt.Fprintf(out, "\nUpdate available: %s → %s\n\n", normalizeDisplay(current), release.TagName)
 
 	goos, goarch := runtime.GOOS, runtime.GOARCH
-	artifact := cfg.ArtifactName(goos, goarch)
+	artifact := cfg.ArtifactName(release.TagName, goos, goarch)
 	if artifact == "" {
 		return Result{}, &UpdateError{Kind: KindPlatform, tool: cfg.ToolName, platform: goos + "/" + goarch}
 	}

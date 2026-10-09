@@ -22,7 +22,7 @@ func (*Dork) Meta() attacks.ModuleMeta {
 		ID:          "osint.dork",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"query"},
 		Description: "run a search-engine dork and collect result URLs (DuckDuckGo HTML endpoint)",
 		Limitations: "results are limited to what the engine indexes; aggressive querying may trigger rate limiting",

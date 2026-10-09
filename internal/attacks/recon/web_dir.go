@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
@@ -33,7 +33,7 @@ func (*WebDir) Meta() attacks.ModuleMeta {
 		ID:          "web.dir",
 		Category:    "recon",
 		Risk:        attacks.RiskLow,
-		NoiseLevel: safety.NoiseLevelLow,
+		NoiseLevel:  safety.NoiseLevelLow,
 		Targets:     []string{"service"},
 		Description: "brute-force common web directories and files on discovered HTTP/HTTPS services",
 		Limitations: "detection relies on status codes only (200/30x/401/403); servers returning 200 for missing paths cause false positives",

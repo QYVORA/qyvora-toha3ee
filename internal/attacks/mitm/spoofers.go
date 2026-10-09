@@ -29,11 +29,11 @@ type LLMNRSpoof struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*LLMNRSpoof) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "llmnr.poison",
-		Category: "mitm",
-		Risk:     attacks.RiskMedium,
+		ID:         "llmnr.poison",
+		Category:   "mitm",
+		Risk:       attacks.RiskMedium,
 		NoiseLevel: safety.NoiseLevelAggressive,
-		Targets:  []string{"host"},
+		Targets:    []string{"host"},
 		// No Requires entry: LLMNR listens on the non-privileged UDP port 5355,
 		// so neither root nor a raw socket is needed to run the responder.
 		Description: "answer LLMNR (port 5355) resolution failures with this host's address to capture NTLMv2 hashes",
@@ -116,7 +116,7 @@ func (*WPADSpoof) Meta() attacks.ModuleMeta {
 		ID:          "wpad.poison",
 		Category:    "mitm",
 		Risk:        attacks.RiskMedium,
-		NoiseLevel: safety.NoiseLevelAggressive,
+		NoiseLevel:  safety.NoiseLevelAggressive,
 		Targets:     []string{"host"},
 		Description: "answer wpad.dat requests with a PAC file routing browser traffic through this host",
 		Limitations: "requires the victim to resolve 'wpad' (pair with dns.spoof or llmnr.poison); modern browsers and proxies with bypass lists are immune",
@@ -240,11 +240,11 @@ type ICMPRedirect struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*ICMPRedirect) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "icmp.redirect",
-		Category: "mitm",
-		Risk:     attacks.RiskMedium,
+		ID:         "icmp.redirect",
+		Category:   "mitm",
+		Risk:       attacks.RiskMedium,
 		NoiseLevel: safety.NoiseLevelAggressive,
-		Targets:  []string{"host"},
+		Targets:    []string{"host"},
 		// Forging the redirect and spoofing the gateway source requires raw
 		// L2 frame injection.
 		Requires:    []string{"cap.raw_socket"},

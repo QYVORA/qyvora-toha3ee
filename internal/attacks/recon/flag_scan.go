@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
 	"github.com/QYVORA/qyvora-toha3ee/internal/netx/ports"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/stealth"
 )
 
@@ -20,11 +20,11 @@ type FlagScan struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*FlagScan) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "service.finxmas",
-		Category: "recon",
-		Risk:     attacks.RiskLow,
+		ID:         "service.finxmas",
+		Category:   "recon",
+		Risk:       attacks.RiskLow,
 		NoiseLevel: safety.NoiseLevelLow,
-		Targets:  []string{"host"},
+		Targets:    []string{"host"},
 		// Crafting unusual-flag probes and sniffing replies requires raw
 		// sockets.
 		Requires:    []string{"cap.raw_socket"},

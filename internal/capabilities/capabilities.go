@@ -34,25 +34,25 @@ type Command struct {
 
 // Document is the full machine-readable contract of this framework build.
 type Document struct {
-	Framework      string       `json:"framework"`
-	Version        string       `json:"version"`
+	Framework      string         `json:"framework"`
+	Version        string         `json:"version"`
 	ExitCodes      map[string]int `json:"exit_codes"`
-	OutputFormats  []string     `json:"output_formats"`
-	EventVerbs     []string     `json:"event_verbs"`
-	SeverityLevels []string     `json:"severity_levels"`
-	RiskLevels     []string     `json:"risk_levels"`
-	Authorized     string       `json:"authorization_model"`
-	Capabilities   []Capability `json:"capabilities"`
-	Commands       []Command    `json:"commands"`
-	ModuleCount    int          `json:"module_count"`
-	CategoryCount  int          `json:"category_count"`
+	OutputFormats  []string       `json:"output_formats"`
+	EventVerbs     []string       `json:"event_verbs"`
+	SeverityLevels []string       `json:"severity_levels"`
+	RiskLevels     []string       `json:"risk_levels"`
+	Authorized     string         `json:"authorization_model"`
+	Capabilities   []Capability   `json:"capabilities"`
+	Commands       []Command      `json:"commands"`
+	ModuleCount    int            `json:"module_count"`
+	CategoryCount  int            `json:"category_count"`
 }
 
 // Build assembles the capability document for this build.
 func Build() Document {
 	modules := attacks.List()
 	categories := attacks.Categories()
-	
+
 	caps := make([]Capability, 0, len(modules))
 	for _, m := range modules {
 		meta := m.Meta()
@@ -90,7 +90,7 @@ func Build() Document {
 		Authorized: "all active attack modules require explicit authorization " +
 			"via --authorized flag or AUTHORIZED=yes in caplet; passive reconnaissance " +
 			"modules do not require authorization",
-		Capabilities:  caps,
+		Capabilities: caps,
 		Commands: []Command{
 			{Name: "tui", Summary: "launch interactive terminal interface", OutputModes: []string{"terminal"}},
 			{Name: "wizard", Summary: "launch guided setup wizard", OutputModes: []string{"terminal"}},
@@ -123,13 +123,13 @@ func RenderJSON() ([]byte, error) {
 // Groups modules by category for better readability.
 func RenderTable() map[string][][]string {
 	doc := Build()
-	
+
 	// Group by category
 	byCategory := make(map[string][]Capability)
 	for _, c := range doc.Capabilities {
 		byCategory[c.Category] = append(byCategory[c.Category], c)
 	}
-	
+
 	// Convert to table rows per category
 	result := make(map[string][][]string)
 	for cat, caps := range byCategory {
@@ -143,7 +143,7 @@ func RenderTable() map[string][][]string {
 		}
 		result[cat] = rows
 	}
-	
+
 	return result
 }
 
@@ -162,16 +162,16 @@ func RenderYAML() ([]byte, error) {
 	// Similar approach to session report: marshal to JSON then convert to YAML-like format
 	doc := Build()
 	SortCapabilities(&doc)
-	
+
 	jsonData, err := json.Marshal(doc)
 	if err != nil {
 		return nil, fmt.Errorf("marshal to JSON: %w", err)
 	}
-	
+
 	// Simple YAML conversion (note: full YAML support would require gopkg.in/yaml.v3)
 	result := fmt.Sprintf("# TOHA3EE Capabilities (YAML format)\n# Note: Full YAML support requires gopkg.in/yaml.v3 dependency\n\n")
 	result += string(jsonData) // For now, just formatted JSON with YAML header
-	
+
 	return []byte(result), nil
 }
 
@@ -179,7 +179,7 @@ func RenderYAML() ([]byte, error) {
 func RenderHTML() string {
 	doc := Build()
 	SortCapabilities(&doc)
-	
+
 	var html string
 	html += "<!DOCTYPE html>\n<html>\n<head>\n"
 	html += "<meta charset=\"UTF-8\">\n"
@@ -205,20 +205,20 @@ func RenderHTML() string {
 	html += fmt.Sprintf("<div class=\"meta\"><strong>Framework:</strong> %s</div>\n", htmlEscape(doc.Framework))
 	html += fmt.Sprintf("<div class=\"meta\"><strong>Version:</strong> %s</div>\n", htmlEscape(doc.Version))
 	html += fmt.Sprintf("<div class=\"meta\"><strong>Modules:</strong> %d across %d categories</div>\n", doc.ModuleCount, doc.CategoryCount)
-	
+
 	// Group by category
 	byCategory := make(map[string][]Capability)
 	for _, c := range doc.Capabilities {
 		byCategory[c.Category] = append(byCategory[c.Category], c)
 	}
-	
+
 	// Get sorted categories
 	categories := make([]string, 0, len(byCategory))
 	for cat := range byCategory {
 		categories = append(categories, cat)
 	}
 	sort.Strings(categories)
-	
+
 	// Render each category
 	for _, cat := range categories {
 		caps := byCategory[cat]
@@ -235,7 +235,7 @@ func RenderHTML() string {
 		}
 		html += "</table>\n"
 	}
-	
+
 	html += "</body>\n</html>\n"
 	return html
 }

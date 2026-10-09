@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/QYVORA/qyvora-toha3ee/internal/selfupdate"
+)
 
 // TestReleaseArtifactName pins the release asset naming contract for toha3ee.
 //
@@ -9,16 +14,14 @@ import "testing"
 // updater. When they disagree the updater requests an asset that no release
 // has ever published and the user is told to reinstall by hand.
 //
+// Canonical: toha3ee_<version>_<linux|macos|windows>_<arch>.tar.gz (zip on
+// windows), where <version> is the tag with its leading "v" stripped. toha3ee
+// links libpcap through cgo, so it has no Android build and no case here.
+//
 // The cases that have actually been wrong in this ecosystem:
 //
 //   - macOS assets are published as "macos", but Go reports GOOS "darwin".
-//   - Android/Termux is its own target: GOOS is "android" for a GOOS=android
-//     build and the asset is "{tool}-android-arm64". A linux/arm64 asset must
-//     never be substituted, because Android's bionic linker rejects an ET_EXEC
-//     binary with "unexpected e_type: 2".
-//   - Assets are bare executables. The updater writes the downloaded bytes to
-//     the executable path, so naming an archive produces a "successful" update
-//     that leaves an unrunnable binary.
+//   - The version is part of the asset name. GoReleaser strips the "v".
 func TestReleaseArtifactName(t *testing.T) {
 	cfg := releaseConfig()
 	if cfg.ArtifactName == nil {
@@ -26,36 +29,43 @@ func TestReleaseArtifactName(t *testing.T) {
 	}
 
 	tests := []struct {
-		goos, goarch, want string
+		version, goos, goarch, want string
 	}{
-		{"linux", "amd64", "toha3ee-linux-amd64"},
-		{"linux", "arm64", "toha3ee-linux-arm64"},
-		{"darwin", "amd64", "toha3ee-macos-amd64"},
-		{"darwin", "arm64", "toha3ee-macos-arm64"},
-		{"windows", "amd64", "toha3ee-windows-amd64.exe"},
-		{"windows", "arm64", "toha3ee-windows-arm64.exe"},
-		{"android", "arm64", "toha3ee-android-arm64"},
+		{"v0.1.0", "linux", "amd64", "toha3ee_0.1.0_linux_amd64.tar.gz"},
+		{"v0.1.0", "linux", "arm64", "toha3ee_0.1.0_linux_arm64.tar.gz"},
+		{"v0.1.0", "darwin", "amd64", "toha3ee_0.1.0_macos_amd64.tar.gz"},
+		{"v0.1.0", "darwin", "arm64", "toha3ee_0.1.0_macos_arm64.tar.gz"},
+		{"v0.1.0", "windows", "amd64", "toha3ee_0.1.0_windows_amd64.zip"},
+		{"v0.1.0", "windows", "arm64", "toha3ee_0.1.0_windows_arm64.zip"},
+		{"0.1.0", "linux", "amd64", "toha3ee_0.1.0_linux_amd64.tar.gz"},
 	}
 
 	for _, tt := range tests {
-		if got := cfg.ArtifactName(tt.goos, tt.goarch); got != tt.want {
-			t.Errorf("ArtifactName(%q, %q) = %q, want %q", tt.goos, tt.goarch, got, tt.want)
+		if got := cfg.ArtifactName(tt.version, tt.goos, tt.goarch); got != tt.want {
+			t.Errorf("ArtifactName(%q, %q, %q) = %q, want %q",
+				tt.version, tt.goos, tt.goarch, got, tt.want)
 		}
 	}
 }
 
-// TestReleaseArtifactNameIsNeverAnArchive guards the specific failure mode of
-// an update that reports success and leaves an unrunnable binary behind.
-func TestReleaseArtifactNameIsNeverAnArchive(t *testing.T) {
+// TestReleaseArchiveEntryMatchesAsset guards the failure mode of an update
+// that downloads and verifies the archive correctly but installs the wrong
+// bytes: the archive's single executable entry must be the tool itself, and
+// windows assets are zip while everything else is tar.gz.
+func TestReleaseArchiveEntryMatchesAsset(t *testing.T) {
 	cfg := releaseConfig()
-	for _, goos := range []string{"linux", "darwin", "windows", "android"} {
-		name := cfg.ArtifactName(goos, "arm64")
-		for _, bad := range []string{".tar.gz", ".tgz", ".zip", ".tar"} {
-			if len(name) >= len(bad) && name[len(name)-len(bad):] == bad {
-				t.Errorf("ArtifactName(%q, \"arm64\") = %q, which names an archive; "+
-					"the updater installs these bytes as the executable directly", goos, name)
-			}
-		}
+	if cfg.ArchiveFor == nil {
+		t.Fatal("ArchiveFor is nil; the updater would install the archive bytes as the binary")
+	}
+
+	kind, entry := cfg.ArchiveFor("linux", "amd64")
+	if kind != selfupdate.ArchiveTarGz || entry != "toha3ee" {
+		t.Errorf("ArchiveFor(linux, amd64) = (%v, %q), want (ArchiveTarGz, toha3ee)", kind, entry)
+	}
+
+	kind, entry = cfg.ArchiveFor("windows", "amd64")
+	if kind != selfupdate.ArchiveZip || entry != "toha3ee.exe" {
+		t.Errorf("ArchiveFor(windows, amd64) = (%v, %q), want (ArchiveZip, toha3ee.exe)", kind, entry)
 	}
 }
 
@@ -68,10 +78,23 @@ func TestChecksumAssetIsTheReleaseManifest(t *testing.T) {
 		t.Fatal("ChecksumAsset is nil; the update would be unverified")
 	}
 	for _, artifact := range []string{
-		"toha3ee-linux-amd64", "toha3ee-macos-arm64", "toha3ee-android-arm64",
+		"toha3ee_0.1.0_linux_amd64.tar.gz", "toha3ee_0.1.0_macos_arm64.tar.gz",
+		"toha3ee_0.1.0_windows_amd64.zip",
 	} {
 		if got := cfg.ChecksumAsset(artifact); got != "checksums.txt" {
 			t.Errorf("ChecksumAsset(%q) = %q, want \"checksums.txt\"", artifact, got)
+		}
+	}
+}
+
+// TestReleaseArtifactNameStripsVersionPrefix is the specific bug this contract
+// exists for: leaving the "v" on produces a name no release ever published.
+func TestReleaseArtifactNameStripsVersionPrefix(t *testing.T) {
+	cfg := releaseConfig()
+	for _, tag := range []string{"v0.1.0", "V0.1.0", "0.1.0"} {
+		got := cfg.ArtifactName(tag, "linux", "amd64")
+		if strings.Contains(got, "_v0.1.0_") || strings.Contains(got, "_V0.1.0_") {
+			t.Errorf("ArtifactName(%q, linux, amd64) = %q, kept the version prefix", tag, got)
 		}
 	}
 }

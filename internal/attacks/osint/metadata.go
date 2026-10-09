@@ -26,7 +26,7 @@ func (*Metadata) Meta() attacks.ModuleMeta {
 		ID:          "osint.metadata",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"file", "dir"},
 		Description: "extract author/tooling metadata from PDF, DOCX, XLSX and PPTX documents",
 		Limitations: "operates on files already in your possession; redact or scrub copies before sharing",

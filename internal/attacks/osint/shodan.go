@@ -20,7 +20,7 @@ func (*Shodan) Meta() attacks.ModuleMeta {
 		ID:          "osint.shodan",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"ip"},
 		Description: "pre-indexed Shodan host lookup: open ports, banners and exposed CVEs without touching the target",
 		Limitations: "requires a Shodan API key (osint.shodan.key) and only shows data Shodan has already scanned",

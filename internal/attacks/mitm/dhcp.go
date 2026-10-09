@@ -127,11 +127,11 @@ type DHCPRogue struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*DHCPRogue) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "dhcp.rogue",
-		Category: "mitm",
-		Risk:     attacks.RiskHigh,
+		ID:         "dhcp.rogue",
+		Category:   "mitm",
+		Risk:       attacks.RiskHigh,
 		NoiseLevel: safety.NoiseLevelAggressive,
-		Targets:  []string{"subnet"},
+		Targets:    []string{"subnet"},
 		// Binding the DHCP server port 67 and crafting OFFERs on the wire needs
 		// root and raw socket access.
 		Requires:    []string{"cap.raw_socket"},

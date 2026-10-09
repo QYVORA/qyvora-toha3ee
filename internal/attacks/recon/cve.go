@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
+	"github.com/QYVORA/qyvora-toha3ee/internal/safety"
 	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
@@ -43,7 +43,7 @@ func (*CVESuggest) Meta() attacks.ModuleMeta {
 		ID:          "cve.suggest",
 		Category:    "recon",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelLow,
+		NoiseLevel:  safety.NoiseLevelLow,
 		Targets:     []string{"host"},
 		Passive:     true, // matches local data only; never probes the target
 		Description: "map captured service banners to known CVEs from an embedded table, or look up CVE IDs / keywords live via the NVD and cve.org APIs",

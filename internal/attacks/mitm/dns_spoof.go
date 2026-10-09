@@ -24,11 +24,11 @@ type DNSSpoof struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*DNSSpoof) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "dns.spoof",
-		Category: "mitm",
-		Risk:     attacks.RiskMedium,
+		ID:         "dns.spoof",
+		Category:   "mitm",
+		Risk:       attacks.RiskMedium,
 		NoiseLevel: safety.NoiseLevelAggressive,
-		Targets:  []string{"gateway", "host"},
+		Targets:    []string{"gateway", "host"},
 		// Binding the privileged DNS port 53 (UDP and TCP) requires root.
 		Requires:    []string{"cap.dns_bind"},
 		Description: "spoof DNS answers for targeted domains while forwarding everything else upstream",
@@ -172,7 +172,7 @@ func (*DNSRebind) Meta() attacks.ModuleMeta {
 		ID:          "dns.rebind",
 		Category:    "mitm",
 		Risk:        attacks.RiskHigh,
-		NoiseLevel: safety.NoiseLevelAggressive,
+		NoiseLevel:  safety.NoiseLevelAggressive,
 		Targets:     []string{"host", "service"},
 		Requires:    []string{"cap.dns_bind"},
 		Description: "DNS rebinding: alternate answers for a domain between this host and the internal target to bypass same-origin policy",

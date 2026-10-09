@@ -1,4 +1,12 @@
-name: ci
+name: CI
+
+# GENERATED from qyvora-dist/ci.template.yml — do not edit by hand.
+# Change the template + qyvora-dist/tools.def, then run qyvora-dist/generate.sh.
+#
+# Per-tool continuous integration: formatting, vet, tests, and one clean
+# linux/amd64 build from a clean checkout. The build is deliberately separate
+# from the test step so a passing test run cannot hide a build that only works
+# because of a dirty tree or a cached object.
 
 on:
   push:
@@ -9,122 +17,31 @@ permissions:
   contents: read
 
 jobs:
-  golangci:
-    name: golangci-lint
+  ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-      - uses: actions/setup-go@v5
+      - name: Set up Go
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
           go-version-file: go.mod
-          cache: true
 
-      - name: install libpcap headers
-        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: latest
-
-  lint:
-    name: fmt + vet + build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: install libpcap headers
-        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
-
-      - name: check formatting
+      - name: Install build dependencies
         run: |
-          out="$(gofmt -l cmd internal pkg)"
-          if [ -n "$out" ]; then
-            echo "needs formatting:"
-            echo "$out"
-            exit 1
-          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates libpcap-dev gcc-aarch64-linux-gnu gcc
 
-      - name: vet
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (echo "files need gofmt:"; gofmt -l .; exit 1)
+
+      - name: go vet
         run: go vet ./...
 
-      - name: build
-        run: go build ./...
-
-  test:
-    name: test (ubuntu)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: install libpcap headers
-        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
-
-      - name: run tests
-        run: go test -race -coverprofile=coverage.out ./...
-
-      - name: upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.out
-
-  test-windows:
-    name: test (windows)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      # Windows uses gopacket's cgo-free pcap bindings.
-      - name: run tests
-        shell: bash
-        env:
-          CGO_ENABLED: "0"
+      - name: go test
         run: go test ./...
 
-  test-macos:
-    name: test (macos)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: run tests
-        run: go test ./...
-
-  goreleaser:
-    name: goreleaser config check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: goreleaser check
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: check
+      - name: Clean build (linux/amd64)
+        run: |
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build ./...

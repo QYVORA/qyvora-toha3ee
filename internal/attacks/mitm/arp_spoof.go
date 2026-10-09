@@ -26,11 +26,11 @@ type ARPSpoof struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*ARPSpoof) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "arp.spoof",
-		Category: "mitm",
-		Risk:     attacks.RiskMedium,
+		ID:         "arp.spoof",
+		Category:   "mitm",
+		Risk:       attacks.RiskMedium,
 		NoiseLevel: safety.NoiseLevelAggressive,
-		Targets:  []string{"gateway", "host"},
+		Targets:    []string{"gateway", "host"},
 		// Raw sockets are needed to inject spoofed ARP replies at L2, and
 		// ip_forward must be on so traffic relayed through this host keeps
 		// flowing to/from the internet.

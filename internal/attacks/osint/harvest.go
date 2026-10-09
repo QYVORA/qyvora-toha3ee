@@ -22,7 +22,7 @@ func (*Harvest) Meta() attacks.ModuleMeta {
 		ID:          "osint.harvest",
 		Category:    "osint",
 		Risk:        attacks.RiskInfo,
-		NoiseLevel: safety.NoiseLevelPassive,
+		NoiseLevel:  safety.NoiseLevelPassive,
 		Targets:     []string{"domain"},
 		Description: "harvest employee email addresses for a domain from search-engine indexes",
 		Limitations: "returns only addresses that are publicly indexed; rate limits may truncate results",

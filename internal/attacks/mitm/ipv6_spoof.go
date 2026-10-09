@@ -25,11 +25,11 @@ type IPv6RouterAdv struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*IPv6RouterAdv) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "ipv6.ra",
-		Category: "mitm",
-		Risk:     attacks.RiskHigh,
+		ID:         "ipv6.ra",
+		Category:   "mitm",
+		Risk:       attacks.RiskHigh,
 		NoiseLevel: safety.NoiseLevelAggressive,
-		Targets:  []string{"gateway", "host"},
+		Targets:    []string{"gateway", "host"},
 		// Forged RAs need raw IPv6 sockets to inject NDP frames on the link.
 		Requires:    []string{"cap.ipv6", "cap.raw_socket"},
 		Description: "IPv6 router advertisement flood: become the default router on the link to capture IPv6 traffic",
@@ -131,7 +131,7 @@ func (*IPv6NeighborAdv) Meta() attacks.ModuleMeta {
 		ID:          "ipv6.ndp",
 		Category:    "mitm",
 		Risk:        attacks.RiskHigh,
-		NoiseLevel: safety.NoiseLevelAggressive,
+		NoiseLevel:  safety.NoiseLevelAggressive,
 		Targets:     []string{"host"},
 		Requires:    []string{"cap.ipv6", "cap.raw_socket"},
 		Description: "IPv6 neighbor advertisement flood: poison neighbor caches so the victim's traffic flows to this host",

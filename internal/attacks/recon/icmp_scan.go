@@ -27,11 +27,11 @@ type NetPing struct{}
 // Meta implements attacks.Module, returning the module's registry descriptor.
 func (*NetPing) Meta() attacks.ModuleMeta {
 	return attacks.ModuleMeta{
-		ID:       "net.ping",
-		Category: "recon",
-		Risk:     attacks.RiskLow,
+		ID:         "net.ping",
+		Category:   "recon",
+		Risk:       attacks.RiskLow,
 		NoiseLevel: safety.NoiseLevelLow,
-		Targets:  []string{"subnet"},
+		Targets:    []string{"subnet"},
 		// ICMP sweeps and the alternate TCP/UDP ping modes need raw sockets.
 		Requires:    []string{"cap.raw_socket"},
 		Description: "host discovery sweep (ICMP echo/timestamp/address-mask, TCP SYN ping, UDP ping)",
