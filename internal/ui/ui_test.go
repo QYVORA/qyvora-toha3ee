@@ -163,7 +163,7 @@ func TestBannerDrawsEveryArtRow(t *testing.T) {
 	u.SetColor(false)
 	u.Banner("toha3ee 3.1.0")
 	out := sb.String()
-	for _, line := range strings.Split(strings.TrimRight(banner.Art, "\n"), "\n") {
+	for _, line := range banner.ArtLines() {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}

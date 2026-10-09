@@ -14,7 +14,9 @@ package banner
 
 import (
 	"os"
+	"strings"
 
+	"github.com/QYVORA/qyvora-tui"
 	"github.com/muesli/termenv"
 )
 
@@ -60,6 +62,25 @@ func Colorize(s string) string {
 // Render returns the whole banner in the QYVORA brand green.
 func Render() string {
 	return Colorize(Art)
+}
+
+// Name is the canonical display name for this tool.
+const Name = "TOHA3EE"
+
+// Tagline is the one-line descriptor printed with the banner.
+const Tagline = "Local & network security assessment framework"
+
+// ArtLines returns the banner as rows with the common leading column and the
+// blank rows removed, so every tool's mark starts at the same place.
+func ArtLines() []string {
+	return tui.RenderCLIArt(strings.Split(Art, "\n"), -1, Name, Tagline)
+}
+
+// RenderCLI returns the rows to draw at the start of a scan: the canonical art
+// when it fits the attached terminal, and the shared thin banner when it does
+// not, so the brand never wraps or distorts at any terminal width.
+func RenderCLI() []string {
+	return tui.RenderCLIArt(strings.Split(Art, "\n"), tui.TerminalWidth(), Name, Tagline)
 }
 
 // Print writes Render to stdout.

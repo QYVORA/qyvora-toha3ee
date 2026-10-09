@@ -295,7 +295,7 @@ func (u *UI) Table(headers []string, rows [][]string) {
 // the plain art is printed even on a terminal that could show the accent, so a
 // SetColor(false) UI stays free of escape codes.
 func (u *UI) Banner(tagline string) {
-	for _, line := range strings.Split(strings.TrimRight(banner.Art, "\n"), "\n") {
+	for _, line := range banner.RenderCLI() {
 		if u.color {
 			line = banner.Colorize(line)
 		}

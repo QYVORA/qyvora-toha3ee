@@ -52,6 +52,19 @@ func (r *sessionRunner) Run(ctx context.Context, args []string, events io.Writer
 		return 0, nil
 	}
 
+	// A Ctrl+C in the interface must interrupt modules that are still running,
+	// not just skip the next line. StopAll is safe to call while Eval is
+	// dispatching: it snapshots the running set and stops each module.
+	stopWatch := make(chan struct{})
+	defer close(stopWatch)
+	go func() {
+		select {
+		case <-ctx.Done():
+			r.sess.StopAll()
+		case <-stopWatch:
+		}
+	}()
+
 	var runErr error
 	captureErr := tui.Capture(events, func() error {
 		runErr = r.sess.Eval(line)
@@ -159,6 +172,7 @@ func runTUI(root *cobra.Command, ctx context.Context, ifaceName, configPath, out
 		code, err := tui.Run(tui.Config{
 			Title:   "QYVORA / TOHA3EE",
 			Version: version.String(),
+			Banner:  tui.ToolBanner("TOHA3EE", "Local & network security assessment framework"),
 			Runner:  runner,
 			Out:     os.Stdout,
 		})
