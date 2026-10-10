@@ -88,7 +88,7 @@ jobs:
           missing=0
           for name in \
             "${TOOL}_${VERSION}_linux_amd64.tar.gz" \
-            "${TOOL}_${VERSION}_linux_arm64.tar.gz"
+            "${TOOL}_${VERSION}_linux_arm64.tar.gz" \
             checksums.txt; do
             if ! printf '%s\n' "$ASSETS" | grep -qx "$name"; then
               echo "::error::missing required asset: $name"
@@ -159,7 +159,7 @@ jobs:
           ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
           for name in \
             "${TOOL}_${VERSION}_linux_amd64.tar.gz" \
-            "${TOOL}_${VERSION}_linux_arm64.tar.gz"
+            "${TOOL}_${VERSION}_linux_arm64.tar.gz" \
             checksums.txt; do
             if ! printf '%s\n' "$ASSETS" | grep -qx "$name"; then
               echo "::error::missing asset: $name"
