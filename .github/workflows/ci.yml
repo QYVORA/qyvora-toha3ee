@@ -31,7 +31,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates libpcap-dev gcc-aarch64-linux-gnu gcc
+          sudo apt-get install -y --no-install-recommends ca-certificates libpcap-dev gcc
 
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (echo "files need gofmt:"; gofmt -l .; exit 1)

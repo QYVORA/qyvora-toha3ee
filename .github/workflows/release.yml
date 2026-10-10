@@ -56,12 +56,12 @@ jobs:
           go-version-file: go.mod
 
       - name: Install cross-compilation build dependencies
-        # Only tools with libpcap-dev gcc-aarch64-linux-gnu gcc != '' (i.e. cgo tools like toha3ee
+        # Only tools with libpcap-dev gcc != '' (i.e. cgo tools like toha3ee
         # binding libpcap) need these; the step is skipped everywhere else.
-        if: ${{ 'libpcap-dev gcc-aarch64-linux-gnu gcc' != '' }}
+        if: ${{ 'libpcap-dev gcc' != '' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates libpcap-dev gcc-aarch64-linux-gnu gcc
+          sudo apt-get install -y --no-install-recommends ca-certificates libpcap-dev gcc
 
       - name: Run GoReleaser (creates a draft release)
         uses: goreleaser/goreleaser-action@286f3b13b1b49da4ac219696163fb8c1c93e1200 # v6.0.0
@@ -88,7 +88,6 @@ jobs:
           missing=0
           for name in \
             "${TOOL}_${VERSION}_linux_amd64.tar.gz" \
-            "${TOOL}_${VERSION}_linux_arm64.tar.gz" \
             checksums.txt; do
             if ! printf '%s\n' "$ASSETS" | grep -qx "$name"; then
               echo "::error::missing required asset: $name"
@@ -159,7 +158,6 @@ jobs:
           ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
           for name in \
             "${TOOL}_${VERSION}_linux_amd64.tar.gz" \
-            "${TOOL}_${VERSION}_linux_arm64.tar.gz" \
             checksums.txt; do
             if ! printf '%s\n' "$ASSETS" | grep -qx "$name"; then
               echo "::error::missing asset: $name"
