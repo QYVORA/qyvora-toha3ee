@@ -34,8 +34,6 @@ builds:
     main: ./cmd/toha3ee
     goos:
       - linux
-      - darwin
-      - windows
     goarch:
       - amd64
       - arm64
@@ -48,7 +46,8 @@ builds:
       - -X github.com/QYVORA/qyvora-toha3ee/internal/version.Date={{ .Date }}
       - -X github.com/QYVORA/qyvora-toha3ee/internal/version.BuildUser=goreleaser
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
+      - CC={{ if eq .Arch "arm64" }}aarch64-linux-gnu-gcc{{ else }}gcc{{ end }}
 
 archives:
   - id: toha3ee
