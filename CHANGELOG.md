@@ -49,10 +49,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `golang.org/x/crypto` added as a dependency for SSH auth.
 - Registry test now pins the complete module catalogue, including the new
   enum/osint/auth/recon modules.
-- `-o/--output` selects `terminal` (default), `json` or `markdown` rendering
-  for `report` and `version`; invalid formats exit 2. Human-readable renderers
-  redact credential passwords; only the JSON report file carries plaintext
-  loot (written 0600).
+- `-o/--output` selects `terminal` (default), `json`, `markdown`, `yaml` or
+  `html` rendering for `report` and `capabilities` (`version` supports
+  `terminal`, `json` and `markdown`); invalid formats exit 2. Human-readable
+  renderers redact credential passwords; only the JSON report file carries
+  plaintext loot (written 0600).
 - New `report` subcommand renders a saved session report from disk.
 - `run` and `run.caplet` accept both `.caplet` and `.cap` suffixes; shipped
   caplets use `.caplet`.
@@ -60,6 +61,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   emitting run, module, finding, arp and report events; schema matches the
   other QYVORA frameworks.
 - Module path moved to `github.com/QYVORA/qyvora-toha3ee`.
+
+### Fixed
+- **Local-only verbs no longer escalate to root** — `capabilities`, `report`
+  and `build` (alongside `version`, `modules`, `completion`, `help` and
+  `updates`) now run unprivileged with no sudo prompt; only the network verbs
+  (`tui`, `wizard`, `eval`, `run`, `script`) re-exec under sudo. This makes
+  `toha3ee capabilities -o yaml|html` and offline report rendering usable from
+  automation and non-root shells.
 
 ## [0.1.0] - 2026-08-05
 

@@ -12,7 +12,7 @@ everyday workflows for running an authorised engagement with toha3ee.
 | **One-shot eval** | `sudo toha3ee --eval "net.scan; net.show"` | a fixed sequence in scripts/CI |
 | **Caplet** | `sudo toha3ee run caplets/mitm-arp.caplet` | a reusable attack recipe |
 | **Script** | `sudo toha3ee script scripts/full-pipeline.toha3ee` | a full programmatic engagement |
-| **Dry run** | `toha3ee --no-sudo build scripts/x.toha3ee` | validate a script, print the plan, no packets |
+| **Dry run** | `toha3ee build scripts/x.toha3ee` | validate a script, print the plan, no packets |
 
 ## The interactive console
 

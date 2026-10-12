@@ -12,9 +12,12 @@ plus your first authorised engagement session.
 | **Windows** | no libpcap needed (uses gopacket's native pcap bindings) |
 
 Root privileges are required for the raw sockets, packet capture and IP
-forwarding most modules depend on. toha3ee escalates to `sudo` automatically
-and prompts for the admin password; pass `--no-sudo` (or `TOHA3EE_NO_SUDO=1`)
-to run unprivileged for things like `version` or `modules`.
+forwarding most modules depend on. Verbs that touch the network stack
+(`tui`, `wizard`, `eval`, `run`, `script`) escalate to `sudo` automatically and
+prompt for the admin password. Local-only verbs — `version`, `modules`,
+`capabilities`, `build`, `report` — run unprivileged with no password. Pass
+`--no-sudo` (or `TOHA3EE_NO_SUDO=1`) to suppress escalation for the network
+verbs too.
 
 ## Install
 
@@ -138,7 +141,7 @@ For validation, dry runs and CI you can use a `.toha3ee` script without sending
 a single packet:
 
 ```sh
-toha3ee --no-sudo build scripts/full-pipeline.toha3ee
+toha3ee build scripts/full-pipeline.toha3ee
 ```
 
 `build` validates the script and prints the plan. Execute it for real with:

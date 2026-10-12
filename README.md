@@ -123,7 +123,7 @@ sudo ./toha3ee --eval "net.recon; net.profile" --iface eth0
 sudo ./toha3ee run --iface eth0 caplets/basic.cap
 
 # Dry-run a .toha3ee script (validates it, prints the plan, sends no packets)
-./toha3ee --no-sudo build scripts/full-pipeline.toha3ee
+./toha3ee build scripts/full-pipeline.toha3ee
 
 # Execute a .toha3ee script non-interactively
 sudo ./toha3ee script --iface eth0 scripts/full-pipeline.toha3ee
@@ -133,10 +133,13 @@ Most attack modules require root (raw sockets, packet capture and IP
 forwarding). Run as root or with `CAP_NET_ADMIN`/`CAP_NET_RAW` where possible.
 Add `--no-color` to disable colored output, `-v` for verbose logging.
 
-The tool runs with admin privileges **by default**: on Linux/macOS it
-re-executes itself under `sudo` and prompts for the admin (root) password on
-every invocation. Pass `--no-sudo` (or set `TOHA3EE_NO_SUDO=1`) to run
-unprivileged, e.g. for a quick `toha3ee --no-sudo version`.
+The verbs that touch the network stack (`tui`, `wizard`, `eval`, `run`,
+`script`) run with admin privileges **by default**: on Linux/macOS the tool
+re-executes itself under `sudo` and prompts for the admin (root) password.
+Local-only verbs never escalate and need no password — `version`, `modules`,
+`capabilities`, `completion`, `help`, `updates`, `build` and `report` run
+unprivileged as the invoking user. Pass `--no-sudo` (or set
+`TOHA3EE_NO_SUDO=1`) to suppress escalation for the network verbs too.
 
 ## Architecture
 

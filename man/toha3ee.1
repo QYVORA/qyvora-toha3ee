@@ -22,12 +22,15 @@ or have explicit written permission to test. See
 .BR security (1)
 for responsible-use guidance.
 
-Most modules need raw-socket, capture or IP-forwarding privileges. The console
-escalates to root via
+Most modules need raw-socket, capture or IP-forwarding privileges. The network
+verbs (\fItui\fR, \fIwizard\fR, \fIeval\fR, \fIrun\fR, \fIscript\fR) escalate to
+root via
 .BR sudo (8)
 automatically; pass
 .B \-\-no\-sudo
-to run unprivileged.
+to run unprivileged. Local-only verbs (\fIversion\fR, \fImodules\fR,
+\fIcapabilities\fR, \fIbuild\fR, \fIreport\fR, completion, help, updates) never
+escalate and need no password.
 .SH OPTIONS
 .TP
 .BI \-\-config " path"
@@ -59,10 +62,17 @@ Do not auto-escalate to root via sudo.
 .TP
 .BI \-o ", " \-\-output " format"
 Output format for the
-.B report
+.BR report ,
+.B capabilities
 and
 .B version
-commands: \fIterminal\fR (default), \fIjson\fR, or \fImarkdown\fR.
+commands: \fIterminal\fR (default), \fIjson\fR, \fImarkdown\fR,
+\fIyaml\fR, or \fIhtml\fR (\fIyaml\fR and \fIhtml\fR are supported by
+.B report
+and
+.BR capabilities ;
+.B version
+supports \fIterminal\fR, \fIjson\fR and \fImarkdown\fR).
 Machine-readable output never leaks plaintext credentials; only the JSON
 session report file does, and it is written 0600.
 .TP
@@ -77,6 +87,14 @@ Show help for toha3ee or a subcommand.
 Validate a
 .I .toha3ee
 script and print a dry-run plan without sending packets.
+.TP
+.B capabilities
+Emit the machine-readable capability contract (registered modules, risk levels,
+output formats, event verbs, exit codes and the authorization model). Runs
+unprivileged without root. Prints a terminal table by default; use
+.BR \-o
+with \fIjson\fR, \fIyaml\fR, \fIhtml\fR or \fImarkdown\fR for
+machine-readable forms.
 .TP
 .B eval
 Run a one-shot command sequence and exit (same as the

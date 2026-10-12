@@ -193,7 +193,7 @@ func main() {
 	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress informational status output")
 	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 	root.PersistentFlags().BoolVar(&noSudo, "no-sudo", false, "do not auto-escalate to root via sudo")
-	root.PersistentFlags().StringVarP(&output, "output", "o", "", "output format for reports and version: terminal, json, markdown")
+	root.PersistentFlags().StringVarP(&output, "output", "o", "", "output format: terminal, json, markdown, yaml, html (yaml/html for capabilities and report)")
 	root.PersistentFlags().StringVar(&eventsStream, "events", "", "emit JSONL event stream to stdout, stderr, or a file path (e.g. --events session.jsonl)")
 
 	// Flag parse failures are usage errors: classify them so the process
@@ -341,19 +341,16 @@ Ctrl+C stops the running command; Ctrl+D leaves.`,
 	capabilitiesCmd := &cobra.Command{
 		Use:   "capabilities",
 		Short: "print the machine-readable capability contract",
-		Long: `The capabilities command outputs toha3ee's complete capability contract.
+		Long: `Emit the machine-readable capability contract.
 
-By default, it outputs JSON. Use --table to render as a terminal table grouped by category.
+By default it prints a terminal table grouped by category. Use -o json, yaml,
+html or markdown to emit a machine-readable form; the JSON form is the contract
+AI systems should consume. This command runs without root, so it is safe to call
+from automation.
 
-This contract lists:
-  - All 70+ registered attack modules across 10 categories
-  - Risk levels (info, low, medium, high, critical)
-  - Passive vs active module classification  
-  - Output formats and event verbs
-  - Exit codes and authorization model
-
-Automation and AI systems can query this to understand what toha3ee can do
-without parsing prose documentation or the module list.`,
+The contract lists all registered attack modules across 10 categories, risk
+levels (info, low, medium, high, critical), passive vs active classification,
+output formats, event verbs, exit codes and the authorization model.`,
 		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return renderCapabilities(output)
@@ -362,7 +359,7 @@ without parsing prose documentation or the module list.`,
 
 	// `toha3ee report [file]` re-renders a previously written session report
 	// in the requested -o format. The on-disk artifact stays JSON; -o only
-	// controls what is printed to stdout (terminal, json, markdown).
+	// controls what is printed to stdout (terminal, json, markdown, yaml, html).
 	reportCmd := &cobra.Command{
 		Use:   "report",
 		Short: "render a saved session report (default toha3ee-report.json)",
@@ -747,27 +744,30 @@ func runWizard(s *session.Session) error {
 }
 
 // shouldElevate reports whether the process must re-exec itself as root. The
-// framework needs raw sockets and packet capture, so unless it is already
-// running as root (or the user explicitly opted out) every invocation escalates
-// via sudo and prompts for the admin password.
+// framework needs raw sockets and packet capture, so the network verbs escalate
+// via sudo unless the process is already root or the user explicitly opted out.
+// Local-only verbs never reach this function because maybeElevate short-circuits
+// them via isReadOnlyVerb.
 func shouldElevate(euid int, noSudo, windows bool) bool {
 	// On Windows there is no sudo model, and a non-zero euid already running
 	// does not imply a privilege problem, so escalation never applies.
 	return euid != 0 && !noSudo && !windows
 }
 
-// isReadOnlyVerb reports whether the resolved command only reads local state.
-// These verbs work identically with or without privileges and must not force
-// an interactive sudo prompt (automation calls them constantly).
+// isReadOnlyVerb reports whether the resolved command only reads local or
+// static state and therefore never needs root.
 //
-// "updates" belongs here even though it can install: the updater performs
-// its own permission handling and refuses cleanly when the install location
-// is not writable, so re-executing the whole framework as root would be both
-// unnecessary and surprising.
+// These verbs work identically with or without privileges and must not force an
+// interactive sudo prompt (automation calls them constantly). The capability
+// contract (`capabilities`), the version/module listings, shell completion and
+// help read only local or compiled-in state; the self-updater does its own
+// permission handling and refuses cleanly when the install location is not
+// writable; and `build`/`report` are dry-run/local-file operations that never
+// touch the network stack. Only verbs that actually reach the network escalate.
 func isReadOnlyVerb(cmd *cobra.Command) bool {
 	for c := cmd; c != nil; c = c.Parent() {
 		switch c.Name() {
-		case "version", "modules", "completion", "help", "updates":
+		case "version", "modules", "capabilities", "completion", "help", "updates", "build", "report":
 			return true
 		}
 	}
@@ -775,10 +775,10 @@ func isReadOnlyVerb(cmd *cobra.Command) bool {
 }
 
 // maybeElevate re-runs the current executable under sudo when it is not root.
-// Read-only verbs (version, modules, completion, help) never escalate: they
-// inspect no network state and must stay usable by automation without a
-// password prompt. Use --no-sudo or TOHA3EE_NO_SUDO=1 to skip the prompt for
-// the remaining verbs.
+// Local-only verbs (version, modules, capabilities, completion, help, updates,
+// build, report) never escalate: they inspect no network state and must stay
+// usable by automation without a password prompt. Use --no-sudo or
+// TOHA3EE_NO_SUDO=1 to skip the prompt for the remaining verbs.
 func maybeElevate(cmd *cobra.Command) error {
 	if isReadOnlyVerb(cmd) {
 		return nil

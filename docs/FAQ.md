@@ -8,8 +8,10 @@ Install them: `sudo apt install libpcap-dev` (Debian/Ubuntu) or
 Command Line Tools.
 
 **Q: `toha3ee modules` prompts for a sudo password.**
-Modules listing doesn't need root. Run `toha3ee --no-sudo modules` or set
-`TOHA3EE_NO_SUDO=1`.
+Modules listing doesn't need root. `toha3ee modules` (like `version`,
+`capabilities`, `build` and `report`) runs unprivileged with no password; only
+the network verbs escalate. `--no-sudo` still works if you want to suppress
+that.
 
 **Q: Why does toha3ee auto-escalate to sudo?**
 Raw sockets, packet capture and IP forwarding require root. If it cannot find
@@ -68,7 +70,7 @@ when you know what you're after, and keep `limit` modest.
 ## Automation
 
 **Q: How do I dry-run a script without sending packets?**
-`toha3ee --no-sudo build scripts/full-pipeline.toha3ee` validates and prints
+`toha3ee build scripts/full-pipeline.toha3ee` validates and prints
 the plan. No packets are sent.
 
 **Q: Can a script do something the console cannot?**

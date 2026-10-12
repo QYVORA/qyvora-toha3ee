@@ -27,20 +27,20 @@ func TestShouldElevate(t *testing.T) {
 	}
 }
 
-// TestIsReadOnlyVerb guards the no-sudo-for-read-only-verbs contract: an
-// automation layer must be able to run version/modules/completion without a
-// password prompt, while verbs that touch the network stack still elevate.
-// Synthetic command trees are used because the real tree is assembled inside
-// main().
+// TestIsReadOnlyVerb guards the no-sudo-for-local-verbs contract: an
+// automation layer must be able to run version/modules/capabilities/build/
+// report without a password prompt, while verbs that touch the network stack
+// still elevate. Synthetic command trees are used because the real tree is
+// assembled inside main().
 func TestIsReadOnlyVerb(t *testing.T) {
-	readOnly := []string{"version", "modules", "completion", "help"}
+	readOnly := []string{"version", "modules", "capabilities", "completion", "help", "build", "report"}
 	for _, name := range readOnly {
 		if !isReadOnlyVerb(&cobra.Command{Use: name}) {
 			t.Errorf("isReadOnlyVerb(%q) = false, want true", name)
 		}
 	}
 
-	interactive := []string{"eval", "run", "interactive", "wizard", "script", "build", "report"}
+	interactive := []string{"eval", "run", "interactive", "wizard", "script"}
 	for _, name := range interactive {
 		if isReadOnlyVerb(&cobra.Command{Use: name}) {
 			t.Errorf("isReadOnlyVerb(%q) = true, want false", name)

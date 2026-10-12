@@ -11,7 +11,7 @@ you ever send a packet.
 ## 0. Before you start
 
 ```sh
-toha3ee --no-sudo build scripts/full-pipeline.toha3ee  # dry-run the bundled pipeline
+toha3ee build scripts/full-pipeline.toha3ee  # dry-run the bundled pipeline
 sudo toha3ee --iface eth0                              # console
 sudo toha3ee --eval "net.scan; net.show" --iface eth0  # one-shot
 ```

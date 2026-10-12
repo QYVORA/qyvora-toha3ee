@@ -55,7 +55,7 @@ sudo toha3ee --iface eth0
 sudo toha3ee --eval "net.scan; net.show" --iface eth0
 
 # Dry-run a full engagement script (no packets)
-toha3ee --no-sudo build scripts/full-pipeline.toha3ee
+toha3ee build scripts/full-pipeline.toha3ee
 ```
 
 See [Getting started](Getting-Started.md) for details.
