@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/banner"
+	"github.com/QYVORA/qyvora-tui"
 )
 
 func TestStripANSI(t *testing.T) {
@@ -173,5 +174,21 @@ func TestBannerDrawsEveryArtRow(t *testing.T) {
 	}
 	if !strings.Contains(out, "toha3ee 3.1.0") {
 		t.Error("banner output missing the tagline")
+	}
+}
+
+// TestBannerSuppressedInTUISession pins the duplicate-banner fix: on the
+// console the session runner sets the signal, and the banner must not be drawn
+// again inside the transcript, where the interface's header already carries the
+// identity.
+func TestBannerSuppressedInTUISession(t *testing.T) {
+	t.Setenv(tui.TUISessionEnv, "1")
+	var sb strings.Builder
+	u := New(&sb)
+	u.SetColor(false)
+	u.Banner("toha3ee 3.1.0")
+	u.BannerFoot("eth0", "3.1.0")
+	if sb.String() != "" {
+		t.Errorf("banner written inside a TUI session (%d bytes), want 0", sb.Len())
 	}
 }

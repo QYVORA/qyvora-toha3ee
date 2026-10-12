@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/banner"
+	"github.com/QYVORA/qyvora-tui"
 )
 
 // ANSI style codes. Red is reserved for hard errors; warnings use Amber and
@@ -295,6 +296,9 @@ func (u *UI) Table(headers []string, rows [][]string) {
 // the plain art is printed even on a terminal that could show the accent, so a
 // SetColor(false) UI stays free of escape codes.
 func (u *UI) Banner(tagline string) {
+	if tui.InTUISession() {
+		return
+	}
 	for _, line := range banner.RenderCLI() {
 		if u.color {
 			line = banner.Colorize(line)
@@ -308,6 +312,9 @@ func (u *UI) Banner(tagline string) {
 
 // BannerFoot prints the interface/version footer under the banner.
 func (u *UI) BannerFoot(iface, version string) {
+	if tui.InTUISession() {
+		return
+	}
 	if iface != "" {
 		u.Status(">", "iface %s", iface)
 	}

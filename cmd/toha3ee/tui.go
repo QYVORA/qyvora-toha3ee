@@ -52,6 +52,14 @@ func (r *sessionRunner) Run(ctx context.Context, args []string, events io.Writer
 		return 0, nil
 	}
 
+	// Tell the tool it is running on the console's behalf so it suppresses its
+	// own identity banner: the interface's header band is the only identity the
+	// operator should see. toha3ee runs its own session rather than the shared
+	// InProcessRunner, so it sets the signal itself. The console evaluates one
+	// line at a time, so the previous value is restored before the next line.
+	restoreSession := setTUISession()
+	defer restoreSession()
+
 	// A Ctrl+C in the interface must interrupt modules that are still running,
 	// not just skip the next line. StopAll is safe to call while Eval is
 	// dispatching: it snapshots the running set and stops each module.
@@ -84,6 +92,22 @@ func (r *sessionRunner) Run(ctx context.Context, args []string, events io.Writer
 		return tui.ExitCancelled, nil
 	}
 	return 0, nil
+}
+
+// setTUISession sets the shared session signal for the duration of one console
+// line and returns a function that restores the previous value exactly --
+// including the case where it was not set at all, so a signal inherited from
+// the surrounding environment is not clobbered.
+func setTUISession() func() {
+	prev, had := os.LookupEnv(tui.TUISessionEnv)
+	_ = os.Setenv(tui.TUISessionEnv, "1")
+	return func() {
+		if had {
+			_ = os.Setenv(tui.TUISessionEnv, prev)
+			return
+		}
+		_ = os.Unsetenv(tui.TUISessionEnv)
+	}
 }
 
 // rejoinArgs turns the interface's tokenised line back into the single string
