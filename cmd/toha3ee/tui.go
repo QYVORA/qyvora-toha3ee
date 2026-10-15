@@ -1,3 +1,9 @@
+//go:build ignore
+
+// Disabled pending the qyvora-tui redirect to the future AI orchestration
+// layer (qyvora-ai, Phase 5). The 14 frameworks are one-shot CLI only; the
+// per-tool interactive session is no longer wired in.
+
 package main
 
 import (

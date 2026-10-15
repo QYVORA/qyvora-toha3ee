@@ -1,7 +1,7 @@
-// Command toha3ee is the local & network security assessment framework's CLI: an
-// interactive REPL, a guided wizard, a caplet runner and a one-shot -eval
-// mode. All attack functionality lives in self-registering modules under
-// internal/attacks; this binary only wires them up.
+// Command toha3ee is the local & network security assessment framework's CLI: a
+// guided wizard, a script/caplet runner and a one-shot -eval mode. All attack
+// functionality lives in self-registering modules under internal/attacks; this
+// binary only wires them up.
 package main
 
 import (
@@ -22,8 +22,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/QYVORA/qyvora-tui"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
 	"github.com/QYVORA/qyvora-toha3ee/internal/capabilities"
@@ -113,12 +111,6 @@ func exitCodeFor(err error) int {
 	if errors.Is(err, context.Canceled) {
 		return exitInterrupted
 	}
-	// The interface reports the last command's status through this type when
-	// the session ends after a failed or cancelled command.
-	var te *tuiExitError
-	if errors.As(err, &te) {
-		return te.code
-	}
 	// Cobra reports unknown subcommands ("unknown command \"x\" for
 	// \"toha3ee\"") as plain errors; treat them as usage mistakes too.
 	if msg := err.Error(); strings.HasPrefix(msg, "unknown command") && strings.Contains(msg, " for ") {
@@ -155,34 +147,33 @@ func main() {
 		Short:         "local & network security assessment framework",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Bare "toha3ee" drops into the shared interactive session;
-		// "--eval \"net.scan; net.show\"" runs without a subcommand too.
+		// "--eval \"net.scan; net.show\"" runs a one-shot sequence without a
+		// subcommand. The bare invocation prints usage: the interactive session
+		// is disabled pending the redirect of qyvora-tui to the future AI
+		// orchestration layer.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Reject an unknown -o value before any command runs so the exit
 			// status is the documented 2 (usage) rather than a runtime error.
 			if output != "" && !isValidOutput(output) {
 				return usageError{fmt.Errorf("invalid output format %q (terminal, json, markdown, yaml, html)", output)}
 			}
-			// Escalation comes after the terminal check, not before it. A
-			// redirected run is not an interactive session, and asking for a
-			// password it can never receive turned `toha3ee > out` into a
-			// sudo failure instead of the help every other tool prints.
-			if opensInteractiveSession(cmd, eval != "") && !tui.IsInteractive(os.Stdout) {
+			// The bare root invocation only prints help; it must not prompt for
+			// a password. Every other invocation escalates to root before it
+			// touches the network stack; read-only verbs are exempt.
+			if cmd == cmd.Root() && eval == "" {
 				return nil
 			}
-			// Any invocation (subcommand or not) escalates to root before it
-			// touches the network stack; read-only verbs are exempt.
 			return maybeElevate(cmd)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// With no subcommand, --eval runs a one-shot sequence; otherwise
-			// open the shared interactive session.
+			// print usage rather than open an interactive session.
 			if eval != "" {
 				return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
 					return s.Eval(eval)
 				})
 			}
-			return runTUI(cmd.Root(), cmd.Context(), ifaceName, configPath, output, verbose, noColor)
+			return cmd.Root().Help()
 		},
 	}
 
@@ -201,27 +192,6 @@ func main() {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return usageError{err}
 	})
-
-	// `toha3ee interactive` is the explicit spelling of the default session.
-	//
-	// The old spellings stay as aliases. They named a readline console, and
-	// though the interface is a different program the words people and scripts
-	// already use to reach it should keep working.
-	tuiCmd := &cobra.Command{
-		Use:     "tui",
-		Aliases: []string{"interactive", "repl", "shell"},
-		Short:   "start the interactive session",
-		Long: `Start the interactive session.
-
-Commands are entered at the prompt and evaluated against one live session, so
-what an earlier command discovered is available to the next. The session renders
-from the same structured event stream as the one-shot CLI.
-
-Ctrl+C stops the running command; Ctrl+D leaves.`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runTUI(cmd.Root(), cmd.Context(), ifaceName, configPath, output, verbose, noColor)
-		},
-	}
 
 	// `toha3ee wizard` runs the guided attack setup against stdin.
 	wizardCmd := &cobra.Command{
@@ -426,7 +396,7 @@ output formats, event verbs, exit codes and the authorization model.`,
 		},
 	}
 
-	root.AddCommand(tuiCmd, wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, capabilitiesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
+	root.AddCommand(wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, capabilitiesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
 	root.SetArgs(os.Args[1:])
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toha3ee:", err)

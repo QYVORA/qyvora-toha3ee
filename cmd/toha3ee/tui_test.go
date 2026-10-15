@@ -1,3 +1,7 @@
+//go:build ignore
+
+// Disabled with cmd/toha3ee/tui.go once the interactive session was removed.
+
 package main
 
 import (
