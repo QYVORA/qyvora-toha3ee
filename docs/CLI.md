@@ -8,6 +8,8 @@ toha3ee <tier> <module> [<action>] [target] [flags]
 
 `<tier>` is one of `recon`, `exploit`, or `report`. Every pre-tier command remains available as a hidden alias.
 
+Scripts run on the shared `qyvora-script` engine (`.qs` or `.toha3ee`). The `exec`/`run.cmd` shell-out statement only runs when `--allow-shellout` (or `QYVORA_ALLOW_SHELLOUT=1`) is set, and emits a JSONL audit event when it does.
+
 ## recon
 
 | Command | Purpose |
@@ -63,6 +65,7 @@ toha3ee <tier> <module> [<action>] [target] [flags]
 | `toha3ee eval` | run a one-shot command sequence and exit |
 | `toha3ee modules` | list all registered modules |
 | `toha3ee run` | execute a script or caplet non-interactively |
-| `toha3ee script` | execute a .toha3ee script file |
+| `toha3ee script run <file>` | execute a script file (.qs or .toha3ee) |
+| `toha3ee script build <file>` | validate a script file and print a dry-run plan |
 | `toha3ee wizard` | guided attack setup |
 
