@@ -2,76 +2,120 @@ package session
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
+	"github.com/QYVORA/qyvora-script/ast"
+	"github.com/QYVORA/qyvora-script/binding"
+	"github.com/QYVORA/qyvora-script/interpreter"
+	"github.com/QYVORA/qyvora-script/parser"
+
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
-	"github.com/QYVORA/qyvora-toha3ee/internal/script"
 	"github.com/QYVORA/qyvora-toha3ee/internal/store"
 )
 
-// ScriptRunner adapts a Session to the script engine's Runner contract, so a
-// ".toha3ee" script drives the exact same module lifecycle as the REPL.
-func (s *Session) ScriptRunner() script.Runner { return &scriptRunner{s: s} }
+// ScriptBinding adapts a Session to the shared qyvora-script binding.Binding,
+// so a ".qs"/".toha3ee" script drives the exact same module lifecycle as the
+// REPL. Every capability the script language can invoke is routed here.
+func (s *Session) ScriptBinding() binding.Binding { return &scriptBinding{s: s} }
 
-// scriptRunner is the Session-side implementation of the engine's Runner.
-type scriptRunner struct{ s *Session }
+// scriptBinding is the Session-side implementation of binding.Binding.
+type scriptBinding struct{ s *Session }
 
-// Echo prints a value through the console.
-func (r *scriptRunner) Echo(msg string) {
-	r.s.UI.Status(">", "%s", msg)
-}
+// Call dispatches a script capability onto the live session.
+func (b *scriptBinding) Call(capabilityID string, args []binding.Value) (binding.Value, error) {
+	s := b.s
+	switch capabilityID {
+	case binding.CapEcho:
+		s.UI.Status(">", "%s", args[0].(string))
+		return nil, nil
 
-// SetConfig writes a "module.key" value.
-func (r *scriptRunner) SetConfig(key, value string) error {
-	// The key must be "module.param"; splitModuleKey handles dotted ids.
-	module, param, ok := splitModuleKey(key)
-	if !ok {
-		return fmt.Errorf("script: config key must be 'module.key' (got %q)", key)
+	case binding.CapSetConfig:
+		key, value := args[0].(string), args[1].(string)
+		// The key must be "module.param"; splitModuleKey handles dotted ids.
+		module, param, ok := splitModuleKey(key)
+		if !ok {
+			return nil, fmt.Errorf("script: config key must be 'module.key' (got %q)", key)
+		}
+		s.Conf.Set(module, param, value)
+		// Config changes are logged as events so the session audit trail shows
+		// what a script mutated.
+		s.Store.LogEvent("config.set", fmt.Sprintf("%s = %s", key, value))
+		return nil, nil
+
+	case binding.CapGetConfig:
+		return s.Conf.GetFromKey(args[0].(string)), nil
+
+	case binding.CapStart:
+		id := args[0].(string)
+		opts, _ := args[1].(map[string]string)
+		if _, ok := attacks.Get(id); !ok {
+			return nil, fmt.Errorf("unknown module %q", id)
+		}
+		// Running a script is itself an explicit, authorized action, so the
+		// high/critical-risk confirmation gate is satisfied on the script's
+		// behalf.
+		s.Conf.ConfirmRisk(id)
+		return nil, s.StartModule(id, opts)
+
+	case binding.CapStop:
+		return nil, s.StopModule(args[0].(string))
+
+	case binding.CapIsRunning:
+		return s.IsRunning(args[0].(string)), nil
+
+	case binding.CapShow:
+		return nil, s.showModule(args[0].(string))
+
+	case binding.CapReport:
+		return nil, s.report([]string{args[0].(string)})
+
+	case binding.CapExec:
+		return nil, s.execOnce(args[0].(string))
+
+	case binding.CapProp:
+		v, ok := b.prop(args[0].(string))
+		if !ok {
+			return nil, nil
+		}
+		return v, nil
 	}
-	r.s.Conf.Set(module, param, value)
-	// Config changes are logged as events so the session audit trail shows
-	// what a script mutated.
-	r.s.Store.LogEvent("config.set", fmt.Sprintf("%s = %s", key, value))
-	return nil
+	return nil, fmt.Errorf("script: unsupported capability %q", capabilityID)
 }
 
-// GetConfig reads a "module.key" value.
-func (r *scriptRunner) GetConfig(key string) string {
-	return r.s.Conf.GetFromKey(key)
-}
-
-// Start launches a module. Running a script is itself an explicit, authorized
-// action, so the high/critical-risk confirmation gate is satisfied on the
-// script's behalf.
-func (r *scriptRunner) Start(id string, opts map[string]string) error {
-	if _, ok := attacks.Get(id); !ok {
-		return fmt.Errorf("unknown module %q", id)
+// Capabilities lists the capability IDs this binding supports.
+func (b *scriptBinding) Capabilities() []string {
+	return []string{
+		binding.CapEcho, binding.CapSetConfig, binding.CapGetConfig,
+		binding.CapStart, binding.CapStop, binding.CapIsRunning,
+		binding.CapShow, binding.CapReport, binding.CapProp, binding.CapExec,
 	}
-	// Confirm the risk unconditionally: the user already signed off by
-	// choosing to run the script at all.
-	r.s.Conf.ConfirmRisk(id)
-	return r.s.StartModule(id, opts)
 }
 
-// Stop halts a running module.
-func (r *scriptRunner) Stop(id string) error { return r.s.StopModule(id) }
+// AllowShellOut gates exec/run.cmd. It is false unless the session was built
+// with --allow-shellout or the QYVORA_ALLOW_SHELLOUT environment variable is
+// set, so a script can never shell out silently.
+func (b *scriptBinding) AllowShellOut() bool {
+	if b.s.AllowShellOut {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(interpreter.AllowShellOutEnv))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
 
-// IsRunning reports a module's liveness.
-func (r *scriptRunner) IsRunning(id string) bool { return r.s.IsRunning(id) }
+// AuditEvent records a security-relevant script event in the shared session
+// event contract (used for shell-out).
+func (b *scriptBinding) AuditEvent(kind, detail string) {
+	b.s.Store.LogEvent(kind, detail)
+}
 
-// Show prints module metadata.
-func (r *scriptRunner) Show(id string) error { return r.s.showModule(id) }
-
-// Report writes a session report.
-func (r *scriptRunner) Report(path string) error { return r.s.report([]string{path}) }
-
-// Cmd runs a one-shot REPL command line.
-func (r *scriptRunner) Cmd(line string) error { return r.s.execOnce(line) }
-
-// Prop resolves live session state for $(...) interpolation.
-func (r *scriptRunner) Prop(name string) (string, bool) {
-	s := r.s
+// prop resolves live session state for $(...) interpolation.
+func (b *scriptBinding) prop(name string) (string, bool) {
+	s := b.s
 	switch name {
 	// Counters and lists of discovered hosts.
 	case "hosts.count", "net.hosts.count":
@@ -128,28 +172,41 @@ func (r *scriptRunner) Prop(name string) (string, bool) {
 	return "", false
 }
 
-// RunScript executes a ".toha3ee" script file through the shared engine.
+// RunScript executes a script file through the shared qyvora-script engine.
 func (s *Session) RunScript(path string) error {
-	e := script.NewEngine(s.ScriptRunner())
+	e := interpreter.NewEngine(s.ScriptBinding())
+	e.Events = consoleEventWriter{s: s}
 	return e.RunFile(path)
 }
 
-// BuildScript parses a ".toha3ee" file and prints a dry-run plan of what it
-// would do. It never touches the network.
+// BuildScript parses a script file and prints a dry-run plan of what it would
+// do. It never touches the network.
 func (s *Session) BuildScript(path string) error {
 	data, err := readCaplet(path)
 	if err != nil {
 		return err
 	}
-	prog, err := script.Parse(string(data))
+	prog, err := parser.Parse(string(data))
 	if err != nil {
 		return err
 	}
 	s.UI.Section("script plan " + path)
-	for _, line := range script.Describe(prog) {
+	for _, line := range ast.Describe(prog) {
 		s.UI.Status("-", "%s", line)
 	}
 	return nil
+}
+
+// consoleEventWriter adapts the session's human writer so the engine's JSONL
+// shell-out events land in the operator's console stream. The structured
+// session event log is handled separately by the binding's AuditEvent.
+type consoleEventWriter struct{ s *Session }
+
+func (w consoleEventWriter) Write(p []byte) (int, error) {
+	if w.s.Out == nil {
+		return len(p), nil
+	}
+	return w.s.Out.Write(p)
 }
 
 // ifaceIP returns the bound interface's IP, or "" when unavailable.

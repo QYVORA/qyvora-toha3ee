@@ -53,6 +53,10 @@ import (
 // re-exec escalation (see maybeElevate).
 var noSudo bool
 
+// allowShellOut is set by the --allow-shellout flag and gates the shared
+// script engine's exec/run.cmd construct (see session.Session.AllowShellOut).
+var allowShellOut bool
+
 // Exit statuses documented in man/toha3ee.1 (EXIT STATUS).
 const (
 	exitOK          = 0
@@ -148,6 +152,7 @@ func main() {
 		Example: "  toha3ee recon net scan target 192.168.1.0/24\n" +
 			"  toha3ee exploit wlan deauth bssid AA:BB:CC:DD:EE:FF\n" +
 			"  toha3ee report session replay id 1\n" +
+			"  toha3ee script run scripts/full-pipeline.toha3ee\n" +
 			"  toha3ee eval \"net.scan; net.show\"\n" +
 			"  toha3ee modules",
 		SilenceUsage:  true,
@@ -189,6 +194,7 @@ func main() {
 	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress informational status output")
 	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 	root.PersistentFlags().BoolVar(&noSudo, "no-sudo", false, "do not auto-escalate to root via sudo")
+	root.PersistentFlags().BoolVar(&allowShellOut, "allow-shellout", false, "allow scripts to use exec/run.cmd shell-out (also via QYVORA_ALLOW_SHELLOUT=1)")
 	root.PersistentFlags().StringVarP(&output, "output", "o", "", "output format: terminal, json, markdown, yaml, html (yaml/html for capabilities and report)")
 	root.PersistentFlags().StringVar(&eventsStream, "events", "", "emit JSONL event stream to stdout, stderr, or a file path (e.g. --events session.jsonl)")
 
@@ -237,7 +243,7 @@ func main() {
 		Args:  exactArgsUsage(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
-				if strings.HasSuffix(args[0], ".toha3ee") {
+				if strings.HasSuffix(args[0], ".toha3ee") || strings.HasSuffix(args[0], ".qs") {
 					return s.RunScript(args[0])
 				}
 				return s.RunCaplet(args[0])
@@ -245,9 +251,13 @@ func main() {
 		},
 	}
 
-	scriptCmd := &cobra.Command{
-		Use:   "script",
-		Short: "execute a .toha3ee script file",
+	// `toha3ee script` is the standardised flat utility for the shared script
+	// engine (ARCH-004 Part C). `script run <file>` executes a script and
+	// `script build <file>` prints a dry-run plan. The legacy `script <file>`,
+	// `run <file>` and `build <file>` forms remain for backward compatibility.
+	scriptRunCmd := &cobra.Command{
+		Use:   "run <file>",
+		Short: "execute a script file (.qs or .toha3ee)",
 		Args:  exactArgsUsage(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
@@ -255,6 +265,28 @@ func main() {
 			})
 		},
 	}
+	scriptBuildCmd := &cobra.Command{
+		Use:   "build <file>",
+		Short: "validate a script file and print a dry-run plan",
+		Args:  exactArgsUsage(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
+				return s.BuildScript(args[0])
+			})
+		},
+	}
+	scriptCmd := &cobra.Command{
+		Use:   "script",
+		Short: "run and validate scripts with the shared engine",
+		Args:  exactArgsUsage(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			// Backward compatibility: bare `script <file>` runs the file.
+			return run(ifaceName, configPath, output, verbose, noColor, func(s *session.Session) error {
+				return s.RunScript(args[0])
+			})
+		},
+	}
+	scriptCmd.AddCommand(scriptRunCmd, scriptBuildCmd)
 
 	// `toha3ee build` parses the script and prints a dry-run plan without
 	// touching the network, for safe review before an actual run.
@@ -753,6 +785,7 @@ func run(ifaceName, configPath, outputFormat string, verbose, noColor bool, body
 	if noColor {
 		s.SetColor(false)
 	}
+	s.AllowShellOut = allowShellOut
 	// Shutdown always runs on the way out (including panics via the recover
 	// above) so modules are stopped and the network restored.
 	defer s.Shutdown()

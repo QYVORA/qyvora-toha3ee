@@ -38,6 +38,10 @@ type Session struct {
 	// Events receives the optional JSONL event stream; nil disables it. Set
 	// by the CLI after session construction.
 	Events *events.Emitter
+	// AllowShellOut gates the script engine's exec/run.cmd construct. The CLI
+	// sets it from --allow-shellout; the binding also honours
+	// QYVORA_ALLOW_SHELLOUT. Default false.
+	AllowShellOut bool
 
 	mu      sync.Mutex // guards the running map and hijack injector
 	running map[string]*runningModule
