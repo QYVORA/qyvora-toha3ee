@@ -309,6 +309,20 @@ func (s *Session) StopModule(id string) error {
 	return nil
 }
 
+// WaitModule blocks until the module's run goroutine has finished its whole
+// lifecycle (Run, Verify, Cleanup, run record). It returns immediately when the
+// module is not running because it already finished or was never started, so a
+// one-shot CLI invocation can start a module and then wait for its outcome
+// without racing the background goroutine.
+func (s *Session) WaitModule(id string) {
+	s.mu.Lock()
+	rm, ok := s.running[id]
+	s.mu.Unlock()
+	if ok {
+		rm.wg.Wait()
+	}
+}
+
 // StopAll halts every running module.
 func (s *Session) StopAll() {
 	// Iterate a snapshot so each StopModule's map mutation is safe; a module

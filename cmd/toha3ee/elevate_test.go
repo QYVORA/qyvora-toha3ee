@@ -35,16 +35,22 @@ func TestShouldElevate(t *testing.T) {
 func TestIsReadOnlyVerb(t *testing.T) {
 	readOnly := []string{"version", "modules", "capabilities", "completion", "help", "build", "report"}
 	for _, name := range readOnly {
-		if !isReadOnlyVerb(&cobra.Command{Use: name}) {
+		if !isReadOnlyVerb(&cobra.Command{Use: name, Run: func(*cobra.Command, []string) {}}) {
 			t.Errorf("isReadOnlyVerb(%q) = false, want true", name)
 		}
 	}
 
 	interactive := []string{"eval", "run", "interactive", "wizard", "script"}
 	for _, name := range interactive {
-		if isReadOnlyVerb(&cobra.Command{Use: name}) {
+		if isReadOnlyVerb(&cobra.Command{Use: name, Run: func(*cobra.Command, []string) {}}) {
 			t.Errorf("isReadOnlyVerb(%q) = true, want false", name)
 		}
+	}
+
+	// A tier/group parent has no Run function and only prints help, so it must
+	// never trigger a password prompt.
+	if !isReadOnlyVerb(&cobra.Command{Use: "recon"}) {
+		t.Error("pure parent command: isReadOnlyVerb = false, want true")
 	}
 }
 
@@ -52,13 +58,13 @@ func TestIsReadOnlyVerb(t *testing.T) {
 // invoked through the root ("toha3ee version").
 func TestIsReadOnlyVerbNested(t *testing.T) {
 	root := &cobra.Command{Use: "toha3ee"}
-	root.AddCommand(&cobra.Command{Use: "modules"})
+	root.AddCommand(&cobra.Command{Use: "modules", Run: func(*cobra.Command, []string) {}})
 	if !isReadOnlyVerb(root.Commands()[0]) {
 		t.Error("nested read-only verb not detected")
 	}
 
 	root2 := &cobra.Command{Use: "toha3ee"}
-	root2.AddCommand(&cobra.Command{Use: "eval"})
+	root2.AddCommand(&cobra.Command{Use: "eval", Run: func(*cobra.Command, []string) {}})
 	if isReadOnlyVerb(root2.Commands()[0]) {
 		t.Error("nested interactive verb misclassified as read-only")
 	}

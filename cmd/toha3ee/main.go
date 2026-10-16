@@ -143,8 +143,13 @@ func main() {
 	var noColor bool
 
 	root := &cobra.Command{
-		Use:           "toha3ee",
-		Short:         "local & network security assessment framework",
+		Use:   "toha3ee",
+		Short: "local & network security assessment framework",
+		Example: "  toha3ee recon net scan target 192.168.1.0/24\n" +
+			"  toha3ee exploit wlan deauth bssid AA:BB:CC:DD:EE:FF\n" +
+			"  toha3ee report session replay id 1\n" +
+			"  toha3ee eval \"net.scan; net.show\"\n" +
+			"  toha3ee modules",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// "--eval \"net.scan; net.show\"" runs a one-shot sequence without a
@@ -327,13 +332,44 @@ output formats, event verbs, exit codes and the authorization model.`,
 		},
 	}
 
+	// The three lifecycle tiers group the self-registered attack modules by
+	// category: recon/enum/osint -> recon, mitm/espionage/auth/web/switch/
+	// wireless -> exploit, post -> report. The tier and its group commands are
+	// purely navigational parents; the leaves are generated from the registry
+	// (see attachModuleTree) so the CLI can never drift from the module set.
+	reconCmd := &cobra.Command{
+		Use:   "recon",
+		Short: "reconnaissance and discovery",
+		Long: `Reconnaissance and discovery.
+
+Groups modules whose category is recon, enum or osint. Run
+"toha3ee recon" with no subcommand to list the available groups.`,
+	}
+	exploitCmd := &cobra.Command{
+		Use:   "exploit",
+		Short: "validation and exploitation",
+		Long: `Validation and exploitation.
+
+Groups modules whose category is mitm, espionage, auth, web, switch or
+wireless. These are active, often high-risk operations: scope and
+authorization are the operator's responsibility. Run "toha3ee exploit"
+with no subcommand to list the available groups.`,
+	}
+
 	// `toha3ee report [file]` re-renders a previously written session report
-	// in the requested -o format. The on-disk artifact stays JSON; -o only
-	// controls what is printed to stdout (terminal, json, markdown, yaml, html).
+	// in the requested -o format, and also parents the post-exploitation
+	// modules (report.generate, session.replay, pcap.export). The on-disk
+	// artifact stays JSON; -o only controls what is printed to stdout
+	// (terminal, json, markdown, yaml, html).
 	reportCmd := &cobra.Command{
 		Use:   "report",
-		Short: "render a saved session report (default toha3ee-report.json)",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "render a saved session report, or run a post-exploitation module",
+		Long: `Reporting and remediation.
+
+With no subcommand, re-renders a saved session report (default
+toha3ee-report.json). Use -o to choose the output format. Running a
+subcommand instead executes a post-exploitation module.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			path := "toha3ee-report.json"
 			if len(args) == 1 {
@@ -396,7 +432,16 @@ output formats, event verbs, exit codes and the authorization model.`,
 		},
 	}
 
-	root.AddCommand(wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, capabilitiesCmd, versionCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
+	// Generate the recon/exploit/report leaves from the module registry so the
+	// command grammar always matches the compiled-in module set.
+	env := cmdEnv{ifaceName: ifaceName, configPath: configPath, output: output, verbose: verbose, noColor: noColor}
+	env.attachModuleTree(map[string]*cobra.Command{
+		"recon":   reconCmd,
+		"exploit": exploitCmd,
+		"report":  reportCmd,
+	})
+
+	root.AddCommand(wizardCmd, evalCmd, runCapletCmd, scriptCmd, buildCmd, modulesCmd, capabilitiesCmd, versionCmd, reconCmd, exploitCmd, reportCmd, completionCmd, newUpdatesCmd(&output))
 	root.SetArgs(os.Args[1:])
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toha3ee:", err)
@@ -506,6 +551,101 @@ func printModules(u *ui.UI, mods []attacks.Module) {
 		u.Table([]string{"id", "risk", "description"}, rows)
 	}
 	u.Status("+", "%d modules registered", len(mods))
+}
+
+// moduleTier maps each module category to the lifecycle tier that owns it.
+// The three tiers are the shared QYVORA CLI pillars: recon (discovery),
+// exploit (validation/exploitation) and report (post-exploitation/reporting).
+// A category missing from the table is not surfaced on the CLI at all.
+var moduleTier = map[string]string{
+	"recon": "recon", "enum": "recon", "osint": "recon",
+	"mitm": "exploit", "espionage": "exploit", "auth": "exploit",
+	"web": "exploit", "switch": "exploit", "wireless": "exploit",
+	"post": "report",
+}
+
+// cmdEnv carries the persistent-flag values a generated module command needs to
+// open a session. The built-in verbs close over the same locals in main(); the
+// generated leaves receive them through this value so the tree builder can live
+// outside main().
+type cmdEnv struct {
+	ifaceName  string
+	configPath string
+	output     string
+	verbose    bool
+	noColor    bool
+}
+
+// attachModuleTree expands the flat module registry into the
+// `<tier> <group> <action>` grammar: a dotted module id "group.action" becomes
+// the leaf `<tier> <group> <action>`, where the tier is chosen by the module's
+// category (see moduleTier). Options after the action are passed to the module
+// as inline "key value" pairs, matching the eval/caplet convention. Groups are
+// created on demand and reused, so several categories sharing a group prefix
+// (e.g. "net.scan" and "net.ip6sweep") land under one group command.
+func (e cmdEnv) attachModuleTree(tiers map[string]*cobra.Command) {
+	groups := map[string]map[string]*cobra.Command{}
+	for _, m := range attacks.List() {
+		meta := m.Meta()
+		tierName := moduleTier[meta.Category]
+		tier := tiers[tierName]
+		if tier == nil {
+			// A module in an unmapped category has no CLI home; it stays
+			// reachable through the eval/caplet language.
+			continue
+		}
+		group, action := meta.ID, meta.ID
+		if i := strings.IndexByte(meta.ID, '.'); i >= 0 {
+			group, action = meta.ID[:i], meta.ID[i+1:]
+		}
+		if groups[tierName] == nil {
+			groups[tierName] = map[string]*cobra.Command{}
+		}
+		grp := groups[tierName][group]
+		if grp == nil {
+			// The group is a pure parent: it only lists its actions, so it
+			// never escalates (see isReadOnlyVerb).
+			grp = &cobra.Command{
+				Use:   group,
+				Short: fmt.Sprintf("%s modules", group),
+			}
+			groups[tierName][group] = grp
+			tier.AddCommand(grp)
+		}
+		grp.AddCommand(e.moduleCmd(tierName, group, action, meta))
+	}
+}
+
+// moduleCmd builds the leaf command for one module. Its RunE starts the module
+// and waits for the full lifecycle to finish, so a one-shot invocation behaves
+// like the eval form (unlike the async StartModule used interactively).
+func (e cmdEnv) moduleCmd(tier, group, action string, meta attacks.ModuleMeta) *cobra.Command {
+	id := meta.ID
+	return &cobra.Command{
+		Use:   action + " [key value ...]",
+		Short: meta.Description,
+		Long: fmt.Sprintf("%s\n\nModule: %s\nRisk:   %s\n\nOptions are passed as inline \"key value\" pairs, e.g.\n  toha3ee %s %s %s target <value>",
+			meta.Description, id, meta.Risk, tier, group, action),
+		Args: cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, args []string) error {
+			opts := map[string]string{}
+			for i := 0; i+1 < len(args); i += 2 {
+				opts[args[i]] = args[i+1]
+			}
+			return run(e.ifaceName, e.configPath, e.output, e.verbose, e.noColor, func(s *session.Session) error {
+				// An explicit CLI invocation is a deliberate, authorized
+				// action, so the high/critical-risk confirmation gate is
+				// satisfied on the operator's behalf exactly as it is for a
+				// .toha3ee script.
+				s.Conf.ConfirmRisk(id)
+				if err := s.StartModule(id, opts); err != nil {
+					return err
+				}
+				s.WaitModule(id)
+				return nil
+			})
+		},
+	}
 }
 
 // eventsStream is bound to the --events persistent flag. It is package-level
@@ -735,9 +875,17 @@ func shouldElevate(euid int, noSudo, windows bool) bool {
 // writable; and `build`/`report` are dry-run/local-file operations that never
 // touch the network stack. Only verbs that actually reach the network escalate.
 func isReadOnlyVerb(cmd *cobra.Command) bool {
+	// A pure parent command (a lifecycle tier or a module group) owns no Run
+	// function: it only renders help for its children. It performs no work and
+	// must never trigger a password prompt, so "toha3ee recon" or
+	// "toha3ee recon net" stay usable without root.
+	if cmd.Run == nil && cmd.RunE == nil {
+		return true
+	}
 	for c := cmd; c != nil; c = c.Parent() {
 		switch c.Name() {
-		case "version", "modules", "capabilities", "completion", "help", "updates", "build", "report":
+		case "version", "modules", "capabilities", "completion", "help", "updates", "build", "report",
+			"__complete", "__completeNoDesc":
 			return true
 		}
 	}
