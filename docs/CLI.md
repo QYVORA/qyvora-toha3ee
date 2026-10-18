@@ -68,4 +68,4 @@ Scripts run on the shared `qyvora-script` engine (`.qs` or `.toha3ee`). The `exe
 | `toha3ee script run <file>` | execute a script file (.qs or .toha3ee) |
 | `toha3ee script build <file>` | validate a script file and print a dry-run plan |
 | `toha3ee wizard` | guided attack setup |
-
+| `docs script <file>` | Run a `.qs` script with the shared scripting engine (`run`/`build` subcommands) |
