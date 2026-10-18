@@ -16,8 +16,6 @@ require (
 	golang.org/x/sys v0.39.0
 )
 
-replace github.com/QYVORA/qyvora-script => ../../shared/qyvora-script
-
 require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
