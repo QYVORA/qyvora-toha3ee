@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/QYVORA/qyvora-toha3ee/internal/attacks"
+	"github.com/QYVORA/qyvora-toha3ee/internal/banner"
 	"github.com/QYVORA/qyvora-toha3ee/internal/capabilities"
 	"github.com/QYVORA/qyvora-toha3ee/internal/config"
 	"github.com/QYVORA/qyvora-toha3ee/internal/events"
@@ -149,6 +150,18 @@ func main() {
 	root := &cobra.Command{
 		Use:   "toha3ee",
 		Short: "local & network security assessment framework",
+		Long: banner.Render() + "\n\n  " + banner.Tagline + " — " + version.CompanyName + "\n  " + version.CompanyURL + "\n  Built in " + version.CompanyCity + "\n\n" + `toha3ee is a local & network security assessment framework.
+
+Commands follow the shared tier grammar
+<tool> <tier> <module> [<action>] [target] [flags]: recon, exploit and
+report modules all register with the engine. Run it with no arguments
+to print this help; work is one-shot, e.g. toha3ee recon net scan
+target 192.168.1.0/24, toha3ee eval "net.scan; net.show", or toha3ee
+run pipeline.toha3ee.
+
+A guided wizard (toha3ee wizard) walks a first assessment step by step.
+
+Authorized use only: assess networks you own or are authorized to test.`,
 		Example: "  toha3ee recon net scan target 192.168.1.0/24\n" +
 			"  toha3ee exploit wlan deauth bssid AA:BB:CC:DD:EE:FF\n" +
 			"  toha3ee report session replay id 1\n" +
