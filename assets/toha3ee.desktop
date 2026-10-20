@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=TOHA3EE
-GenericName=Network Exploitation and MITM Framework
-Comment=Local and network security assessment, exploitation and MITM framework
+GenericName=Network Security Assessment Framework
+Comment=Local and network security assessment framework
 Exec=@PREFIX@/bin/toha3ee
 Icon=@PREFIX@/share/icons/hicolor/512x512/apps/toha3ee.png
 Terminal=true

@@ -1,4 +1,4 @@
-# toha3ee — network exploitation & MITM framework.
+# toha3ee — network security assessment framework.
 #
 # Common targets:
 #   make build            build the binary for this platform

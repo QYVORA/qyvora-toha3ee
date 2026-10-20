@@ -56,3 +56,17 @@ func TestGreenIsBrandAccent(t *testing.T) {
 		t.Errorf("Green = %q, want %q", Green, "#06B66F")
 	}
 }
+
+// TestTaglineStatesFrameworkIdentity guards against the product identity
+// drifting back to a single technique. TOHA3EE is a network security
+// framework; MITM is one capability area among ten module categories, so the
+// banner tagline must name the framework, not "MITM". Keep this a substring
+// check on the identity phrase, not an exact match, so wording can evolve.
+func TestTaglineStatesFrameworkIdentity(t *testing.T) {
+	if !strings.Contains(Tagline, "network security assessment framework") {
+		t.Errorf("Tagline = %q; must state the framework identity %q", Tagline, "network security assessment framework")
+	}
+	if strings.Contains(strings.ToUpper(Tagline), "MITM") {
+		t.Errorf("Tagline = %q; must not describe the whole product as a MITM tool", Tagline)
+	}
+}

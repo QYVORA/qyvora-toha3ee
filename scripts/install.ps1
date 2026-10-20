@@ -78,7 +78,7 @@ function Install-StartMenuShortcut {
     $sc.TargetPath = Join-Path $Dest "$Bin.exe"
     $sc.WorkingDirectory = $Dest
     $sc.IconLocation = $ico
-    $sc.Description = "network exploitation & MITM framework"
+    $sc.Description = "network security assessment framework"
     $sc.Save()
     Write-Step "created Start Menu shortcut $lnk"
 }

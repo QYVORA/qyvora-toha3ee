@@ -10,7 +10,7 @@
         "StringFileInfo": {
           "040904B0": {
             "ProductName": "toha3ee",
-            "FileDescription": "network exploitation & MITM framework",
+            "FileDescription": "network security assessment framework",
             "CompanyName": "QYVORA",
             "ProductVersion": "0.1.0",
             "FileVersion": "0.1.0",
