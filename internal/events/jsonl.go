@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sync"
-	"time"
+
+	shared "github.com/QYVORA/qyvora-events"
 )
 
 // SchemaVersion is the event schema version every emitted event carries. It
 // matches the canonical QYVORA contract shared with Jabari and Anansi so an
 // agent can consume any framework's stream uniformly.
-const SchemaVersion = "1.0"
+const SchemaVersion = shared.SchemaVersion
 
 // JSONL event names. The dotted namespace is stable across frameworks.
 const (
@@ -31,73 +31,16 @@ const (
 
 // JSONL levels classify how an event should be treated by a consumer.
 const (
-	LevelInfo    = "info"
-	LevelWarning = "warning"
-	LevelError   = "error"
+	LevelInfo    = shared.LevelInfo
+	LevelWarning = shared.LevelWarning
+	LevelError   = shared.LevelError
 )
 
-// StreamEvent is one line of the JSONL stream.
-type StreamEvent struct {
-	SchemaVersion string         `json:"schema_version"`
-	Timestamp     time.Time      `json:"timestamp"`
-	ExecutionID   string         `json:"execution_id"`
-	Framework     string         `json:"framework"`
-	Level         string         `json:"level"`
-	Event         string         `json:"event"`
-	Data          map[string]any `json:"data,omitempty"`
-}
+type StreamEvent = shared.Event
+type Emitter = shared.Emitter
 
-// Emitter writes StreamEvents as JSON Lines to an io.Writer. It is safe for
-// concurrent use because module callbacks emit from many goroutines.
-type Emitter struct {
-	mu     sync.Mutex
-	w      io.Writer
-	execID string
-}
-
-// NewEmitter returns an Emitter writing JSONL to w. Every event carries
-// execID as its execution_id so a stream can be grouped by run.
-func NewEmitter(w io.Writer, execID string) *Emitter {
-	return &Emitter{w: w, execID: execID}
-}
-
-// Emit writes a single event tagged with the framework name.
-func (e *Emitter) Emit(framework, level, name string, data map[string]any) {
-	if e == nil || e.w == nil {
-		return
-	}
-	line, err := json.Marshal(StreamEvent{
-		SchemaVersion: SchemaVersion,
-		Timestamp:     time.Now().UTC(),
-		ExecutionID:   e.execID,
-		Framework:     framework,
-		Level:         level,
-		Event:         name,
-		Data:          data,
-	})
-	if err != nil {
-		return
-	}
-	line = append(line, '\n')
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	_, _ = e.w.Write(line)
-}
-
-// Info emits an informational event.
-func (e *Emitter) Info(framework, name string, data map[string]any) {
-	e.Emit(framework, LevelInfo, name, data)
-}
-
-// Warn emits a warning event.
-func (e *Emitter) Warn(framework, name string, data map[string]any) {
-	e.Emit(framework, LevelWarning, name, data)
-}
-
-// Fail emits an error event.
-func (e *Emitter) Fail(framework, name string, data map[string]any) {
-	e.Emit(framework, LevelError, name, data)
-}
+// NewEmitter returns an emitter writing JSONL to w.
+func NewEmitter(w io.Writer, execID string) *Emitter { return shared.NewEmitter(w, execID) }
 
 // safePayload turns an arbitrary bus payload into something the JSONL stream
 // can carry: the payload itself when it serializes cleanly, otherwise a
