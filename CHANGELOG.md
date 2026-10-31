@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Event transport** — migrated to `qyvora-events v0.2.0`, the
+  structured event contract used by `qyvora-platform` and
+  `qyvora-intelligence`.
 ### Added
 - **Enumeration suite** (`enum`): `smtp.enum`, `snmp.enum`, `ldap.enum`,
   `nfs.enum`, `smb.enum` and `net.ip6sweep`, backed by new protocol clients
