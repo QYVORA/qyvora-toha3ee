@@ -12,8 +12,8 @@ assessment pipeline — host and service discovery, enumeration, credential
 auditing, vulnerability identification and authorised exploitation. Its ten
 module categories span recon, enumeration, OSINT, MITM (ARP/DHCP/DNS/IPv6
 poisoning and inline HTTP/HTTPS interception), wireless, switch-layer,
-web, auth, espionage and post-exploitation — all driven from an interactive
-session, a guided wizard, or one-shot command sequences.
+web, auth, espionage and post-exploitation — all driven by one-shot commands,
+caplet scripts, or the guided wizard.
 
 MITM is one capability within this broader domain: TOHA3EE is not limited to
 man-in-the-middle scenarios.
@@ -103,13 +103,11 @@ libpcap with Xcode Command Line Tools.
 
 ## Quick start
 
+The interactive session is retired and unavailable in this release; a bare
+`toha3ee` invocation prints usage instead of opening a TUI. Use `--eval`,
+`script`, `run`, or the wizard for assessments.
+
 ```sh
-# Interactive session (bare command drops straight in)
-sudo ./toha3ee --iface eth0
-
-# Interactive session (explicit subcommand)
-sudo ./toha3ee tui --iface eth0
-
 # Guided wizard
 sudo ./toha3ee wizard --iface eth0
 
@@ -133,8 +131,8 @@ Most attack modules require root (raw sockets, packet capture and IP
 forwarding). Run as root or with `CAP_NET_ADMIN`/`CAP_NET_RAW` where possible.
 Add `--no-color` to disable colored output, `-v` for verbose logging.
 
-The verbs that touch the network stack (`tui`, `wizard`, `eval`, `run`,
-`script`) run with admin privileges **by default**: on Linux/macOS the tool
+The verbs that touch the network stack (`wizard`, `eval`, `run`, `script`)
+run with admin privileges **by default**: on Linux/macOS the tool
 re-executes itself under `sudo` and prompts for the admin (root) password.
 Local-only verbs never escalate and need no password — `version`, `modules`,
 `capabilities`, `completion`, `help`, `updates`, `build` and `report` run
@@ -163,8 +161,8 @@ the event log that feeds the report generator.
 
 | Path | Purpose |
 |------|---------|
-| `cmd/toha3ee` | CLI: console, wizard, `--eval`, caplet runner, `script`/`build` |
-| `internal/ui` | console rendering: banner, palette, sections, tables, status glyphs, HUD |
+| `cmd/toha3ee` | CLI: wizard, `--eval`, caplet runner, `script`/`build` (console retired) |
+| `internal/ui` | one-shot rendering: banner, palette, sections, tables, status glyphs |
 | `internal/script` | the `.toha3ee` scripting language: lexer, parser, engine |
 | `internal/attacks/` | all attack modules by category |
 | `internal/netx/` | protocol primitives (ARP, DHCP, DNS, NDP, 802.11, SMB/NTLM, proxy, …) |
@@ -193,117 +191,21 @@ Run `toha3ee modules` for the full, current catalogue. Highlights:
 | **wireless** | `wlan.scan`, `wlan.deauth`, `wlan.handshake`, `wlan.eviltwin`, `wlan.pmkid`, `wlan.beaconflood`, `wlan.karma` |
 | **post** | `report.generate`, `session.replay`, `pcap.export` |
 
-## Interactive session
+## Interactive session — unavailable in this release
 
-Bare `toha3ee` (or `toha3ee tui`, or the older `interactive`/`repl`/`shell`
-spellings) opens the shared QYVORA terminal application. Commands are entered at
-the prompt and evaluated against **one live session**, so a `net.scan` followed
-by `net.show` sees the same hosts, credentials and running modules: the
-assessment accumulates rather than being rebuilt per command.
-
-The interface renders from the same structured event stream as the one-shot CLI,
-so nothing is scraped from human-readable output. Each command becomes a
-labelled block in a scrolling transcript — findings, artifacts, progress and the
-command's own output — with a persistent header showing the interface state, a
-`Ctrl+O` view of the raw event log, tab-completion over the live module registry,
-and `Ctrl+C` to stop the running command or `Ctrl+D` to leave.
-
-Because the session is the product, two behaviours differ from the other
-frameworks: the store that holds discovered hosts and credentials lives in
-memory for the life of the process, and a machine report format is refused for
-the session itself. Inside the session, `report <file>` writes the JSON report
-to that path instead, because the session's stdout belongs to the human
-interface rather than to a machine stream.
-
-```
-$ sudo ./toha3ee --iface eth0
-@@@@@@@@
-    @@@@@@@@@@@@@
-    @@@@@@@@     @@@@@@@
-  @@@@@@@@           @@@@@@@@
-  @@@@@@@@                 @@@@@@@@
- @@@@@@@         @               @@@@@@@
- @@@@@@@@        @@@@@@@@@              @@@@@@@
- @@@@@@@@         @@@   @                     @@@@@@@
-  @@@@@@@            @@       @@@@@@@@@@              @@@@@@@
-  @@@@@@    @@        @     @@@@@@@@@@@@@@@@@@             @@@@@@
-  @@@        @@@   @@@@@@@  @@@@@@@@@@@@@@@@@@@@@@            @@@
-  @@@         @@@@@   @    @@@@@@@@@@@@@@@@@@@@@@@            @@@
-  @@@          @@@@@@  @   @@@@@@@@@@@@@@@@@@ @@@             @@@
-  @@@          @@@@@@   @ @@@@@@@@@@@@@@@@@   @@@             @@@
-  @@@           @@@@@@    @@@@@@@@@@@@@@@@@@@@@@              @@@
-  @@@              @@@@@  @@@@@@@@@@@@@@@    @@@              @@@
-  @@@               @@@@@  @@@@@@@@@@@@@@   @@@               @@@
-  @@@                 @@@    @@@@@@@@@@@@@ @@@@               @@@
-  @@@               @@  @@@@  @@@@@   @@@@@@@@@               @@@
-  @@@            @@@@@@@@@@@@@  @@@@@@    @@@                 @@@
-  @@@        @@@@@@@@@@@@@@@@@@@  @@@@@@@   @@@               @@@
-  @@@       @@@@@@@@@@@@@@@@@@@@@@@     @@@ @@@@@@            @@@
-  @@@      @@@@@@@@@@@@@@@@@@@@@@   @@@   @@@@@@@@@@          @@@
-  @@@      @@@@@@@@@@@@@@@@@@@@@@@@@@@@@   @@@@@@@@@          @@@
-  @@@     @@@@@@@@@@@@@@@@@@   @@@@@@@@@@@@ @@@@@@@@@         @@@
-  @@@    @@@@@@@@@@@@@@@    @@@@@@@@@@@@@  @@@@@@@@@@@        @@@
-  @@@@@    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@  @@@@@@@@@@@    @@@@@
-   @@@@@@@    @@@@@@@@@@@@@@@@@@@@@@@@  @@@@  @@@@@@@   @@@@@@@@
-     @@@@@@    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@  @@   @@@@@@@
-      @@@@@@@   @@@@@@@@@@@@@@@@@@@@@@@@@@@   @@@@@@@
-       @@@@@@@    @@@@@@@@@@@@@@@@@@@    @@@@@@@
-         @@@@@@@    @@@@@@@@@@@@@    @@@@@@@
-           @@@@@@@    @@@@@@@    @@@@@@
-               @@@@@@        @@@@@@@
-                 @@@@@@@@ @@@@@@@
-                     @@@@@@@@
-                        @@@
-
-local & network security assessment framework
-  [>] iface wlan0 (10.135.199.31, 8c:c8:4b:30:bf:91)
-  [>] v 0.1.0
-type 'help' for commands, 'modules' for the catalogue, 'quit' to exit
-
-[*] session ready. type 'help' for commands.
-toha3eeλ> help
-```
-
-Status glyphs follow bettercap's convention:
-
-| Glyph | Meaning |
-|-------|---------|
-| `[*]` | info / running (white) |
-| `[+]` | success (green) |
-| `[!]` | warning (amber) |
-| `[>]` | system (bold white) |
-| `[-]` | neutral (dim) |
-| `[x]` | hard error (red) |
-| `[OK]` | verified / passed (green) |
-
-The red block `▮` at the left edge of the HUD marks the status strip; the HUD
-is reprinted after every command so counts stay current without extra typing.
-
-Example session:
-
-```
-toha3eeλ> modules recon        # module catalogue filtered by category
-toha3eeλ> on net.scan          # run a module (preflight checks shown first)
-toha3eeλ> net.show             # discovered hosts
-toha3eeλ> net.profile          # profile + ranked attack vectors
-toha3eeλ> help                 # grouped command reference
-toha3eeλ> quit
-```
-
-`set <module.key> <value>` stores per-module settings (module IDs are dotted,
-so the split happens on the last dot: `set arp.spoof.targets 10.0.0.5`);
-`config` dumps everything set so far. Sessions keep captured data across
-module runs; `report.generate` renders a Markdown assessment from the
-in-memory store.
+The interactive session is retired and not built: `cmd/toha3ee/tui.go` carries
+`//go:build ignore`, and a bare `toha3ee` invocation prints usage. The shared
+QYVORA terminal application is disabled pending the redirect of qyvora-tui to
+the future AI orchestration layer. Use `toha3ee eval`, `toha3ee script`,
+`toha3ee run`, or `toha3ee wizard` instead.
 
 ## Scripting
 
 `.toha3ee` files drive the full recon → exploit → report pipeline with a
 Python-like language that reads like English. Execute one with `toha3ee script
-`<file>`, from the session with `script <file>`, or run any `.toha3ee` file with
-`run <file>`. `toha3ee build <file>` (or `build <file>` in the session) validates the
-file and prints a dry-run plan without touching the network. `scripts/full-
-pipeline.toha3ee` is a working end-to-end example.
+<file>`, or run any `.toha3ee` file with `toha3ee run <file>`. `toha3ee build
+<file>` validates the file and prints a dry-run plan without touching the
+network. `scripts/full-pipeline.toha3ee` is a working end-to-end example.
 
 ```toha3ee
 # comment (or //)
@@ -321,13 +223,13 @@ end
 
 for each _h in $(_hosts)                      # loops
     repeat 3 times
-        exec -> net.show                      # run any session command once
+        exec -> net.show                      # run any module command once
         break
     end
 end
 
 get net.scan.timeout -> _t                    # read a config value
-report -> "assessment.md"                     # write the session report
+report -> "assessment.md"                     # write the assessment report
 ```
 
 Language notes:
@@ -348,8 +250,8 @@ Language notes:
   numerically. `while` loops are capped so a bad condition can never hang the
   script.
 - **Modules** — every statement drives the exact same module lifecycle and
-  preflight/risk gates as the session, so a script cannot do anything the console
-  cannot.
+  preflight/risk gates as a one-shot invocation, so a script cannot bypass the
+  safety checks.
 
 ## Configuration
 
@@ -383,8 +285,8 @@ explicitly unsupported by the design intent.
   framework.
 
 Tunables are read per module, e.g. `set net.scan.stealth_jitter 5ms`,
-`set service.synscan.stealth_burst 128`. The session stays responsive while any
-module runs, and a second command can be issued once the first finishes.
+`set service.synscan.stealth_burst 128`. Sequence commands with `--eval` or a
+script; one command finishes before the next starts.
 
 ## Tests
 

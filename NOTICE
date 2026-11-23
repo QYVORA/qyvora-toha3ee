@@ -69,5 +69,8 @@ Full license texts are available in the upstream module sources
 System (non-Go) dependencies
 ----------------------------
 
-- libpcap - BSD-3-Clause. TOHA3EE is the one framework in the ecosystem that
-  requires a C toolchain and is built with CGO_ENABLED=1. See SUPPORT.md.
+- libpcap - BSD-3-Clause (system library, linked via github.com/google/gopacket/pcap
+  with CGO_ENABLED=1). Minimum libpcap version: system-provided; pin build image.
+  This repository does not pin or verify a specific libpcap release, so the build
+  image must pin and document the version it supplies. TOHA3EE is the one
+  framework in the ecosystem that requires a C toolchain. See SUPPORT.md.
