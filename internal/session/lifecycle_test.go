@@ -50,9 +50,7 @@ func watchCompleted(s *Session, id string) (*completedWatcher, func()) {
 
 func freshModule(t *testing.T, m *stubModule) {
 	t.Helper()
-	if _, dup := attacks.Registry[m.Meta().ID]; dup {
-		delete(attacks.Registry, m.Meta().ID)
-	}
+	delete(attacks.Registry, m.Meta().ID)
 	attacks.Register(m)
 	t.Cleanup(func() { delete(attacks.Registry, m.Meta().ID) })
 }

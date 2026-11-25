@@ -46,7 +46,7 @@ func releaseConfig() selfupdate.Config {
 		ChecksumAsset: func(string) string { return "checksums.txt" },
 		// The asset is an archive, not the raw binary: extract the single
 		// executable entry before installing it.
-		ArchiveFor: func(goos, goarch string) (selfupdate.ArchiveKind, string) {
+		ArchiveFor: func(goos, _ string) (selfupdate.ArchiveKind, string) {
 			if goos == "windows" {
 				return selfupdate.ArchiveZip, "toha3ee.exe"
 			}

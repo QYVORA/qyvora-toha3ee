@@ -169,7 +169,7 @@ func RenderYAML() ([]byte, error) {
 	}
 
 	// Simple YAML conversion (note: full YAML support would require gopkg.in/yaml.v3)
-	result := fmt.Sprintf("# TOHA3EE Capabilities (YAML format)\n# Note: Full YAML support requires gopkg.in/yaml.v3 dependency\n\n")
+	result := "# TOHA3EE Capabilities (YAML format)\n# Note: Full YAML support requires gopkg.in/yaml.v3 dependency\n\n"
 	result += string(jsonData) // For now, just formatted JSON with YAML header
 
 	return []byte(result), nil
