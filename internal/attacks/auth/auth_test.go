@@ -216,7 +216,8 @@ func TestNTLMRelayCapture(t *testing.T) {
 	defer func() {
 		close(done)
 		select {
-		case <-errCh:
+		case err := <-errCh:
+			_ = err
 		case <-time.After(5 * time.Second):
 			t.Error("module did not stop")
 		}

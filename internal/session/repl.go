@@ -17,8 +17,6 @@ import (
 	"github.com/QYVORA/qyvora-toha3ee/internal/version"
 )
 
-var errQuit = fmt.Errorf("quit")
-
 // versionString returns the build version (injected by the CLI at build time).
 func versionString() string {
 	return Version
