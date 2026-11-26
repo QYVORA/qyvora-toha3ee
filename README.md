@@ -23,6 +23,10 @@ man-in-the-middle scenarios.
 > authorised to test**. Running these modules against third parties is illegal
 > in most jurisdictions. Read [`docs/Security.md`](docs/Security.md) first.
 
+## Readiness
+
+**BETA.** TOHA3EE is a broad local/network security framework: the wizard and caplets remain, while the interactive console/TUI is retired; MITM is one capability, not the whole framework. Implementation exists for exploration/testing but has not received final production-readiness approval. Its owner classification is `BETA` in the [Product Registry](../../../../knowledge/qyvora-docs/07-products/PRODUCT-REGISTRY.md); release tags do not promote it to `AVAILABLE`.
+
 ## Documentation
 
 - **User** — [Getting started](docs/Getting-Started.md) · [User guide](docs/User-Guide.md) · [Scripting](docs/Scripting.md) · [Configuration](docs/Configuration.md) · [FAQ](docs/FAQ.md)
